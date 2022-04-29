@@ -2,8 +2,8 @@ Neparsy is language for representation result of parsing of any language.
 Also it has original graphical representation and GUI for editing .np-files.
 
 # Compiling
-To compile from D-sources you can use `dub`:
-$ dub build
+You can't compile from .np-files directly, but if you have compiled neparsy you can convert .np-files to D-files
+$ ./neparsy -c src/parser.np src/parser.d
 
-# Neparsy branch
-Use `git checkout neparsy` to switch to neparsy version of repository
+# D-language branch
+Use `git checkout main` to switch to D-language version of repository

@@ -1,0 +1,209 @@
+(lexer_syntax#module@Lexer
+    Start#function.(#body
+            (#switch (.
+                isAlpha
+                '_').(#body
+                        (#while isAlphaNum '_')
+                        (#return Identifier))
+                isNumber.(#body
+                        (#while isNumber)
+                        save
+                        (#switch
+                            '.'.(#body
+                                    (#switch
+                                        '.'.(#body
+                                                back
+                                                (#return Number))
+                                        #default.(#body
+                                                (#while isNumber)
+                                                (#return Float))))
+                            #default.(#body
+                                    (#return Number))))
+                '.'.(#body
+                        (#switch
+                            '.'.(#body
+                                    (#return Punctuation))
+                            isNumber.(#body
+                                    (#while isNumber)
+                                    (#return Float))
+                            #default.(#body
+                                    (#return Punctuation))))
+                (#" ,;:[]{}()?).(#body
+                        (#return Punctuation))
+                '+'#".(#body
+                        (#switch
+                            '+'.(#body
+                                    (#return Operator))
+                            '='.(#body
+                                    (#return AssignOperator))
+                            #default.(#body
+                                    (#return Operator))))
+                '-'.(#body
+                        (#switch
+                            '-'.(#body
+                                    (#return Operator))
+                            '='.(#body
+                                    (#return AssignOperator))
+                            #default.(#body
+                                    (#return Operator))))
+                '='.(#body
+                        (#switch
+                            '='.(#body
+                                    (#return CmpOperator))
+                            #default.(#body
+                                    (#return AssignOperator))))
+                '*'.(#body
+                        (#switch
+                            '='.(#body
+                                    (#return AssignOperator))
+                            #default.(#body
+                                    (#return Operator))))
+                '/'.(#body
+                        (#switch
+                            '='.(#body
+                                    (#return AssignOperator))
+                            '/'.(#body
+                                    (#while (! '\n'))
+                                    (#return Comment))
+                            '*'.(#body
+                                    (#switch@Comment
+                                        '*'.(#body
+                                                (#switch
+                                                    '/'.(#body
+                                                            (#return Comment))
+                                                    (! isNonCharacter).(#body
+                                                            (#goto Comment))
+                                                    #default.(#body
+                                                            .)))
+                                        (! isNonCharacter).(#body
+                                                (#goto Comment))
+                                        #default.(#body
+                                                .)))
+                            '+'.(#body
+                                    CommentPlus
+                                    (#return Comment))
+                            #default.(#body
+                                    (#return Operator))))
+                '~'.(#body
+                        (#switch
+                            '='.(#body
+                                    (#return AssignOperator))
+                            #default.(#body
+                                    (#return Operator))))
+                '>'.(#body
+                        save
+                        (#switch
+                            '='.(#body
+                                    (#return CmpOperator))
+                            '>'.(#body
+                                    (#switch
+                                        '>'.(#body
+                                                (#switch
+                                                    '='.(#body
+                                                            (#return CmpOperator))
+                                                    #default.(#body
+                                                            (#return Operator))))
+                                        '='.(#body
+                                                (#return CmpOperator))
+                                        #default.(#body
+                                                (#return Operator))))
+                            #default.(#body
+                                    back
+                                    (#return CmpOperator))))
+                '<'.(#body
+                        (#switch
+                            '='.(#body
+                                    (#return CmpOperator))
+                            '<'.(#body
+                                    (#switch
+                                        '='.(#body
+                                                (#return Operator))
+                                        #default.(#body
+                                                (#return Operator))))
+                            #default.(#body
+                                    (#return CmpOperator))))
+                '&'.(#body
+                        (#switch
+                            '&'.(#body
+                                    (#return Operator))
+                            '='.(#body
+                                    (#return AssignOperator))
+                            #default.(#body
+                                    (#return Operator))))
+                '|'.(#body
+                        (#switch
+                            '|'.(#body
+                                    (#return Operator))
+                            '='.(#body
+                                    (#return AssignOperator))
+                            #default.(#body
+                                    (#return Operator))))
+                '^'.(#body
+                        (#switch
+                            '^'.(#body
+                                    (#return Operator))
+                            '='.(#body
+                                    (#return AssignOperator))
+                            #default.(#body
+                                    (#return Operator))))
+                '%'.(#body
+                        (#switch
+                            '='.(#body
+                                    (#return AssignOperator))
+                            #default.(#body
+                                    (#return Operator))))
+                '!'.(#body
+                        (#switch
+                            '='.(#body
+                                    (#return AssignOperator))
+                            #default.(#body
+                                    (#return Operator))))
+                '$'.(#body
+                        (#return LenOperator))
+                '"'.(#body
+                        (#switch@String
+                            '\\'.(#body
+                                    (#switch
+                                        (! isNonCharacter).(#body
+                                                (#goto String))
+                                        #default.(#body
+                                                .)))
+                            '"'.(#body
+                                    (#return String))
+                            (! isNonCharacter).(#body
+                                    (#goto String))
+                            #default.(#body
+                                    .)))
+                '\''.(#body
+                        (#switch@Character
+                            '\\'.(#body
+                                    (#switch
+                                        (! isNonCharacter).(#body
+                                                (#goto Character))
+                                        #default.(#body
+                                                .)))
+                            '\''.(#body
+                                    (#return Character))
+                            (! isNonCharacter).(#body
+                                    (#goto Character))
+                            #default.(#body
+                                    .)))
+                isWhite.(#body
+                        (#while isWhite)
+                        (#return Blank))
+                EOF.(#body
+                        (#return EndInput))))
+    CommentPlus#function.(#body
+            (#switch@Comment
+                '/'.(#body
+                        (#switch
+                            '+'.(#body
+                                    CommentPlus)
+                            #default.(#body
+                                    (#goto Comment))))
+                '+'.(#body
+                        (#switch
+                            '/'.(#body
+                                    #return)
+                            #default.(#body
+                                    (#goto Comment)))))))

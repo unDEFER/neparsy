@@ -1,0 +1,50 @@
+(lexer_templ#module@D
+    (#import std.stdio)
+    (#import std.range)
+    (#import std.utf)
+    (#import std.uni)
+    (#import std.file)
+    (#import std.conv)
+    (#import std.algorithm.searching)
+    LexemType#enum
+    (#enum EOF).('\u0004')
+    (Lexer#struct
+        (file string)
+        (lexem string)
+        (type LexemType)
+        (line int).(1#init)
+        (col int)
+        (chr dchar)
+        (getLexem#function void).(#body
+                (= lexem file)
+                (back#var Lexer)
+                (back2#var Lexer)
+                #code
+                (writefln (#" %s %s) lexem chr)
+                (assert 0))
+        (nextChr#function void).(#body
+                (#if
+                    (#. file empty).(#body
+                            (= chr EOF))
+                    #else.(#body
+                            (= chr (decodeFront file))))
+                (chr#if
+                    '\n'.(#body
+                            (++ line)
+                            (= col 0))
+                    #else.(#body
+                            (++ col)))
+                (= lexem (#. lexem ptr (#[ 0 .. (- (#. file ptr) (#. lexem ptr))))))
+        (opEquals#function bool (o string)).(#body
+                (#return (== lexem o)))
+        (opEquals#function bool (o LexemType)).(#body
+                (#return (== type o)))
+        (toString#function string).(#body
+                (#return (~ (#. type text) (#" . .) lexem ":" (#. line text) ":" (#. col text)))))
+    (main#function int (argv string[])).(#body
+            (= (*lex Lexer) (#new Lexer))
+            (= (#. lex file) (readText argv[1]))
+            (#do (!= *lex (#. LexemType EndInput))).(#body
+                    lex.(getLexem)
+                    (writefln "%s :%s" (#. lex lexem) (#. lex type)))
+            (#return 0)))

@@ -1,0 +1,2118 @@
+(iface#module
+    (#import std.stdio)
+    (#import std.math)
+    (#import std.datetime)
+    (#import std.algorithm.searching)
+    (#import std.algorithm.mutation)
+    (#import std.range.primitives)
+    (#import std.utf)
+    (#import std.algorithm)
+    (#import (std.range repeat))
+    (#import std.array)
+    (#import std.conv)
+    (#import glib.Timeout)
+    (#import cairo.Context)
+    (#import cairo.Surface)
+    (#import pango.PgFontDescription)
+    (#import pango.PgLayout)
+    (#import pango.PgCairo)
+    (#import pango.PgCairoFontMap)
+    (#import gtk.Widget)
+    (#import gtk.DrawingArea)
+    (#import gdk.Event)
+    (#import gdk.Window)
+    (#import gdk.Cairo)
+    (#import expression)
+    (Color#struct (.
+        r
+        g
+        b
+        a).(real)
+        (invert#function Color).(#body
+                (= (ret#var auto) (Color (- (+ 1.0 (* 0.402 r)) (* 1.174 g) (* 0.228 b)) (- 1.0 (* 0.598 r) (* 0.174 g) (* 0.228 b)) (+ (- 1.0 (* 0.598 r) (* 1.174 g)) (* 0.772 b)) a))
+                (= (mi#var auto) (min (#. ret r) (#. ret g) (#. ret b)))
+                (= (ma#var auto) (max (#. ret r) (#. ret g) (#. ret b)))
+                (#if
+                    (< mi 0).(#body
+                            (-= (#. ret r) mi)
+                            (-= (#. ret g) mi)
+                            (-= (#. ret b) mi)))
+                (#if
+                    (> ma 1.0).(#body
+                            (/= (#. ret r) ma)
+                            (/= (#. ret g) ma)
+                            (/= (#. ret b) ma)))
+                (#return ret))
+        (hsv#function Color.(static) (H real) (S real) (V real) (A real).(#init 1.0)).(#body
+                (= (Hi#var byte) (% (#cast byte (* H 6)) 6))
+                (= (Vmin#var real) (* (- 1.0 S) V))
+                (= (a#var real) (/ (* (- V Vmin) (% (* H 360) 60)) 60))
+                (= (Vinc#var real) (+ Vmin a))
+                (= (Vdec#var real) (- V a)) (.
+                R#var
+                G#var
+                B#var).(real)
+                Hi.(#switch
+                        0.(#body
+                                (= R V)
+                                (= G Vinc)
+                                (= B Vmin)
+                                #break)
+                        1.(#body
+                                (= R Vdec)
+                                (= G V)
+                                (= B Vmin)
+                                #break)
+                        2.(#body
+                                (= R Vmin)
+                                (= G V)
+                                (= B Vinc)
+                                #break)
+                        3.(#body
+                                (= R Vmin)
+                                (= G Vdec)
+                                (= B V)
+                                #break)
+                        4.(#body
+                                (= R Vinc)
+                                (= G Vmin)
+                                (= B V)
+                                #break)
+                        5.(#body
+                                (= R V)
+                                (= G Vmin)
+                                (= B Vdec)
+                                #break)
+                        #default.(#body
+                                (assert 0)))
+                (#return (Color R G B A))))
+    (Mode#enum Block.(0#init) Circle)
+    (DrawState#struct (.
+        f.(0#init)
+        t.(360#init)).(real) (.
+        r.(0#init)
+        d.(0#init)
+        plus.(30#init)).(real)
+        (post_dir int)
+        (mode Mode) (.
+        x.(0#init)
+        y.(0#init)).(real)
+        (line int) (.
+        block
+        level).(int)
+        (hide bool)
+        (llimit int).(-#init 1)
+        (hideline int).(-#init 1)
+        (force bool)
+        (sizes_invalid int)
+        (blocks (*#type int)))
+    (RotInfo#struct
+        (angle double).(0.0#init)
+        (target_angle double).(0.0#init)
+        (fun Expression))
+    (SaveInfo#struct
+        (filename string)
+        (saved bool)
+        (root Expression))
+    (Button#struct
+        (text string)
+        (c Color)
+        (type string)
+        (expr Expression))
+    (typeColor#function Color (type string)).(#body
+            (= (c#var Color) (Color 1.0 1.0 1.0 1.0))
+            (#if
+                (== type "module").(#body
+                        (= c (Color 1.0 0.4 0.4 1.0)))
+                (== type "class").(#body
+                        (= c (Color 1.0 0.8 0.5 1.0)))
+                (== type "struct").(#body
+                        (= c (Color 1.0 0.6 0.0 1.0)))
+                (== type "enum").(#body
+                        (= c (Color 1.0 1.0 0.4 1.0)))
+                (== type "function").(#body
+                        (= c (Color 0.4 1.0 0.4 1.0)))
+                (== type "var").(#body
+                        (= c (Color 0.4 1.0 1.0 1.0)))
+                (== type "if").(#body
+                        (= c (Color 0.8 0.8 1.0 1.0)))
+                (== type "switch").(#body
+                        (= c (Color 0.4 0.4 1.0 1.0)))
+                (== type "for").(#body
+                        (= c (Color 1.0 0.6 1.0 1.0)))
+                (== type "foreach").(#body
+                        (= c (Color 1.0 0.1 1.0 1.0)))
+                (== type "while").(#body
+                        (= c (Color 0.8 0.1 1.0 1.0)))
+                (== type "do").(#body
+                        (= c (Color 0.9 0.6 1.0 1.0))))
+            (#return c))
+    (Iface#class
+        DrawingArea#superclass
+        (root_expr Expression)
+        (fields Expression) (.
+        selected
+        oselected
+        fselected
+        ofunselected).(Expression)
+        (scopy Expression)
+        (lines ([]#type string))
+        (cursor int) (.
+        sx1.(0#init)
+        sy1.(0#init)).(real) (.
+        sx2.(1200#init)
+        sy2.(900#init)).(real) (.
+        clickX
+        clickY).(real) (.
+        clickRX
+        clickRY).(real)
+        (click_processed bool).(true#init)
+        (edit bool)
+        (post_edit bool)
+        (modules ([]#type (*#type SaveInfo)))
+        (#: public)
+        (this#function #constructor (_expression Expression) (_modules ([]#type (#* SaveInfo)))).(#body
+                (= root_expr _expression)
+                (= selected _expression)
+                (= modules _modules)
+                (ri#var RotInfo)
+                (= (#. ri fun) selected)
+                (~= rot_info ri)
+                (addOnDraw (&#unary drawCallback)))
+        (click#function bool (button uint) (x double) (y double)).(#body
+                (#if
+                    (== button 1).(#body
+                            (#if
+                                (|| (!= clickX x) (!= clickY y)).(#body
+                                        (= clickX x)
+                                        (= clickY y)
+                                        (= click_processed false)
+                                        redraw
+                                        (#return true)))))
+                (#return false))
+        (findCircPos#function Expression (expr Expression) (posa int).(#init 1) (root Expression).(#init null)).(#body
+                (#if
+                    (is root null).(#body
+                            (= root root_expr)))
+                (= (ret#var Expression) root)
+                (#foreach . arg (~ (#. root arguments) (#. root post_operations))).(#body
+                        (= arg (findCircPos expr posa arg))
+                        (= (expra#var real) (/ (+ (#. expr a1) (#. expr a2)) 2))
+                        (= (arga#var real) (/ (+ (#. arg a1) (#. arg a2)) 2))
+                        (= (reta#var real) (/ (+ (#. ret a1) (#. ret a2)) 2))
+                        (= (argdiff#var real) (- expra arga))
+                        (#while (< argdiff (-#unary 180))).(#body
+                                (+= argdiff 360))
+                        (#while (> argdiff 180)).(#body
+                                (-= argdiff 360))
+                        (= (retdiff#var real) (- expra reta))
+                        (#while (< retdiff (-#unary 180))).(#body
+                                (+= retdiff 360))
+                        (#while (> retdiff 180)).(#body
+                                (-= retdiff 360))
+                        (#if
+                            false.(#body
+                                    (#if
+                                        (&& (> posa 0) (== (#. arg x) (#. expr x)) (== (#. arg y) (#. expr y))).(#body
+                                                (writefln "%s#%s (%sx%s): %s#%s (%sx%s) => %s#%s (%sx%s)" (#. expr operator) (#. expr type) (#. expr x) (#. expr y) (#. ret operator) (#. ret type) (#. ret x) (#. ret y) (#. arg operator) (#. arg type) (#. arg x) (#. arg y))
+                                                (#if
+                                                    (!#unary (#. arg hidden)).(#body
+                                                            (writefln "0")
+                                                            (#if
+                                                                (#. ret hidden).(#body
+                                                                        (writefln "0/0"))
+                                                                (&& (== (#. arg x) (#. expr x)) (== (#. arg y) (#. expr y)) (!#unary (&& (== (#. ret x) (#. expr x)) (== (#. ret y) (#. expr y))))).(#body
+                                                                        (writefln "1/1"))
+                                                                (&& (== (#. arg x) (#. expr x)) (== (#. arg y) (#. expr y))).(#body
+                                                                        (writefln "1")
+                                                                        (#if
+                                                                            (< (abs (- (#. expr r1) (#. arg r1))) (abs (- (#. expr r1) (#. ret r1)))).(#body
+                                                                                    (writefln "2/2"))
+                                                                            (== (abs (- (#. expr r1) (#. arg r1))) (abs (- (#. expr r1) (#. ret r1)))).(#body
+                                                                                    (writefln "2")
+                                                                                    (#if
+                                                                                        (&& (>= retdiff 0) (< argdiff 0)).(#body
+                                                                                                (writefln "3/3"))
+                                                                                        (&& (< argdiff 0) (< retdiff 0) (>= argdiff retdiff)).(#body
+                                                                                                (writefln "3 final"))))))))))))).(static)
+                        (#if
+                            (&& (> posa 0) (&& (!#unary (#. arg hidden)) (|| (#. ret hidden) (&& (is (#. arg center) (#. expr center)) (!is (#. ret center) (#. expr center))) (&& (is (#. arg center) (#. expr center)) (|| (< (abs (- (#. expr level) (#. arg level))) (abs (- (#. expr level) (#. ret level)))) (&& (== (abs (- (#. expr level) (#. arg level))) (abs (- (#. expr level) (#. ret level)))) (|| (&& (>= retdiff 0) (< argdiff 0)) (&& (< argdiff 0) (< retdiff 0) (>= argdiff retdiff))))))))).(#body
+                                    (= ret arg)))
+                        (#if
+                            false.(#body
+                                    (#if
+                                        (&& (< posa 0) (is (#. arg center) (#. expr center))).(#body
+                                                (writefln "%s#%s (%sx%s): %s#%s (%sx%s) => %s#%s (%sx%s)" (#. expr operator) (#. expr type) (#. expr x) (#. expr y) (#. ret operator) (#. ret type) (#. ret x) (#. ret y) (#. arg operator) (#. arg type) (#. arg x) (#. arg y))
+                                                (#if
+                                                    (!#unary (#. arg hidden)).(#body
+                                                            (writefln "0")
+                                                            (#if
+                                                                (#. ret hidden).(#body
+                                                                        (writefln "0/0"))
+                                                                (&& (is (#. arg center) (#. expr center)) (!is (#. ret center) (#. expr center))).(#body
+                                                                        (writefln "1/1"))
+                                                                (is (#. arg center) (#. expr center)).(#body
+                                                                        (writefln "1")
+                                                                        (#if
+                                                                            (< (abs (- (#. expr level) (#. arg level))) (abs (- (#. expr level) (#. ret level)))).(#body
+                                                                                    (writefln "2/2"))
+                                                                            (== (abs (- (#. expr level) (#. arg level))) (abs (- (#. expr level) (#. ret level)))).(#body
+                                                                                    (writefln "2")
+                                                                                    (#if
+                                                                                        (&& (<= retdiff 0) (> argdiff 0)).(#body
+                                                                                                (writefln "3/3"))
+                                                                                        (&& (> argdiff 0) (> retdiff 0) (<= argdiff retdiff)).(#body
+                                                                                                (writefln "3 final"))))))))))))).(static)
+                        (#if
+                            (&& (< posa 0) (&& (!#unary (#. arg hidden)) (|| (#. ret hidden) (&& (is (#. arg center) (#. expr center)) (!is (#. ret center) (#. expr center))) (&& (is (#. arg center) (#. expr center)) (|| (< (abs (- (#. expr level) (#. arg level))) (abs (- (#. expr level) (#. ret level)))) (&& (== (abs (- (#. expr level) (#. arg level))) (abs (- (#. expr level) (#. ret level)))) (|| (&& (<= retdiff 0) (> argdiff 0)) (&& (> argdiff 0) (> retdiff 0) (<= argdiff retdiff))))))))).(#body
+                                    (= ret arg))))
+                (#return ret))
+        (findParent#function Expression (expr Expression) (root Expression).(#init null)).(#body
+                (#if
+                    (is root null).(#body
+                            (= root expr)))
+                (= (ret#var Expression) root)
+                (#if
+                    (!is (#. root parent) null).(#body
+                            (= ret (#. root parent))))
+                (#if
+                    (== (#. ret type) "body").(#body
+                            (#if
+                                (!is (#. ret parent) null).(#body
+                                        (= ret (#. ret parent)))
+                                #else.(#body
+                                        (= ret root)))))
+                (#return ret))
+        (findChild#function Expression (expr Expression) (root Expression).(#init null)).(#body
+                (#if
+                    (is root null).(#body
+                            (= root expr)))
+                (= (ret#var Expression) root)
+                (#if
+                    (&& (#. root post) (< (+ (#. root index) 1) (#. root parent post_operations length))).(#body
+                            (= ret (#. root parent post_operations (#[ (+ (#. root index) 1)))))
+                    (!#unary (#. root arguments empty)).(#body
+                            (= ret (#. root arguments (#[ (#. root focus_index)))))
+                    (!#unary (#. root post_operations empty)).(#body
+                            (= ret (#. root post_operations (#[ 0))))
+                    #else.(#body
+                            (= (f#var auto) (parentOfFun root))
+                            (#if
+                                (&& (!is f null) (!#unary (#. f post_operations empty))).(#body
+                                        (= ret (#. f post_operations (#[ 0)))))))
+                (#if
+                    (== (#. ret type) "body").(#body
+                            (#if
+                                (!#unary (#. ret arguments empty)).(#body
+                                        (= ret (#. ret arguments (#[ (#. ret focus_index))))))))
+                (#return ret))
+        (findSibling#function Expression (expr Expression) (dir int) (root Expression).(#init null)).(#body
+                (#if
+                    (is root null).(#body
+                            (= root expr)))
+                (= (ret#var Expression) root)
+                (#if
+                    (!is (#. root parent) null).(#body
+                            (#if
+                                (#. root post).(#body
+                                        (#if
+                                            (&& (> dir 0) (> (#. root arguments length) 0)).(#body
+                                                    (= ret (#. root arguments (#[ 0))))))
+                                (&& (>= (+ (#. root index) dir) 0) (< (+ (#. root index) dir) (#. root parent arguments length))).(#body
+                                        (= ret (#. root parent arguments (#[ (+ (#. root index) dir))))))))
+                (#return ret))
+        (updateView#function void).(#body
+                (= (expr#var auto) selected)
+                (= (nr#var double) (- (/ (+ (#. expr a1) (#. expr a2)) 2) 180))
+                (#if
+                    (< nr 0).(#body
+                            (+= nr 360)))
+                (ri#var RotInfo)
+                (#while (&& (!#unary (#. rot_info empty)) (>= (#. rot_info (#[ (- $ 1)) fun block) (#. expr block)))).(#body
+                        (= (#. ri angle) (#. rot_info (#[ (- $ 1)) angle))
+                        (= rot_info (#. rot_info (#[ 0 .. (- $ 1)))))
+                (= (#. ri target_angle) nr)
+                (= (#. ri fun) expr)
+                (~= rot_info ri)
+                (#if
+                    (&& (!is (#. expr parent) null) (!#unary (#. expr post))).(#body
+                            (= (#. expr parent focus_index) (#. expr index))))
+                redraw)
+        (updateFields#function void).(#body
+                (= (sel#var auto) selected)
+                (#if
+                    (&& (!is (#. sel parent) null) (== (#. sel parent type) ".")).(#body
+                            (= sel (#. sel parent)))
+                    (&& (!is (#. selected parent) null) (!#unary (#. selected post))).(#body
+                            (= (ne#var auto) (#new Expression))
+                            (= (#. ne type) ".")
+                            (= (#. ne parent) (#. selected parent))
+                            (= (#. ne index) (#. selected index))
+                            (= (#. ne x) (#. selected x))
+                            (= (#. ne y) (#. selected y))
+                            (= (#. ne r1) (#. selected r1))
+                            (= (#. ne r2) (#. selected r2))
+                            (= (#. ne center) (#. selected center))
+                            (= (#. ne post_operations) (#. selected post_operations))
+                            (= (#. selected post_operations) null)
+                            (#foreach . arg (#. ne post_operations)).(#body
+                                    (= (#. arg parent) ne))
+                            (= (#. selected parent arguments (#[ (#. selected index))) ne)
+                            (= (#. selected parent) ne)
+                            (= (#. selected index) 0)
+                            (= (#. ne arguments) ([] selected))
+                            (= sel ne)))
+                (#if
+                    (&& (== (#. sel type) ".") (!#unary (#. sel arguments empty))).(#body
+                            (= (#. sel arguments) [])
+                            (= (fsel#var auto) fselected)
+                            (#do (!is fsel null)).(#body
+                                    (= (ne#var auto) (#new Expression))
+                                    (= (#. ne parent) sel)
+                                    (= (#. ne operator) (#. fsel operator))
+                                    (= (#. sel arguments) (~ ne (#. sel arguments)))
+                                    (= fsel (#. fsel parent)))
+                            (#foreach i arg (#. sel arguments)).(#body
+                                    (= (#. arg index) i))
+                            (= selected (#. sel arguments (#[ (- $ 1))))
+                            (= (#. (getModule selected) saved) false)
+                            (= sizes_invalid 1)
+                            (getSize ([] root_expr) (#. DrawState init))
+                            updateView
+                            (= post_edit false))))
+        (left#function void).(#body
+                (#if
+                    (is selected null).(#body
+                            #return))
+                end_edit
+                (= (s#var auto) (findSibling selected (-#unary 1)))
+                (#if
+                    (|| (&& (is s selected) (!is (#. s center) s)) (#. s hidden)).(#body
+                            (= selected (findCircPos selected (-#unary 1))))
+                    #else.(#body
+                            (= selected s)))
+                updateView)
+        (right#function void).(#body
+                (#if
+                    (is selected null).(#body
+                            #return))
+                end_edit
+                (= (s#var auto) (findSibling selected 1))
+                (#if
+                    (|| (&& (is s selected) (!is (#. s center) s)) (#. s hidden)).(#body
+                            (= selected (findCircPos selected 1)))
+                    #else.(#body
+                            (= selected s)))
+                updateView)
+        (up#function void).(#body
+                (#if
+                    (is selected null).(#body
+                            #return))
+                end_edit
+                (= selected (findParent selected))
+                updateView)
+        (down#function void).(#body
+                (#if
+                    (is selected null).(#body
+                            #return))
+                end_edit
+                (= selected (findChild selected))
+                updateView)
+        (field_left#function void).(#body
+                (#if
+                    (is fselected null).(#body
+                            #return))
+                end_edit
+                (= (s#var auto) (findSibling fselected (-#unary 1)))
+                (#if
+                    (&& (is s fselected) (!is (#. s center) s)).(#body
+                            (= fselected (findCircPos fselected (-#unary 1) fields)))
+                    #else.(#body
+                            (= fselected s)))
+                updateFields)
+        (field_right#function void).(#body
+                (#if
+                    (is fselected null).(#body
+                            #return))
+                end_edit
+                (= (s#var auto) (findSibling fselected 1))
+                (#if
+                    (&& (is s fselected) (!is (#. s center) s)).(#body
+                            (= fselected (findCircPos fselected 1 fields)))
+                    #else.(#body
+                            (= fselected s)))
+                updateFields)
+        (field_up#function void).(#body
+                (#if
+                    (is fselected null).(#body
+                            #return))
+                end_edit
+                (= fselected (findParent fselected))
+                updateFields)
+        (field_down#function void).(#body
+                (#if
+                    (is fselected null).(#body
+                            #return))
+                end_edit
+                (= fselected (findChild fselected))
+                updateFields)
+        (end_edit#function void).(#body
+                (#if
+                    edit.(#body
+                            (= edit false)
+                            (#if
+                                (|| (is (#. selected parent) null) (!= (#. selected parent type) "\"")).(#body
+                                        (= (s#var auto) (#. selected operator (findSplit "@")))
+                                        (= (#. selected operator) (#. s (#[ 0)))
+                                        (#if
+                                            (== (#. s (#[ 1)) "@").(#body
+                                                    (= (#. selected label) (#. s (#[ 2)))))
+                                        (= s (#. selected operator (findSplit "#")))
+                                        (= (#. selected operator) (#. s (#[ 0)))
+                                        (#if
+                                            (== (#. s (#[ 1)) "#").(#body
+                                                    (= (#. selected type) (#. s (#[ 2)))))
+                                        (= sizes_invalid 1))))))
+        (print#function void (key dchar)).(#body
+                (#if
+                    (is selected null).(#body
+                            #return))
+                (#if
+                    (!#unary edit).(#body
+                            (#if
+                                (== key '@').(#body
+                                        (#if
+                                            (!#unary (#. selected type empty)).(#body
+                                                    (~= (#. selected operator) (~ "#" (#. selected type))))))
+                                #else.(#body
+                                        (= (#. selected operator) "")))))
+                (~= (#. selected operator) key)
+                (= (#. (getModule selected) saved) false)
+                (= sizes_invalid 1)
+                redraw
+                (= edit true)
+                (= post_edit false))
+        (backspace#function void).(#body
+                (#if
+                    (is selected null).(#body
+                            #return))
+                (#if
+                    (!#unary (#. selected operator empty)).(#body
+                            (= (#. selected operator) (#. selected operator (#[ 0 .. (- $ (#. selected operator strideBack)))))))
+                (= (#. (getModule selected) saved) false)
+                (= sizes_invalid 1)
+                redraw
+                (= edit true)
+                (= post_edit false))
+        (space#function void).(#body
+                (#if
+                    (is selected null).(#body
+                            #return))
+                (#if
+                    (&& edit (!#unary (#. selected operator empty)) (== (#. selected operator (#[ 0)) '\"') (|| (== (#. selected operator length) 1) (!= (#. selected operator (#[ (- $ 1))) '\"'))).(#body
+                            (print ' ')
+                            #return))
+                end_edit
+                (#if
+                    (&& (!is (#. selected parent) null) (!#unary (#. selected post))).(#body
+                            (= (ne#var auto) (#new Expression))
+                            (= (#. ne parent) (#. selected parent))
+                            (= (#. ne index) (+ (#. selected index) 1))
+                            (= (#. ne x) (#. selected x))
+                            (= (#. ne y) (#. selected y))
+                            (= (#. ne r1) (#. selected r1))
+                            (= (#. ne r2) (#. selected r2))
+                            (= (#. ne center) (#. selected center))
+                            (#foreach . arg (#. selected parent arguments (#[ (+ (#. selected index) 1) .. $))).(#body
+                                    (++#post (#. arg index)))
+                            (= (#. selected parent arguments) (~ (#. selected parent arguments (#[ 0 .. (+ (#. selected index) 1))) ne (#. selected parent arguments (#[ (+ (#. selected index) 1) .. $))))
+                            (= selected ne)))
+                (= (#. (getModule selected) saved) false)
+                (= sizes_invalid 1)
+                (getSize ([] root_expr) (#. DrawState init))
+                updateView
+                (= post_edit false))
+        (dot#function void).(#body
+                (#if
+                    (is selected null).(#body
+                            #return))
+                (#if
+                    edit.(#body
+                            (print '.')
+                            #return))
+                (#if
+                    (&& (!is (#. selected parent) null) (!#unary (#. selected post))).(#body
+                            (= (ne#var auto) (#new Expression))
+                            (= (#. ne parent) (#. selected parent))
+                            (= (#. ne index) (#. selected index))
+                            (= (#. ne x) (#. selected x))
+                            (= (#. ne y) (#. selected y))
+                            (= (#. ne r1) (#. selected r1))
+                            (= (#. ne r2) (#. selected r2))
+                            (= (#. ne center) (#. selected center))
+                            (= (#. ne post_operations) (#. selected post_operations))
+                            (= (#. selected post_operations) null)
+                            (#foreach . arg (#. ne post_operations)).(#body
+                                    (= (#. arg parent) ne))
+                            (= (#. selected parent arguments (#[ (#. selected index))) ne)
+                            (= (#. selected parent) ne)
+                            (= (#. selected index) 0)
+                            (= (#. ne arguments) ([] selected))
+                            (= selected ne)))
+                (= (#. (getModule selected) saved) false)
+                (= sizes_invalid 2)
+                (getSize ([] root_expr) (#. DrawState init))
+                updateView
+                (= post_edit false))
+        (comma#function void).(#body
+                (#if
+                    (is selected null).(#body
+                            #return))
+                (#if
+                    (&& edit (|| (&& (!is (#. selected parent) null) (== (#. selected parent type) "\"")) (&& (!#unary (#. selected operator empty)) (== (#. selected operator (#[ 0)) '\"') (|| (== (#. selected operator length) 1) (!= (#. selected operator (#[ (- $ 1))) '\"'))))).(#body
+                            (print ',')
+                            #return))
+                end_edit
+                (= (ne#var auto) (#new Expression))
+                (= (#. ne parent) selected)
+                (= (#. ne index) 0)
+                (= (#. ne x) (#. selected x))
+                (= (#. ne y) (#. selected y))
+                (= (#. ne r1) (#. selected r1))
+                (= (#. ne r2) (#. selected r2))
+                (= (#. ne r3) (#. selected r3))
+                (= (#. ne center) (#. selected center))
+                (#foreach . arg (#. selected arguments)).(#body
+                        (++#post (#. arg index)))
+                (= (#. selected arguments) (~ ne (#. selected arguments)))
+                (= selected ne)
+                (= (#. (getModule selected) saved) false)
+                (= sizes_invalid 2)
+                (getSize ([] root_expr) (#. DrawState init))
+                updateView
+                (= post_edit false))
+        (less#function void).(#body
+                (#if
+                    (is selected null).(#body
+                            #return))
+                (#if
+                    (&& (!#unary post_edit) (#. selected post_operations empty)).(#body
+                            (= (ne#var auto) (#new Expression))
+                            (= (#. ne parent) selected)
+                            (= (#. ne index) (#. selected post_operations length))
+                            (= (#. ne post) true)
+                            (= (#. ne app_args) 1)
+                            (= (#. ne x) (#. selected x))
+                            (= (#. ne y) (#. selected y))
+                            (= (#. ne center) (#. selected center))
+                            (~= (#. selected post_operations) ne)
+                            (= selected ne)
+                            (#if
+                                (|| (== (#. ne parent type) "function") (== (#. ne parent type) "for") (== (#. ne parent type) "while") (== (#. ne parent type) "do") (== (#. ne parent type) "foreach") (== (#. ne parent parent type) "if") (== (#. ne parent parent type) "switch")).(#body
+                                        (= (#. ne type) "body")
+                                        comma
+                                        (= selected ne))))
+                    (!#unary (#. selected post_operations empty)).(#body
+                            (= (pe#var Expression) (#. selected post_operations (#[ 0)))
+                            (#if
+                                (>= (#. selected index) (#. pe app_args)).(#body
+                                        (++#post (#. pe app_args)))))
+                    #else.(#body
+                            (= (ep#var Expression) (#. selected parent))
+                            (#while (#. ep post)).(#body
+                                    (assert (is (#. ep parent post_operations (#[ (#. ep index))) ep))
+                                    (= ep (#. ep parent)))
+                            (assert (is (#. ep parent arguments (#[ (#. ep index))) ep))
+                            (#if
+                                (>= (#. ep index) (#. selected app_args)).(#body
+                                        (++#post (#. selected app_args))))))
+                (= (#. (getModule selected) saved) false)
+                (= sizes_invalid 1)
+                (getSize ([] root_expr) (#. DrawState init))
+                updateView
+                (= post_edit true))
+        (greater#function void).(#body
+                (#if
+                    (is selected null).(#body
+                            #return))
+                (#if
+                    (&& (!#unary post_edit) (#. selected post_operations empty)).(#body
+                            (= (ne#var auto) (#new Expression))
+                            (= (#. ne parent) selected)
+                            (= (#. ne index) (#. selected post_operations length))
+                            (= (#. ne post) true)
+                            (= (#. ne app_args) 1)
+                            (= (#. ne x) (#. selected x))
+                            (= (#. ne y) (#. selected y))
+                            (= (#. ne center) (#. selected center))
+                            (~= (#. selected post_operations) ne)
+                            (= selected ne))
+                    (!#unary (#. selected post_operations empty)).(#body
+                            (= (pe#var Expression) (#. selected post_operations (#[ 0)))
+                            (#if
+                                (> (#. pe app_args) 1).(#body
+                                        (--#post (#. pe app_args)))))
+                    #else.(#body
+                            (#if
+                                (> (#. selected app_args) 1).(#body
+                                        (--#post (#. selected app_args))))))
+                (= (#. (getModule selected) saved) false)
+                (= sizes_invalid 1)
+                (getSize ([] root_expr) (#. DrawState init))
+                updateView
+                (= post_edit true))
+        (escape#function void).(#body
+                (#if
+                    (|| edit post_edit).(#body
+                            end_edit
+                            (= post_edit false)
+                            updateView)
+                    #else.(#body
+                            (= edit true))))
+        (del#function void).(#body
+                (#if
+                    (is selected null).(#body
+                            #return))
+                (#if
+                    (!is (#. selected parent) null).(#body
+                            (#if
+                                (> (#. selected parent focus_index) 0).(#body
+                                        (--#post (#. selected parent focus_index))))
+                            (#if
+                                (!#unary (#. selected post)).(#body
+                                        (#foreach . arg (#. selected parent arguments (#[ (+ (#. selected index) 1) .. $))).(#body
+                                                (--#post (#. arg index)))
+                                        (= (#. selected parent arguments) (~ (#. selected parent arguments (#[ 0 .. (#. selected index))) (#. selected parent arguments (#[ (+ (#. selected index) 1) .. $))))
+                                        (#if
+                                            (> (#. selected parent arguments length) (#. selected index)).(#body
+                                                    (= selected (#. selected parent arguments (#[ (#. selected index)))))
+                                            #else.(#body
+                                                    (= selected (#. selected parent)))))
+                                #else.(#body
+                                        (#foreach . arg (#. selected parent post_operations (#[ (+ (#. selected index) 1) .. $))).(#body
+                                                (--#post (#. arg index)))
+                                        (= (#. selected parent post_operations) (~ (#. selected parent post_operations (#[ 0 .. (#. selected index))) (#. selected parent post_operations (#[ (+ (#. selected index) 1) .. $))))
+                                        (= selected (#. selected parent))))))
+                (= (#. (getModule selected) saved) false)
+                (= sizes_invalid 1)
+                updateView
+                (= edit true)
+                (= post_edit false))
+        (remove#function void).(#body
+                (#if
+                    (is selected null).(#body
+                            #return))
+                (= (#. selected arguments) null)
+                (= (#. selected post_operations) null)
+                (= (#. selected focus_index) 0)
+                (= (#. (getModule selected) saved) false)
+                (= sizes_invalid 1)
+                updateView
+                (= edit true)
+                (= post_edit false))
+        (copy#function void).(#body
+                (#if
+                    (is selected null).(#body
+                            #return))
+                (= scopy selected)
+                (= post_edit false))
+        (insert#function void).(#body
+                (#if
+                    (|| (is selected null) (is scopy null)).(#body
+                            #return))
+                (= (c#var auto) (#. scopy deepcopy))
+                (#if
+                    (!#unary (#. selected post)).(#body
+                            (= (#. selected parent arguments (#[ (#. selected index))) c)
+                            (= (#. c parent) (#. selected parent))
+                            (= (#. c index) (#. selected index)))
+                    #else.(#body
+                            (= (#. selected parent post_operations (#[ (#. selected index))) c)
+                            (= (#. c parent) (#. selected parent))
+                            (= (#. c index) (#. selected index))))
+                (= selected c)
+                (= (#. (getModule selected) saved) false)
+                (= sizes_invalid 1)
+                (getSize ([] root_expr) (#. DrawState init))
+                updateView
+                (= post_edit false))
+        (moveleft#function void).(#body
+                (#if
+                    (is selected null).(#body
+                            #return))
+                (#if
+                    (<= (#. selected index) 0).(#body
+                            #return))
+                (#if
+                    (!#unary (#. selected post)).(#body
+                            (++#post (#. selected parent arguments (#[ (- (#. selected index) 1)) index))
+                            (swap (#. selected parent arguments (#[ (#. selected index))) (#. selected parent arguments (#[ (- (#. selected index) 1))))
+                            (--#post (#. selected index)))
+                    #else.(#body
+                            (++#post (#. selected parent post_operations (#[ (- (#. selected index) 1)) index))
+                            (swap (#. selected parent post_operations (#[ (#. selected index))) (#. selected parent post_operations (#[ (- (#. selected index) 1))))
+                            (--#post (#. selected index))))
+                (= (#. (getModule selected) saved) false)
+                (= sizes_invalid 2)
+                (getSize ([] root_expr) (#. DrawState init))
+                updateView
+                (= post_edit false))
+        (moveright#function void).(#body
+                (#if
+                    (is selected null).(#body
+                            #return))
+                (#if
+                    (!#unary (#. selected post)).(#body
+                            (#if
+                                (>= (#. selected index) (- (#. selected parent arguments length) 1)).(#body
+                                        #return))
+                            (--#post (#. selected parent arguments (#[ (+ (#. selected index) 1)) index))
+                            (swap (#. selected parent arguments (#[ (#. selected index))) (#. selected parent arguments (#[ (+ (#. selected index) 1))))
+                            (++#post (#. selected index)))
+                    #else.(#body
+                            (#if
+                                (>= (#. selected index) (- (#. selected parent post_operations length) 1)).(#body
+                                        #return))
+                            (--#post (#. selected parent post_operations (#[ (+ (#. selected index) 1)) index))
+                            (swap (#. selected parent post_operations (#[ (#. selected index))) (#. selected parent post_operations (#[ (+ (#. selected index) 1))))
+                            (++#post (#. selected index))))
+                (= (#. (getModule selected) saved) false)
+                (= sizes_invalid 2)
+                (getSize ([] root_expr) (#. DrawState init))
+                updateView
+                (= post_edit false))
+        (redraw#function void).(#body (.
+                area#var
+                ar#var).(GtkAllocation)
+                (getAllocation area)
+                (= ar area)
+                (#if
+                    (&& (<= sizes_invalid 1) (!is oselected null) (is (#. oselected center) (#. selected center)) (is ofunselected (parentOfFun selected))).(#body
+                            (= (w#var real) (- sx2 sx1))
+                            (= (h#var real) (- sy2 sy1))
+                            (= (#. area width) (/ (* (#. area width) 5) 6))
+                            (= w (/ (* h (#. area width)) (#. area height)))
+                            (= (scale#var real) (/ (#. area width) w))
+                            (= (dx#var real) (/ w 5.0))
+                            (= (#. area x) (#cast int (* (+ (- (#. selected center x) (#. selected center r3)) dx) scale)))
+                            (= (#. area y) (#cast int (* (- (#. selected center y) 150) scale)))
+                            (= (#. area width) (#cast int (* (* (#. selected center r3) 2) scale)))
+                            (= (#. area height) (#cast int (* (+ (#. selected center r3) 150) scale)))
+                            (queueDrawArea (#. area x) (#. area y) (#. area width) (#. area height))
+                            (queueDrawArea 0 0 (/ (#. ar width) 6) (#. ar height)))
+                    #else.(#body
+                            (= sizes_invalid 2)
+                            (queueDrawArea (#. area x) (#. area y) (#. area width) (#. area height)))))
+        (getModule#function (*#type SaveInfo) (expr Expression)).(#body
+                (#if
+                    (is (#. expr parent) null).(#body
+                            (#return null)))
+                (#if
+                    (!= (#. expr type) "module").(#body
+                            (#return (getModule (#. expr parent)))))
+                (#foreach . mod modules).(#body
+                        (#if
+                            (is (#. mod root) expr).(#body
+                                    (#return mod))))
+                (= (mod#var (*#type SaveInfo)) (#new (SaveInfo (~ (#. expr operator) ".np") false expr)))
+                (~= modules mod)
+                (#return mod))
+        (save#function void).(#body
+                (= (mod#var auto) (getModule selected))
+                (#if
+                    (is mod null).(#body
+                            #return))
+                (#if
+                    (!#unary (#. mod saved)).(#body
+                            (= (#. mod saved) true)
+                            (= (savestr#var string) (#. mod root save))
+                            (= (file#var auto) (File (#. mod filename) "w"))
+                            (#. file (writeln savestr)))))
+        (saveD#function void).(#body
+                (= (mod#var auto) (getModule selected))
+                (#if
+                    (is mod null).(#body
+                            #return))
+                (= (filename#var auto) (#. mod filename))
+                (#if
+                    (#. filename (endsWith ".np")).(#body
+                            (= filename (#. filename (#[ 0 .. (- $ 3))))))
+                (#if
+                    (== (#. mod root label) "D").(#body
+                            (= (savestr#var string) (#. mod root saveD))
+                            (= (file#var auto) (File (~ filename ".d") "w"))
+                            (#. file (writeln savestr)))))
+        (toLexer#function void).(#body
+                (= (mod#var auto) (getModule selected))
+                (#if
+                    (is mod null).(#body
+                            #return))
+                (#if
+                    (== (#. mod root label) "Lexer").(#body
+                            (= (root#var auto) (#. mod root toLexer))
+                            (= (#. root parent) root_expr)
+                            (= (#. root index) (#. root_expr arguments length))
+                            (~= (#. root_expr arguments) root)
+                            (= selected root)))
+                (= sizes_invalid 1)
+                (getSize ([] root_expr) (#. DrawState init))
+                updateView
+                (= post_edit false))
+        (#: protected)
+        (textWidth#function real (text string)).(#body
+                (cache#var ([]#type real string))
+                (= (res_cache#var auto) (in text cache))
+                (#if
+                    (!is res_cache null).(#body
+                            (#return (*#unary res_cache))))
+                (= (context#var auto) (#. PgCairoFontMap getDefault createContext))
+                (= (layout#var auto) (#new (PgLayout context)))
+                (= (desc#var auto) (#. PgFontDescription (fromString "Times new roman,Sans")))
+                (#. desc (setAbsoluteSize (* 20 PANGO_SCALE)))
+                (#. layout (setFontDescription desc))
+                (#. layout (setText text)) (.
+                width#var
+                height#var).(int)
+                (#. layout (getSize width height))
+                (= (rw#var real) (/ (* 1.0 width) PANGO_SCALE))
+                (= (#. cache (#[ text)) rw)
+                (#return rw))
+        (drawText#function void (cr (Scoped ! Context #!) ref) (text string) (X real) (Y real) (w real) (c Color) (inv bool).(#init false) (colors ([]#type ubyte)).(#init null)).(#body
+                (#if
+                    inv.(#body
+                            (= c (#. c invert))))
+                (#. cr (setSourceRgba (#. c r) (#. c g) (#. c b) (#. c a)))
+                (= (black#var Color) (Color 0.3 0.0 0.0 1.0))
+                (#if
+                    inv.(#body
+                            (= black (#. black invert))))
+                (= (selcol#var Color) (Color 1.0 0.0 0.0 1.0))
+                (#if
+                    (!#unary inv).(#body
+                            (= selcol (#. selcol invert))))
+                (= (layout#var auto) (#. PgCairo (createLayout cr)))
+                (= (desc#var auto) (#. PgFontDescription (fromString "Times new roman,Sans")))
+                (#. desc (setAbsoluteSize (* 20 PANGO_SCALE)))
+                (#. layout (setFontDescription desc))
+                (#. layout (setText text))
+                (#. PgCairo (updateLayout cr layout)) (.
+                width#var
+                height#var).(int)
+                (#. layout (getSize width height))
+                (#if
+                    (> (/ width PANGO_SCALE) w).(#body
+                            (#. desc (setAbsoluteSize (/ (* 20 PANGO_SCALE w) (/ width PANGO_SCALE))))
+                            (#. layout (setFontDescription desc))
+                            (#. PgCairo (updateLayout cr layout))
+                            (#. layout (getSize width height))))
+                (#if
+                    (is colors null).(#body
+                            (= (XX#var real) (- X (/ width PANGO_SCALE 2)))
+                            (= (YY#var real) (- Y (/ height PANGO_SCALE 2)))
+                            (#. cr (moveTo XX YY))
+                            (#. PgCairo (showLayout cr layout)))
+                    #else.(#body
+                            (= (XX#var real) (- X (/ width PANGO_SCALE 2)))
+                            (= (YY#var real) (- Y (/ height PANGO_SCALE 2)))
+                            (cur_chr_stride#var long)
+                            (= (wi#var long) 0)
+                            (#for (= (i long) 0) (< i (#. text length)) (+= i cur_chr_stride)).(#body
+                                    (= cur_chr_stride (#. text (stride i)))
+                                    (= (chr#var string) (#. text (#[ i .. (+ i cur_chr_stride)) idup))
+                                    (= (co#var ubyte) (#. colors (#[ wi)))
+                                    co.(#switch
+                                            0.(#body
+                                                    (#. cr (setSourceRgba (#. c r) (#. c g) (#. c b) (#. c a)))
+                                                    (#. desc (setWeight (#. PangoWeight NORMAL)))
+                                                    #break)
+                                            1.(#body
+                                                    (#. cr (setSourceRgba (#. black r) (#. black g) (#. black b) (#. black a)))
+                                                    (#. desc (setWeight (#. PangoWeight NORMAL)))
+                                                    #break)
+                                            2.(#body
+                                                    (#. cr (setSourceRgba (#. selcol r) (#. selcol g) (#. selcol b) (#. selcol a)))
+                                                    (#. desc (setWeight (#. PangoWeight HEAVY)))
+                                                    #break)
+                                            #default.(#body
+                                                    (assert 0)))
+                                    (++#post wi)
+                                    (#while (&& (< wi (#. colors length)) (== (#. colors (#[ wi)) co))).(#body
+                                            (+= i cur_chr_stride)
+                                            (= cur_chr_stride (#. text (stride i)))
+                                            (~= chr (#. text (#[ i .. (+ i cur_chr_stride))))
+                                            (++#post wi))
+                                    (#. layout (setFontDescription desc))
+                                    (#. layout (setText chr))
+                                    (#. PgCairo (updateLayout cr layout)) (.
+                                    Width#var
+                                    Height#var).(int)
+                                    (#. layout (getSize Width Height))
+                                    (+= XX (/ Width PANGO_SCALE 2))
+                                    (#. cr save)
+                                    (#. cr (translate XX YY))
+                                    (#. cr (moveTo (-#unary (/ Width PANGO_SCALE 2)) 0))
+                                    (#. PgCairo (showLayout cr layout))
+                                    (#. cr restore)
+                                    (+= XX (/ Width PANGO_SCALE 2))))))
+        (arcTextWidth#function real (text string) (radius real)).(#body
+                (= (context#var auto) (#. PgCairoFontMap getDefault createContext))
+                (= (layout#var auto) (#new (PgLayout context)))
+                (= (desc#var auto) (#. PgFontDescription (fromString "Times new roman,Sans")))
+                (#. desc (setAbsoluteSize (* 20 PANGO_SCALE)))
+                (cur_chr_stride#var long)
+                (= (eangle#var real) 0.0)
+                (#for (= (i long) 0) (< i (#. text length)) (+= i cur_chr_stride)).(#body
+                        (= cur_chr_stride (#. text (stride i)))
+                        (= (chr#var string) (#. text (#[ i .. (+ i cur_chr_stride)) idup))
+                        (#. layout (setText chr)) (.
+                        Width#var
+                        Height#var).(int)
+                        (#. layout (getSize Width Height))
+                        (+= eangle (/ (* (/ Width PANGO_SCALE) 70) radius)))
+                (#return eangle))
+        (arcTextWidthRecursive#function real (expressions ([]#type Expression)) (radius real)).(#body
+                (= (tw#var real) 0)
+                (#foreach i expr expressions).(#body
+                        (#if
+                            (|| (== (#. expr type) ".") (== (#. expr type) "[")).(#body
+                                    (+= tw (arcTextWidthRecursive (#. expr arguments) radius)))
+                            #else.(#body
+                                    (= (text#var string) (~ (#? (#. expr post) "." "") (#? (#. expr operator empty) (#. expr type) (#. expr operator))))
+                                    (#if
+                                        (#. text empty).(#body
+                                                (= text ".")))
+                                    (+= tw (arcTextWidth text radius)))))
+                (#return tw))
+        (drawArcText#function void (cr (Scoped ! Context #!) ref) (text string) (a_from real) (a_to real) (radius real) (h1 real) (h2 real) (X real) (Y real) (c Color) (inv bool).(#init false) (colors ([]#type ubyte)).(#init null)).(#body
+                (= text (~ " " text " "))
+                (#if
+                    (!is colors null).(#body
+                            (= colors (~ 0 colors 0))))
+                (#if
+                    inv.(#body
+                            (= c (#. c invert))))
+                (#. cr (setSourceRgba (#. c r) (#. c g) (#. c b) (#. c a)))
+                (= (black#var Color) (Color 0.3 0.0 0.0 1.0))
+                (#if
+                    inv.(#body
+                            (= black (#. black invert))))
+                (= (selcol#var Color) (Color 1.0 0.0 0.0 1.0))
+                (#if
+                    (!#unary inv).(#body
+                            (= selcol (#. selcol invert))))
+                (= (layout#var auto) (#. PgCairo (createLayout cr)))
+                (= (desc#var auto) (#. PgFontDescription (fromString "Times new roman,Sans")))
+                (#. desc (setAbsoluteSize (* 20 PANGO_SCALE)))
+                (#. layout (setFontDescription desc))
+                (#if
+                    (<= radius 15).(#body
+                            (#. layout (setText text))
+                            (#. PgCairo (updateLayout cr layout)) (.
+                            width#var
+                            height#var).(int)
+                            (#. layout (getSize width height))
+                            (#if
+                                (< (/ width PANGO_SCALE 2) 30).(#body
+                                        (= (XX#var real) (- X (/ width PANGO_SCALE 2)))
+                                        (= (YY#var real) (- Y (/ height PANGO_SCALE 2)))
+                                        (#. cr (moveTo XX YY))
+                                        (#. PgCairo (showLayout cr layout))
+                                        #return)
+                                #else.(#body
+                                        (= a_from (-#unary 45))
+                                        (= a_to (-#unary 315))
+                                        (= radius 20)))))
+                (Rect#struct (.
+                    w
+                    h).(int))
+                (cache#var ([]#type Rect string))
+                (cur_chr_stride#var long)
+                (= (height#var real) 0.0)
+                (= (eangle#var real) 0.0)
+                (#for (= (i long) 0) (< i (#. text length)) (+= i cur_chr_stride)).(#body
+                        (= cur_chr_stride (#. text (stride i)))
+                        (= (chr#var string) (#. text (#[ i .. (+ i cur_chr_stride)) idup))
+                        (rect#var Rect)
+                        (= (in_cache#var auto) (in chr cache))
+                        (#if
+                            (!is in_cache null).(#body
+                                    (= rect (*#unary in_cache)))
+                            #else.(#body
+                                    (#. layout (setText chr))
+                                    (#. PgCairo (updateLayout cr layout))
+                                    (#. layout (getSize (#. rect w) (#. rect h)))
+                                    (= (#. cache (#[ chr)) rect)))
+                        (= height (max height (/ (#. rect h) PANGO_SCALE)))
+                        (+= eangle (/ (* (/ (#. rect w) PANGO_SCALE) 70) radius)))
+                (= (scale#var real) 1.0)
+                (= (wanted_eangle#var real) (abs (- a_to a_from)))
+                (assert (> h1 0))
+                (assert (> h2 0))
+                (assert (> height 0))
+                (#if
+                    (> (* height scale) h1).(#body
+                            (= scale (/ h1 height))
+                            (*= eangle scale)))
+                (assert (> eangle 0))
+                (assert (> wanted_eangle 0))
+                (#if
+                    (> eangle wanted_eangle).(#body
+                            (*= scale (/ wanted_eangle eangle))
+                            (= eangle wanted_eangle)))
+                (= (dir#var int) (#? (> a_to a_from) 1 (-#unary 1)))
+                (= (angle#var real) (- (/ (+ a_from a_to) 2) (/ (* dir eangle) 2)))
+                (assert (!#unary (#. angle isNaN)))
+                (assert (!#unary (#. scale isNaN)))
+                (assert (> scale 0))
+                (= (wi#var long) 0)
+                (#for (= (i long) 0) (< i (#. text length)) (+= i cur_chr_stride)).(#body
+                        (= cur_chr_stride (#. text (stride i)))
+                        (= (chr#var string) (#. text (#[ i .. (+ i cur_chr_stride)) idup))
+                        (#if
+                            (!is colors null).(#body
+                                    (#. colors (#[ wi)).(#switch
+                                            0.(#body
+                                                    (#. cr (setSourceRgba (#. c r) (#. c g) (#. c b) (#. c a)))
+                                                    (#. desc (setWeight (#. PangoWeight NORMAL)))
+                                                    #break)
+                                            1.(#body
+                                                    (#. cr (setSourceRgba (#. black r) (#. black g) (#. black b) (#. black a)))
+                                                    (#. desc (setWeight (#. PangoWeight NORMAL)))
+                                                    #break)
+                                            2.(#body
+                                                    (#. cr (setSourceRgba (#. selcol r) (#. selcol g) (#. selcol b) (#. selcol a)))
+                                                    (#. desc (setWeight (#. PangoWeight HEAVY)))
+                                                    #break)
+                                            #default.(#body
+                                                    (assert 0)))))
+                        (#. layout (setFontDescription desc))
+                        (++#post wi)
+                        (#. layout (setText chr))
+                        (#. PgCairo (updateLayout cr layout))
+                        (= (rect#var auto) (#. cache (#[ chr)))
+                        (= (Width#var int) (#. rect w))
+                        (= (Height#var int) (#. rect h))
+                        (#. cr save)
+                        (+= angle (* (/ (* (/ (* dir Width) PANGO_SCALE) 35) radius) scale))
+                        (assert (!#unary (#. angle isNaN)))
+                        (assert (!#unary (#. X isNaN)))
+                        (assert (!#unary (#. Y isNaN)))
+                        (#. cr (translate X Y))
+                        (= (k#var real) (/ (+ (cos (/ (* angle PI) 180.0)) 1.0) 2))
+                        (= (s#var real) (/ (* scale (+ (* k h2) (* (- 1 k) h1))) h1))
+                        (#. cr (scale s s))
+                        (#. cr (rotate (+ (#? (< dir 0) PI 0) (/ (* angle PI) 180.0))))
+                        (#. cr (moveTo (-#unary (/ Width PANGO_SCALE 2)) (-#unary (/ (* dir radius) s) (/ Height PANGO_SCALE 2))))
+                        (+= angle (* (/ (* (/ (* dir Width) PANGO_SCALE) 35) radius) scale))
+                        (#. PgCairo (showLayout cr layout))
+                        (#. cr restore)))
+        (drawArc#function void (cr (Scoped ! Context #!) ref) (a_from real) (a_to real) (p1 real) (p2 real) (d1 real) (d2 real) (X real) (Y real) (c Color) (inv bool).(#init false) (lines bool).(#init true)).(#body
+                (assert (< a_from 1440))
+                (assert (< a_to 1440))
+                (= (r1#var real) (/ (+ p1 d1) 2))
+                (= (r2#var real) (/ (+ p2 d2) 2))
+                (= (Y1#var real) (+ Y (/ (- p1 d1) 2)))
+                (= (Y2#var real) (+ Y (/ (- p2 d2) 2)))
+                (#. cr (setLineWidth (/ (* m_lineWidth (- r2 r1)) 30)))
+                (= a_from (+ 270 a_from))
+                (= a_to (+ 270 a_to))
+                (#if
+                    inv.(#body
+                            (= c (#. c invert))))
+                (#. cr (setSourceRgba (#. c r) (#. c g) (#. c b) (#. c a)))
+                (#if
+                    (> r1 0.01).(#body
+                            (#. cr (moveTo (+ X (* r1 (cos (/ (* a_from PI) 180)))) (+ Y1 (* r1 (sin (/ (* a_from PI) 180))))))
+                            (#. cr (lineTo (+ X (* r2 (cos (/ (* a_from PI) 180)))) (+ Y2 (* r2 (sin (/ (* a_from PI) 180)))))))
+                    #else.(#body
+                            (#. cr (moveTo (+ X (* r2 (cos (/ (* a_from PI) 180)))) (+ Y2 (* r2 (sin (/ (* a_from PI) 180))))))))
+                (#. cr (arc X Y2 r2 (/ (* a_from PI) 180) (/ (* a_to PI) 180)))
+                (#if
+                    (> r1 0.01).(#body
+                            (#. cr (lineTo (+ X (* r1 (cos (/ (* a_to PI) 180)))) (+ Y1 (* r1 (sin (/ (* a_to PI) 180))))))
+                            (#. cr (arcNegative X Y1 r1 (/ (* a_to PI) 180) (/ (* a_from PI) 180)))))
+                (#. cr fill)
+                (= (black#var Color) (Color 0 0 0.0 1.0))
+                (#if
+                    inv.(#body
+                            (= black (#. black invert))))
+                (#. cr (setSourceRgba (#. black r) (#. black g) (#. black b) (#. black a)))
+                (#if
+                    (> r1 0.01).(#body
+                            (#if
+                                (|| lines (< (abs (- a_from 270)) 1) (< (abs (- a_from 270 360)) 1)).(#body
+                                        (#. cr (moveTo (+ X (* r1 (cos (/ (* a_from PI) 180)))) (+ Y1 (* r1 (sin (/ (* a_from PI) 180))))))
+                                        (#. cr (lineTo (+ X (* r2 (cos (/ (* a_from PI) 180)))) (+ Y2 (* r2 (sin (/ (* a_from PI) 180))))))))
+                            (#if
+                                (|| lines (< (abs (- a_to 270)) 1) (< (abs (- a_to 270 360)) 1)).(#body
+                                        (#. cr (moveTo (+ X (* r1 (cos (/ (* a_to PI) 180)))) (+ Y1 (* r1 (sin (/ (* a_to PI) 180))))))
+                                        (#. cr (lineTo (+ X (* r2 (cos (/ (* a_to PI) 180)))) (+ Y2 (* r2 (sin (/ (* a_to PI) 180))))))))))
+                (#. cr (moveTo (+ X (* r2 (cos (/ (* a_from PI) 180)))) (+ Y2 (* r2 (sin (/ (* a_from PI) 180))))))
+                (#. cr (arc X Y2 r2 (/ (* a_from PI) 180) (/ (* a_to PI) 180)))
+                (#. cr stroke)
+                (#. cr (setLineWidth m_lineWidth)))
+        (getSize#function DrawState (expressions ([]#type Expression)) (ds DrawState)).(#body
+                (= (ret#var DrawState) ds)
+                (#if
+                    (&& (< (#. ds llimit) 0) (== (#. ds mode) (#. Mode Block))).(#body
+                            (++#post (#. ds block))
+                            (= (#. ds r) 0)
+                            (= (#. ds d) 0)
+                            (#foreach i expr expressions).(#body
+                                    (#if
+                                        (is (#. expr parent) null).(#body
+                                                (#if
+                                                    (!#unary (#. ds force)).(#body
+                                                            (#if
+                                                                (== sizes_invalid 0).(#body
+                                                                        (#return ret)))
+                                                            (= rlines ([] 0.0))))
+                                                (= (#. ds line) 0))
+                                        (&& (== (#. expr parent type) "body") (== (#. expr index) 0)).(#body
+                                                (++#post (#. ds line))
+                                                (#if
+                                                    (< (#. rlines length) (+ (#. ds line) 1)).(#body
+                                                            (~= rlines 0.0)))))
+                                    (= (width#var real) 0.0)
+                                    (blocks#var int)
+                                    (= (ds2#var auto) ds)
+                                    (= (#. ds2 post_dir) 0)
+                                    (= (#. ds2 level) 1)
+                                    (= (#. ds2 llimit) 0)
+                                    (= (#. ds2 blocks) (&#unary blocks))
+                                    (#if
+                                        (== (#. ds r) 0).(#body
+                                                (= (#. expr center) expr))
+                                        #else.(#body
+                                                (= (#. expr center) (#. expr parent))))
+                                    (#if
+                                        (== i 0).(#body
+                                                (= (#. expr center levels) 0)))
+                                    (= (text#var string) (~ (#? (#. expr post) "." "") (#? (#. expr operator empty) (#. expr type) (#. expr operator))))
+                                    (#if
+                                        (#. text empty).(#body
+                                                (= text ".")))
+                                    (= (#. expr pw) ([] (+ (textWidth text) 5) 0.0))
+                                    (= (#. expr mw) [])
+                                    (= width (#. expr pw (#[ 0)))
+                                    (= blocks 1)
+                                    (= (#. ds2 post_dir) 0)
+                                    (= ds2 (getSize (#cast (#. Expression #[) (#. expr arguments)) ds2))
+                                    (= (#. ds2 post_dir) 1)
+                                    (= ds2 (getSize (#cast (#. Expression #[) (#. expr post_operations)) ds2))
+                                    (#if
+                                        (< (#. expr pw (#[ 1)) (#. expr pw (#[ 0))).(#body
+                                                (= (#. expr pw (#[ 1)) (#. expr pw (#[ 0)))))
+                                    (= width (#. expr pw (#[ 1)))
+                                    (= (#. expr pw (#[ 1)) width)
+                                    (= (#. expr r3) (/ width (* 2 PI)))
+                                    (= (levels#var int) (*#unary (#. ds2 blocks)))
+                                    (= (#. expr center levels) (max (#. expr center levels) levels))
+                                    (= (#. expr r3) (* (#. expr center levels) 30))
+                                    (#if
+                                        (!#unary (#. ds force)).(#body
+                                                (= (#. rlines (#[ (#. ds line))) (max (#. rlines (#[ (#. ds line))) (#. expr r3))))))
+                            (#if
+                                (!#unary (#. expressions empty)).(#body
+                                        (= (expr#var auto) (#. expressions (#[ 0)))
+                                        (= (#. ds f) 0)
+                                        (= (#. ds t) 360)
+                                        (= (#. ds r) 0)
+                                        (= (#. ds d) 0)
+                                        (= (#. ds level) 0)))))
+                (= (sumpw#var real) 0)
+                (#foreach i expr expressions).(#body (.
+                        fr#var
+                        to#var).(real)
+                        (#if
+                            (&& (!is (#. expr parent) null) (> (#. ds level) 0)).(#body
+                                    (= (#. expr center) (#. expr parent center))))
+                        (#if
+                            (>= (#. ds llimit) 0).(#body
+                                    (#if
+                                        (&& (!is (#. expr parent) null) (|| (== (#. expr parent type) "root") (== (#. expr parent type) "module") (== (#. expr parent type) "body"))).(#body
+                                                #continue))
+                                    (= (ds2#var auto) ds)
+                                    (#if
+                                        (|| (is (#. expr parent) null) (!#unary (#. expr parent post)) (== (#. expr parent type) "body") (== (#. expr parent type) "module")).(#body
+                                                (++#post (#. ds2 level))))
+                                    (= (text#var string) (~ (#? (#. expr post) "." "") (#? (#. expr operator empty) (#. expr type) (#. expr operator))))
+                                    (#if
+                                        (#. text empty).(#body
+                                                (= text ".")))
+                                    (= (#. expr pw) ([] (+ (textWidth text) 5) 0.0))
+                                    (= (#. ds2 post_dir) 0)
+                                    (= ds2 (getSize (#cast (#. Expression #[) (#. expr arguments)) ds2))
+                                    (= (#. ds2 post_dir) 1)
+                                    (= ds2 (getSize (#cast (#. Expression #[) (#. expr post_operations)) ds2))
+                                    (#if
+                                        (< (#. expr pw (#[ 1)) (#. expr pw (#[ 0))).(#body
+                                                (= (#. expr pw (#[ 1)) (#. expr pw (#[ 0)))))
+                                    (= (par#var auto) (#. expr parent))
+                                    (#if
+                                        (#. par post).(#body
+                                                (+= (#. par parent pw (#[ 1)) (#. expr pw (#[ 1))))
+                                        #else.(#body
+                                                (+= (#. par pw (#[ 1)) (#. expr pw (#[ 1)))))
+                                    (= (*#unary (#. ds blocks)) (max (*#unary (#. ds blocks)) (#. ds level)))
+                                    (#if
+                                        (#. expr post).(#body
+                                                (++#post (#. ds level))))))
+                        (#if
+                            (< (#. ds llimit) 0).(#body
+                                    (#if
+                                        (#. expr post).(#body
+                                                (assert (is (#. expr parent post_operations (#[ (#. expr index))) expr))
+                                                (= (ep#var Expression) (#. expr parent))
+                                                (#while (#. ep post)).(#body
+                                                        (assert (is (#. ep parent post_operations (#[ (#. ep index))) ep))
+                                                        (= ep (#. ep parent)))
+                                                (assert (is (#. ep parent arguments (#[ (#. ep index))) ep))
+                                                (#if
+                                                    (&& (== (#. ds mode) (#. Mode Circle)) (> (+ (- (#. ep index) (#. expr app_args)) 1) 0) (> (#. ep parent arguments length) (#. ep index))).(#body
+                                                            (= (#. ds f) (#. ep parent arguments (#[ (+ (- (#. ep index) (#. expr app_args)) 1)) a1))
+                                                            (= (#. ds t) (#. ep parent arguments (#[ (#. ep index)) a2))))
+                                                (#foreach . pre (#. ep parent arguments (#[ (+ (- (#. ep index) (#. expr app_args)) 1) .. (+ (#. ep index) 1)))).(#body
+                                                        (#if
+                                                            (&& (== (#. expr type) "body") (|| (== (#. ep parent type) "if") (== (#. ep parent type) "switch"))).(#body
+                                                                    (= (hue#var real) (/ (+ (- (* 1.0 (#. ep index)) (/ (#. expr app_args) 2.0)) 1.0) (+ (#. ep parent arguments length) 1)))
+                                                                    (= (#. pre c) (#. Color (hsv hue 0.5 1.0))))))))
+                                    (#if
+                                        (== (#. ds mode) (#. Mode Block)).(#body
+                                                (= sumpw 0)))
+                                    (assert (> (#. expr pw length) 0))
+                                    (= (w#var real) (#. expr pw (#[ 1)))
+                                    (assert (> w 0))
+                                    (= (par#var auto) (#. expr parent))
+                                    (= (parentw#var real) (#? (|| (is par null) (== (#. ds mode) (#. Mode Block))) w (#. par pw (#[ 1))))
+                                    (#if
+                                        (&& (!is par null) (#. par post) (!= (#. par type) "body")).(#body
+                                                (= parentw (- (#. par parent pw (#[ 1)) (#. par pw (#[ 1))))))
+                                    (assert (> parentw 0))
+                                    (#if
+                                        (&& (!is par null) (!is expr (#. expr center))).(#body
+                                                (= (#. expr r3) (#. par r3))))
+                                    (assert (&& (!#unary (#. expr r3 isNaN)) (> (#. expr r3) 0)))
+                                    (= fr (+ (#. ds f) (/ (* (- (#. ds t) (#. ds f)) sumpw) parentw)))
+                                    (= to (+ (#. ds f) (/ (* (- (#. ds t) (#. ds f)) (+ sumpw w)) parentw)))
+                                    (= (a#var real) (- 180 (/ (- to fr) 2)))
+                                    (= (b#var real) (- 180 (/ (/ (* (/ (#. expr pw (#[ 0)) (+ (#. ds r) 15)) 180) PI) 2)))
+                                    (= (rw#var real) (/ (log (/ b 180)) (log (/ a 180))))
+                                    (#if
+                                        (< (#. expr center mw length) (+ (#. ds level) 1)).(#body
+                                                (~= (#. expr center mw) 1.0)))
+                                    (= (#. expr center mw (#[ (#. ds level))) (max (#. expr center mw (#[ (#. ds level))) rw))
+                                    (#if
+                                        (&& (|| (&& (!#unary (#. expr post)) (== (#. expr index) (- (#. expressions length) 1))) (&& (#. expr post) (== (#. expr arguments length) 0))) (> (#. ds t) to)).(#body
+                                                (= to (#. ds t))))
+                                    (#if
+                                        (!#unary (#. expr post)).(#body
+                                                (+= sumpw w)))
+                                    (assert (> to fr))
+                                    (assert (<= sumpw parentw))
+                                    (= (c#var Color) (typeColor (#. expr type)))
+                                    (#if
+                                        (> (#. ds post_dir) 0).(#body
+                                                (= c (Color 1.0 1.0 0.8 1.0)))
+                                        (< (#. ds post_dir) 0).(#body
+                                                (= c (Color 0.8 0.8 0.6 1.0))))
+                                    (= (plus#var real) (#. ds plus))
+                                    (#if
+                                        (> (#. ds r) 90).(#body
+                                                (/= plus 2)))
+                                    (= (#. expr r1) (#. ds r))
+                                    (= (#. expr r2) (+ (#. ds r) 30))
+                                    (= (#. expr d1) (#. ds d))
+                                    (= (#. expr d2) (+ (#. ds d) plus))
+                                    (= (#. expr level) (#. ds level))
+                                    (= (#. expr a1) fr)
+                                    (= (#. expr a2) to)
+                                    (= (#. expr c) c)
+                                    (= (#. expr block) (#. ds block))
+                                    (= (ds2#var DrawState) ds)
+                                    (#if
+                                        (!#unary (#. expr post)).(#body
+                                                (#if
+                                                    (!#unary (isNeedHide expr)).(#body
+                                                            (+= (#. ds2 r) 30)
+                                                            (+= (#. ds2 d) plus)
+                                                            (= (#. ds2 plus) plus)))
+                                                (++#post (#. ds2 level))
+                                                (= (#. ds2 post_dir) 0))
+                                        #else.(#body
+                                                (= fr to)
+                                                (= to (#. ds t))
+                                                (= (#. ds2 post_dir) (-#unary 1))))
+                                    (= (#. ds2 f) fr)
+                                    (= (#. ds2 t) to)
+                                    (#if
+                                        (|| (== (#. expr type) "root") (== (#. expr type) "module") (== (#. expr type) "body")).(#body
+                                                (= (#. ds2 mode) (#. Mode Block))
+                                                (= (#. ds2 post_dir) 0))
+                                        #else.(#body
+                                                (= (#. ds2 mode) (#. Mode Circle))))
+                                    (= ds2 (getSize (#cast (#. Expression #[) (#. expr arguments)) ds2))
+                                    (= (#. ds2 post_dir) 1)
+                                    (= ds2 (getSize (#cast (#. Expression #[) (#. expr post_operations)) ds2))
+                                    (#if
+                                        (#. expr post).(#body
+                                                (#if
+                                                    (!= (#. expr type) "body").(#body
+                                                            (+= (#. ds r) 30)
+                                                            (+= (#. ds d) plus)
+                                                            (= (#. ds plus) plus)))
+                                                (++#post (#. ds level))))
+                                    (#if
+                                        (== (#. ds2 mode) (#. Mode Circle)).(#body
+                                                (= (#. ret r) (max (#. ret r) (#. ds r) (#. ds2 r)))
+                                                (= (#. ret d) (max (#. ret d) (#. ds d) (#. ds2 d)))
+                                                (= (#. expr r3) (max (#. expr r3) (#. ds r) (#. ds2 r)))))
+                                    (#if
+                                        (== (#. ds level) 0).(#body)))))
+                (#return ret))
+        (connectExpressions#function void (cr (Scoped ! Context #!) ref) (expression1 Expression) (expression2 Expression) (tx real).(#init (#. real nan)) (ty real).(#init (#. real nan))).(#body
+                (#if
+                    (|| (is expression1 null) (is expression2 null)).(#body
+                            #return))
+                (#. cr save)
+                (= (cx1#var real) (#. expression1 x))
+                (= (cy1#var real) (#. expression1 y))
+                (= (cx2#var real) (#? (#. tx isNaN) (#. expression2 x) tx))
+                (= (cy2#var real) (#? (#. ty isNaN) (#. expression2 y) ty))
+                (#if
+                    (&& (!#unary (#. tx isNaN)) (< tx cx1)).(#body
+                            (#. cr (moveTo (+ (- cx1 (#. expression1 r3)) 30) cy1))
+                            (#. cr (lineTo cx2 cy1)))
+                    (> cx2 cx1).(#body
+                            (#. cr (moveTo (- (+ cx1 (#. expression1 r3)) 30) cy1))
+                            (#. cr (lineTo cx2 cy1)))
+                    #else.(#body
+                            (#. cr (moveTo cx1 (- (+ cy1 (#. expression1 r3)) 30)))
+                            (#. cr (lineTo cx1 cy2))))
+                (#. cr (lineTo cx2 cy2))
+                (#if
+                    (&& (!#unary (#. tx isNaN)) (!#unary (#. ty isNaN))).(#body
+                            (= cx1 tx)
+                            (= cy1 ty)
+                            (= cx2 (#. expression2 x))
+                            (= cy2 (#. expression2 y))
+                            (#if
+                                (> cx2 cx1).(#body
+                                        (#. cr (lineTo cx2 cy1)))
+                                #else.(#body
+                                        (#. cr (lineTo cx1 cy2))))
+                            (#. cr (lineTo cx2 (+ cy2 (#? (> cy1 cy2) (- (#. expression2 r3) 30) 0))))))
+                (#. cr stroke)
+                (#. cr restore))
+        (inExpressions#function ([]#type Expression) (expr Expression)).(#body
+                (ret#var ([]#type Expression))
+                (#if
+                    (|| (== (#. expr type) "if") (== (#. expr type) "switch")).(#body
+                            (#foreach . arg (#. expr arguments)).(#body
+                                    (assert (== (#. arg post_operations (#[ 0) type) "body"))
+                                    (~= ret (inExpressions (#. arg post_operations (#[ 0) arguments (#[ (- $ 1)))))))
+                    (|| (== (#. expr type) "for") (== (#. expr type) "foreach") (== (#. expr type) "while") (== (#. expr type) "do")).(#body
+                            (assert (== (#. expr arguments (#[ (- $ 1)) post_operations (#[ 0) type) "body"))
+                            (~= ret expr)
+                            (~= ret (inExpressions (#. expr arguments (#[ (- $ 1)) post_operations (#[ 0) arguments (#[ (- $ 1))))))
+                    #else.(#body
+                            (= ret ([] expr))))
+                (#return ret))
+        (prevExpressions#function ([]#type Expression) (expr Expression)).(#body
+                (#if
+                    (== (#. expr index) 0).(#body
+                            (#if
+                                (== (#. expr parent type) "body").(#body
+                                        (#return ([] (#. expr parent parent))))
+                                #else.(#body
+                                        (#return ([] (#. expr parent))))))
+                    #else.(#body
+                            (#if
+                                (!#unary (#. expr post)).(#body
+                                        (#return (inExpressions (#. expr parent arguments (#[ (- (#. expr index) 1)))))))))
+                (#return []))
+        (inBody#function Expression (expr Expression)).(#body
+                (= (ret#var Expression) (#. expr parent))
+                (#while (!is ret null)).(#body
+                        (#if
+                            (|| (== (#. ret type) "body") (== (#. ret type) "module")).(#body
+                                    (#return ret)))
+                        (= ret (#. ret parent)))
+                (#return null))
+        (parentOfFun#function Expression (expr Expression)).(#body
+                (= (ret#var Expression) expr)
+                (#while (!is ret null)).(#body
+                        (#if
+                            (|| (== (#. ret type) "root") (== (#. ret type) "module") (== (#. ret type) "function") (== (#. ret type) "for") (== (#. ret type) "foreach") (== (#. ret type) "while") (== (#. ret type) "do") (&& (!is (#. ret parent) null) (|| (== (#. ret parent type) "if") (== (#. ret parent type) "switch")))).(#body
+                                    (#if
+                                        (&& (!is (#. ret parent) null) (!#unary (#. ret post)) (|| (#. ret post_operations empty) (!= (#. ret post_operations (#[ 0) type) "body"))).(#body
+                                                (#foreach . arg (#. ret parent arguments (#[ (+ (#. ret index) 1) .. $))).(#body
+                                                        (#if
+                                                            (&& (!#unary (#. arg post_operations empty)) (== (#. arg post_operations (#[ 0) type) "body")).(#body
+                                                                    (#if
+                                                                        (<= (+ (- (#. arg index) (#. arg post_operations (#[ 0) app_args)) 1) (#. ret index)).(#body
+                                                                                (= ret arg)))
+                                                                    #break)))))
+                                    (#return ret)))
+                        (= ret (#. ret parent)))
+                (#return null))
+        (parentOf#function bool (expr Expression) (parent Expression)).(#body
+                (= (body_was#var bool) false)
+                (= (ret#var Expression) (#. expr parent))
+                (#while (!is ret null)).(#body
+                        (#if
+                            (|| (== (#. ret type) "body") (== (#. ret type) "root") (== (#. ret type) "module")).(#body
+                                    (#if
+                                        (!#unary body_was).(#body
+                                                (= body_was true))
+                                        #else.(#body
+                                                (#return false)))))
+                        (#if
+                            (is ret parent).(#body
+                                    (#return true)))
+                        (= ret (#. ret parent)))
+                (#return false))
+        (isNeedHide#function bool (expr Expression)).(#body
+                (#return (&& (> (#. expr level) 0) (!#unary (#. expr post)) (|| (== (#. expr type) ".") (== (#. expr type) "[") (== (#. expr type) "\"") (&& (> (#. expr operator length) 0) (!#unary (#. "-+!&*" (find (#. expr operator)) empty)) (== (#. expr arguments length) 1))))))
+        (hideRecursive#function void (expressions ([]#type Expression))).(#body
+                (#foreach . expr expressions).(#body
+                        (= (#. expr hidden) true)
+                        (hideRecursive (#. expr arguments))
+                        (hideRecursive (#. expr post_operations))))
+        (normAngle#function void (angle real ref)).(#body
+                (#while (< angle 0)).(#body
+                        (+= angle 360))
+                (#while (> angle 360)).(#body
+                        (-= angle 360)))
+        (drawAll#function DrawState (cr (Scoped ! Context #!) ref) (expressions ([]#type Expression)) (ds DrawState)).(#body
+                (= (ret#var DrawState) ds)
+                (= (sumpw#var real) 0)
+                (#foreach . expr expressions).(#body
+                        (= (R1#var real) (/ (+ (#. expr r1) (#. expr d1)) 2))
+                        (= (R2#var real) (/ (+ (#. expr r2) (#. expr d2)) 2))
+                        (= (Y1#var real) (+ (#. expr y) (/ (- (#. expr r1) (#. expr d1)) 2)))
+                        (= (Y2#var real) (+ (#. expr y) (/ (- (#. expr r2) (#. expr d2)) 2)))
+                        (= (clickR1#var real) (hypot (- clickRX (#. expr x)) (- clickRY Y1)))
+                        (= (clickR2#var real) (hypot (- clickRX (#. expr x)) (- clickRY Y2)))
+                        (= (clickA1#var real) (- 360 (+ (/ (* (atan2 (- clickRY Y1) (- clickRX (#. expr x))) 180) PI) 90)))
+                        (= (clickA2#var real) (- 360 (+ (/ (* (atan2 (- clickRY Y2) (- clickRX (#. expr x))) 180) PI) 90)))
+                        (#if
+                            (< clickA1 0).(#body
+                                    (+= clickA1 360)))
+                        (#if
+                            (> clickA1 360).(#body
+                                    (-= clickA1 360)))
+                        (#if
+                            (< clickA2 0).(#body
+                                    (+= clickA2 360)))
+                        (#if
+                            (> clickA2 360).(#body
+                                    (-= clickA2 360)))
+                        (#if
+                            (&& (!#unary (#. ds force)) (!is (inBody expr) null)).(#body
+                                    (po#var bool)
+                                    (#foreach . ri rot_info).(#body
+                                            (= (f#var auto) (parentOfFun (#. ri fun)))
+                                            (#if
+                                                (&& (!is f null) (parentOf expr f)).(#body
+                                                        (= po true)
+                                                        #break)))
+                                    (#if
+                                        (!#unary po).(#body
+                                                (= (#. expr hidden) true)
+                                                (hideRecursive (#. expr arguments))
+                                                (hideRecursive (#. expr post_operations))
+                                                #continue))))
+                        (#if
+                            (!#unary (== (#. expr type) "body")).(#body
+                                    (#if
+                                        (== (#. ds mode) (#. Mode Block)).(#body
+                                                (+= (#. ds x) (+ (#. ds r) (#. expr r3) 30))
+                                                (= (#. ds r) 0)
+                                                (#if
+                                                    (!#unary (#. ds force)).(#body
+                                                            (#if
+                                                                (&& (!is (#. expr parent) null) (== (#. expr parent type) "body") (== (#. expr index) 0)).(#body
+                                                                        (#foreach . ri rot_info).(#body
+                                                                                (#if
+                                                                                    (is (#. expr parent parent) (parentOfFun (#. ri fun))).(#body
+                                                                                            (+= (#. ds y) (+ 150 (max (#. rlines (#[ (#. ds line))) 50)))
+                                                                                            (= (#. ds x) 0)
+                                                                                            (++#post (#. ds line))
+                                                                                            (#while (<= (#. dx length) (#. ds line))).(#body
+                                                                                                    (~= dx 150))
+                                                                                            #break))))
+                                                                (&& (!is (#. expr parent) null) (== (#. expr parent type) "module") (== (#. expr index) 0)).(#body
+                                                                        (#foreach . ri rot_info).(#body
+                                                                                (#if
+                                                                                    (is (#. expr parent) (parentOfFun (#. ri fun))).(#body
+                                                                                            (+= (#. ds y) (+ 150 (max (#. rlines (#[ (#. ds line))) 50)))
+                                                                                            (= (#. ds x) 0)
+                                                                                            (++#post (#. ds line))
+                                                                                            (#while (<= (#. dx length) (#. ds line))).(#body
+                                                                                                    (~= dx 150))
+                                                                                            #break)))))))
+                                                (#if
+                                                    (== (#. ds line) (#. ds hideline)).(#body
+                                                            (= (#. expr hidden) true)
+                                                            (hideRecursive (#. expr arguments))
+                                                            (hideRecursive (#. expr post_operations))
+                                                            #continue))))))
+                        (#if
+                            (!#unary (#. ds force)).(#body
+                                    (= (#. expr x) (+ (#. ds x) (#. dx (#[ (#. ds line)))))
+                                    (= (#. expr y) (+ (#. ds y) dy)))
+                            #else.(#body
+                                    (= (#. expr x) 150)
+                                    (= (#. expr y) 150)))
+                        (= (#. expr line) (#. ds line))
+                        (= (#. expr hidden) (&& (|| (== (#. expr type) "body") (== (#. expr type) "root")) (!#unary (#. expr arguments empty))))
+                        (#if
+                            (&& (!#unary (|| (#. expr hidden) (&& (isNeedHide expr) (!#unary (#. expr arguments empty))))) (|| (> (#. ds sizes_invalid) 1) (is (#. selected center) (#. expr center)))).(#body
+                                    (#. cr save)
+                                    (invert#var bool)
+                                    (#if
+                                        (!#unary (#. ds force)).(#body
+                                                (#foreach . ri rot_info).(#body
+                                                        (#if
+                                                            (|| (is expr (#. ri fun)) (&& (|| (#. ri fun hidden) (&& (isNeedHide (#. ri fun)) (!#unary (#. ri fun arguments empty)))) (parentOf expr (#. ri fun)) (== (#. expr x) (#. ri fun x)) (== (#. expr y) (#. ri fun y)) (== (#. expr r1) (#. ri fun r1)))).(#body
+                                                                    (= invert true)
+                                                                    #break))))
+                                        #else.(#body
+                                                (#if
+                                                    (is expr (#. frot_info fun)).(#body
+                                                            (= invert true)))))
+                                    (= (text#var string) (~ (#? (#. expr post) "." "") (#? (#. expr operator empty) (#. expr type) (#. expr operator))))
+                                    (#if
+                                        (&& (== (#. expr type) "module") (!#unary (#. (getModule expr) saved))).(#body
+                                                (= text (~ text " *"))))
+                                    (= (col#var Color) (Color 0.0 0.0 0.0 1.0))
+                                    (= (p0#var long) 0)
+                                    (= (p1#var long) (-#unary 1))
+                                    (#if
+                                        (#. expr operator empty).(#body
+                                                (= col (Color 0.0 0.0 0.5 1.0))))
+                                    (= (ex#var auto) expr)
+                                    (= (parent#var auto) (#. ex parent))
+                                    (= (first#var bool) true)
+                                    (= (last#var bool) true)
+                                    (= (colors#var ([]#type ubyte)) (#. (#cast ubyte 0) (repeat (#. text walkLength)) array))
+                                    (#if
+                                        (#. text empty).(#body
+                                                (= text ".")
+                                                (= colors ([] 2))))
+                                    (#if
+                                        (!#unary (#. ds force)).(#body
+                                                (#while (&& (!is parent null) (isNeedHide parent))).(#body
+                                                        (= (selcol#var ubyte) 1)
+                                                        (#foreach . ri rot_info).(#body
+                                                                (#if
+                                                                    (is parent (#. ri fun)).(#body
+                                                                            (= selcol 2)
+                                                                            #break)))
+                                                        (#if
+                                                            (&& (== (#. parent type) ".") first (> (#. ex index) 0) (|| (&& (!#unary (#. text empty)) (!= (#. text (#[ 0)) '[') (!= (#. text (#[ 0)) ']')) (== selcol 2))).(#body
+                                                                    (= text (~ "." text))
+                                                                    (= colors (~ ([] selcol) colors))))
+                                                        (= first (&& first (== (#. ex index) 0)))
+                                                        (= last (&& last (== (#. ex index) (- (#. parent arguments length) 1))))
+                                                        (#if
+                                                            (&& (> (#. parent operator length) 0) (!#unary (#. "-+!&*" (find (#. parent operator)) empty)) (== (#. parent arguments length) 1) first).(#body
+                                                                    (#if
+                                                                        (== (#. parent type) "post").(#body
+                                                                                (= text (~ text (#. parent operator)))
+                                                                                (= colors (~ colors (#. selcol (repeat (#. parent operator length)) array))))
+                                                                        #else.(#body
+                                                                                (= text (~ (#. parent operator) text))
+                                                                                (= colors (~ (#. selcol (repeat (#. parent operator length)) array) colors))))))
+                                                        (#if
+                                                            (&& (== (#. parent type) "[") first).(#body
+                                                                    (= text (~ "[" text))
+                                                                    (= colors (~ ([] selcol) colors))))
+                                                        (#if
+                                                            (&& (== (#. parent type) "[") last).(#body
+                                                                    (= text (~ text "]"))
+                                                                    (= colors (~ colors ([] selcol)))))
+                                                        (#if
+                                                            (&& (== (#. parent type) "\"") first).(#body
+                                                                    (= text (~ "\"" text))
+                                                                    (= colors (~ ([] selcol) colors))))
+                                                        (#if
+                                                            (&& (== (#. parent type) "\"") last).(#body
+                                                                    (= text (~ text "\""))
+                                                                    (= colors (~ colors ([] selcol)))))
+                                                        (= ex parent)
+                                                        (= parent (#. ex parent))
+                                                        (#if
+                                                            (&& (is ex selected) (< (- (#. expr a2) (#. expr a1)) 359)).(#body
+                                                                    (= (#. ex arat) (#. ex center mw (#[ (#. ex level))))
+                                                                    (= (#. ex brat) (pow 180.0 (- 1.0 (#. ex arat))))
+                                                                    (~= foreground ex))))))
+                                    (= (lines#var bool) true)
+                                    (#if
+                                        (!is ex expr).(#body
+                                                (= (#. expr c) (#. ex c))
+                                                (= lines false)))
+                                    (= (rot#var real) 0)
+                                    (#if
+                                        (!#unary (#. ds force)).(#body
+                                                (#foreach . ri rot_info).(#body
+                                                        (#if
+                                                            (&& (is (#. expr center) (#. ri fun center)) (== (#. expr block) (#. ri fun block))).(#body
+                                                                    (= rot (#. ri angle))
+                                                                    #break))))
+                                        #else.(#body
+                                                (= rot (#. frot_info angle))))
+                                    (assert (!#unary (#. expr r1 isNaN)))
+                                    (assert (!#unary (#. expr r2 isNaN)))
+                                    (assert (!#unary (#. expr x isNaN)))
+                                    (assert (!#unary (#. expr y isNaN)))
+                                    (assert (!#unary (#. expr a1 isNaN)))
+                                    (assert (!#unary (#. expr a2 isNaN)))
+                                    (assert (> (#. expr r2) (#. expr r1)))
+                                    (assert (> (#. expr a2) (#. expr a1)))
+                                    (= (a1#var real) (#. expr a1))
+                                    (= (a2#var real) (#. expr a2))
+                                    (#if
+                                        (&& invert (< (- a2 a1) 359)).(#body
+                                                (= (#. expr arat) (#. expr center mw (#[ (#. expr level))))
+                                                (= (#. expr brat) (pow 180.0 (- 1.0 (#. expr arat))))
+                                                (~= foreground expr)))
+                                    (#foreach . exp oforeground).(#body
+                                            (#if
+                                                (is (#. exp center) (#. expr center)).(#body
+                                                        (= (mid#var real) (/ (+ (#. exp a1) (#. exp a2)) 2))
+                                                        (#if
+                                                            (|| (&& (> a1 (- mid 180)) (< a1 mid)) (> a1 (+ mid 180))).(#body
+                                                                    (= a1 (- 180 (- mid a1)))
+                                                                    (normAngle a1)
+                                                                    (= a1 (* (#. exp brat) (pow a1 (#. exp arat))))
+                                                                    (= a1 (- mid (- 180 a1)))
+                                                                    (normAngle a1))
+                                                            #else.(#body
+                                                                    (= a1 (- 360 a1))
+                                                                    (= mid (- 360 mid))
+                                                                    (= a1 (- 180 (- mid a1)))
+                                                                    (normAngle a1)
+                                                                    (= a1 (* (#. exp brat) (pow a1 (#. exp arat))))
+                                                                    (= a1 (- mid (- 180 a1)))
+                                                                    (= a1 (- 360 a1))
+                                                                    (normAngle a1)
+                                                                    (= mid (- 360 mid))))
+                                                        (#if
+                                                            (|| (&& (> a2 (- mid 180)) (< a2 mid)) (> a2 (+ mid 180))).(#body
+                                                                    (= a2 (- 180 (- mid a2)))
+                                                                    (normAngle a2)
+                                                                    (= a2 (* (#. exp brat) (pow a2 (#. exp arat))))
+                                                                    (= a2 (- mid (- 180 a2)))
+                                                                    (normAngle a2))
+                                                            #else.(#body
+                                                                    (= a2 (- 360 a2))
+                                                                    (= mid (- 360 mid))
+                                                                    (= a2 (- 180 (- mid a2)))
+                                                                    (normAngle a2)
+                                                                    (= a2 (* (#. exp brat) (pow a2 (#. exp arat))))
+                                                                    (= a2 (- mid (- 180 a2)))
+                                                                    (= a2 (- 360 a2))
+                                                                    (normAngle a2)
+                                                                    (= mid (- 360 mid))))
+                                                        (#while (|| (< a2 a1) (&& (< (abs (- a1 a2)) 1) (> (- (#. expr a2) (#. expr a1)) 359)))).(#body
+                                                                (+= a2 360))
+                                                        #break)))
+                                    (#if
+                                        (> a2 (+ a1 1)).(#body
+                                                (-= a1 rot)
+                                                (-= a2 rot)
+                                                (= (A1#var auto) a1)
+                                                (= (A2#var auto) a2)
+                                                (normAngle A1)
+                                                (normAngle A2)
+                                                (#if
+                                                    (&& (!#unary click_processed) (> clickA1 A1) (< clickA1 A2) (> clickA2 A1) (< clickA2 A2) (> clickR1 R1) (< clickR2 R2)).(#body
+                                                            (= click_processed true)
+                                                            (= selected expr)
+                                                            updateView))
+                                                (drawArc cr (- 360 a2) (- 360 a1) (#. expr r1) (#. expr r2) (#. expr d1) (#. expr d2) (#. expr x) (#. expr y) (#. expr c) invert lines)
+                                                (= (r#var real) (/ (+ (#. expr r1) (#. expr r2) (#. expr d1) (#. expr d2)) 4))
+                                                (= (dr1#var real) (- (#. expr r2) (#. expr r1)))
+                                                (= (dr2#var real) (- (#. expr d2) (#. expr d1)))
+                                                (assert (> r 0))
+                                                (assert (> dr1 0))
+                                                (assert (> dr2 0))
+                                                (= (Y#var real) (+ (#. expr y) (/ (- (+ (#. expr r1) (#. expr r2)) (#. expr d1) (#. expr d2)) 4)))
+                                                (drawArcText cr text (- 360 a1) (- 360 a2) r dr1 dr2 (#. expr x) Y col invert colors)))
+                                    (#if
+                                        (&& (== (#. expr r1) 0) (!#unary (#. expr label empty))).(#body
+                                                (drawText cr (~ "@" (#. expr label)) (#. expr x) (+ (#. expr y) (#. expr r3) 15) (* 2 (#. expr r3)) col)))
+                                    (#. cr restore)))
+                        (= (ds2#var DrawState) ds)
+                        (#if
+                            (|| (== (#. expr type) "root") (== (#. expr type) "module") (== (#. expr type) "body")).(#body
+                                    (= (#. ds2 mode) (#. Mode Block)))
+                            #else.(#body
+                                    (= (#. ds2 mode) (#. Mode Circle))))
+                        (= ds2 (drawAll cr (#cast (#. Expression #[) (#. expr arguments)) ds2))
+                        (= ds2 (drawAll cr (#cast (#. Expression #[) (#. expr post_operations)) ds2))
+                        (#if
+                            (#. ds2 hide).(#body
+                                    (= (#. ds hide) (#. ret hide) true)))
+                        (= (#. ds hideline) (#. ret hideline) (#. ds2 hideline))
+                        (= (#. ds r) (#. ret r) (max (#. ds r) (#. expr r3))))
+                (#return ret))
+        (getSymbols#function ([]#type Button) (expr Expression)).(#body
+                (#if
+                    (is (#. expr parent) null).(#body
+                            (#return [])))
+                (= (ret#var ([]#type Button)) [])
+                (#if
+                    (== (#. expr parent type) "body").(#body
+                            (#foreach . ex (#. expr parent arguments (#[ 0 .. (#. expr index)))).(#body
+                                    (#if
+                                        (&& (== (#. ex operator) "=") (!#unary (#. ex arguments empty)) (== (#. ex arguments (#[ 0) arguments length) 1)).(#body
+                                                (~= ret (Button (#. ex arguments (#[ 0) operator) (typeColor (#. ex arguments (#[ 0) type)) (#. ex arguments (#[ 0) arguments (#[ 0) operator) (#. ex arguments (#[ 0)))))
+                                        (&& (== (#. ex type) "var") (!#unary (#. ex operator empty)) (== (#. ex arguments length) 1)).(#body
+                                                (~= ret (Button (#. ex operator) (typeColor (#. ex type)) (#. ex arguments (#[ 0) operator) ex))))))
+                    (|| (== (#. expr parent type) "struct") (== (#. expr parent type) "class") (== (#. expr parent type) "root") (== (#. expr parent type) "module")).(#body
+                            (#foreach . ex (#. expr parent arguments)).(#body
+                                    (#if
+                                        (&& (!#unary (#. ex operator empty)) (>= (#. ex arguments length) 1)).(#body
+                                                (#if
+                                                    (|| (== (#. ex type) "struct") (== (#. ex type) "class") (== (#. ex type) "root") (== (#. ex type) "module") (== (#. ex type) "enum")).(#body
+                                                            (~= ret (Button (#. ex operator) (typeColor (#. ex type)) (#. ex type) ex)))
+                                                    #else.(#body
+                                                            (~= ret (Button (#. ex operator) (typeColor (#. ex type)) (#. ex arguments (#[ 0) operator) ex)))))
+                                        (== (#. ex type) "import").(#body
+                                                (= (imp#var auto) (#. ex arguments (#[ 0) operator))
+                                                (#foreach . mod (#. root_expr arguments)).(#body
+                                                        (#if
+                                                            (== (#. mod operator) imp).(#body
+                                                                    (#foreach . modarg (#. mod arguments)).(#body
+                                                                            (#if
+                                                                                (&& (!#unary (#. modarg operator empty)) (>= (#. modarg arguments length) 1)).(#body
+                                                                                        (#if
+                                                                                            (|| (== (#. modarg type) "struct") (== (#. modarg type) "class") (== (#. modarg type) "root") (== (#. modarg type) "module") (== (#. modarg type) "enum")).(#body
+                                                                                                    (~= ret (Button (#. modarg operator) (typeColor (#. modarg type)) (#. modarg type) modarg)))
+                                                                                            #else.(#body
+                                                                                                    (~= ret (Button (#. modarg operator) (typeColor (#. modarg type)) (#. modarg arguments (#[ 0) operator) modarg)))))))
+                                                                    (~= ret (Button "" (Color 1.0 1.0 1.0 1.0) null)))))))))
+                    (== (#. expr parent type) "function").(#body
+                            (#if
+                                (> (#. expr parent arguments length) 1).(#body
+                                        (#foreach . ex (#. expr parent arguments (#[ 1 .. $))).(#body
+                                                (#if
+                                                    (&& (!#unary (#. ex operator empty)) (>= (#. ex arguments length) 1)).(#body
+                                                            (~= ret (Button (#. ex operator) (typeColor (#. ex type)) (#. ex arguments (#[ 0) operator) ex)))))))))
+                (#if
+                    (!#unary (#. ret empty)).(#body
+                            (= ret (~ ([] (Button "" (Color 1.0 1.0 1.0 1.0) null)) ret))))
+                (#return (~ (getSymbols (#. expr parent)) ret)))
+        (getFieldsType#function ([]#type Expression) (type string) (symbols ([]#type Button)) (fsel ([]#type Expression)) (parent Expression) (level int).(#init 1)).(#body
+                (ret#var ([]#type Expression))
+                (#if
+                    (> level 5).(#body
+                            (#return ret)))
+                (#foreach . sym.(ref) symbols).(#body
+                        (#if
+                            (== type (#. sym text)).(#body
+                                    (#if
+                                        (&& (!is (#. sym expr) null) (|| (!= (#. sym expr type) "enum") (== level 1))).(#body
+                                                (#foreach . arg (#. sym expr arguments)).(#body
+                                                        (= (expr#var Expression) (#new Expression))
+                                                        (= (#. expr operator) (#. arg operator))
+                                                        (= (#. expr parent) parent)
+                                                        (= (#. expr index) (#. ret length))
+                                                        (sel#var bool)
+                                                        (#if
+                                                            (&& (< level (#. fsel length)) (== (#. fsel (#[ level) operator) (#. arg operator))).(#body
+                                                                    (= sel true)
+                                                                    (= fselected expr)))
+                                                        (#if
+                                                            (> (#. arg arguments length) 0).(#body
+                                                                    (= (#. expr arguments) (getFieldsType (#. arg arguments (#[ 0) operator) symbols (#? sel fsel []) expr (+ level 1)))))
+                                                        (~= ret expr)))))))
+                (#return ret))
+        (getFields#function Expression (var string) (symbols ([]#type Button)) (fsel ([]#type Expression))).(#body
+                (= (expr#var Expression) (#new Expression))
+                (= (#. expr operator) var)
+                (= fselected expr)
+                (#foreach . sym.(ref) symbols).(#body
+                        (#if
+                            (== var (#. sym text)).(#body
+                                    (#if
+                                        (== (#. sym type) "enum").(#body
+                                                (= (#. expr arguments) (getFieldsType (#. sym text) symbols fsel expr)))
+                                        #else.(#body
+                                                (= (#. expr arguments) (getFieldsType (#. sym type) symbols fsel expr)))))))
+                (#return expr))
+        (drawCallback#function bool (cr (Scoped ! Context #!)) (widget Widget)).(#body
+                (#if
+                    (is m_timeout null).(#body
+                            (#foreach . ri rot_info).(#body
+                                    (#if
+                                        (!= (#. ri target_angle) (#. ri angle)).(#body
+                                                (= m_timeout (#new (Timeout 100 (&#unary onSecondElapsed) false)))
+                                                #break))))
+                    #else.(#body
+                            (redraw_need#var bool)
+                            (#foreach . ri rot_info).(#body
+                                    (#if
+                                        (!= (#. ri target_angle) (#. ri angle)).(#body
+                                                (= redraw_need true)
+                                                #break)))
+                            (#if
+                                (!#unary redraw_need).(#body
+                                        (#. m_timeout stop)
+                                        (= m_timeout null)))))
+                (size#var GtkAllocation)
+                (getAllocation size)
+                (rect#var GdkRectangle)
+                (= (exist#var bool) (#. cr (getClipRectangle rect)))
+                (= (sizesInvalid#var int) sizes_invalid)
+                (#if
+                    (|| (!#unary (&& (== (#. rect x) 0) (< (#. rect width) (#. size width)))) (> (#. rect width) (/ (#. size width) 6))).(#body
+                            (= (min_x#var real) (#. real max))
+                            (= (min_y#var real) (#. real max))
+                            (= (max_x#var real) (-#unary (#. real max)))
+                            (= (max_y#var real) (-#unary (#. real max)))
+                            (getSize ([] root_expr) (#. DrawState init))
+                            (= sizes_invalid 0)
+                            (#if
+                                (&& (== (#. rect width) (#. size width)) (== (#. rect height) (#. size height))).(#body
+                                        (= sizesInvalid 2)))
+                            (w#var real)
+                            (h#var real)
+                            (= min_x sx1)
+                            (= min_y sy1)
+                            (= max_x sx2)
+                            (= max_y sy2)
+                            (= w (- max_x min_x))
+                            (= h (- max_y min_y))
+                            (= (#. size width) (/ (* (#. size width) 5) 6))
+                            (+= max_x (- (/ (* h (#. size width)) (#. size height)) w))
+                            (= w (/ (* h (#. size width)) (#. size height)))
+                            (= sx2 w)
+                            (= clickRX (+ (/ (* (- clickX (/ (#. size width) 5.0)) w) (#. size width)) min_x))
+                            (= clickRY (+ (/ (* clickY h) (#. size height)) min_y))
+                            (#. cr save)
+                            (#. cr (scale (/ (#. size width) w) (/ (#. size height) h)))
+                            (#. cr (translate (+ (-#unary min_x) (/ w 5.0)) (-#unary min_y)))
+                            (#. cr (setLineWidth m_lineWidth))
+                            (#. cr (rectangle 0 0 sx2 sy2))
+                            (#. cr clip)
+                            (= (c#var Color) (Color 0.9 0.9 0.9 1.0))
+                            (#. cr (setSourceRgba (#. c r) (#. c g) (#. c b) (#. c a)))
+                            (#. cr paint)
+                            (= (black#var Color) (Color 0 0 0.0 1.0))
+                            (#. cr (setSourceRgba (#. black r) (#. black g) (#. black b) (#. black a)))
+                            (ds#var DrawState)
+                            (= (#. ds sizes_invalid) sizesInvalid)
+                            (#if
+                                (#. dx empty).(#body
+                                        (~= dx 150)))
+                            (= oforeground foreground)
+                            (= foreground [])
+                            (drawAll cr ([] root_expr) ds)
+                            (#. cr restore)
+                            (= (redraw_need#var bool) false)
+                            (#foreach . ri.(ref) rot_info).(#body
+                                    (#if
+                                        (!= (#. ri target_angle) (#. ri angle)).(#body
+                                                (= (adiff#var real) (- (#. ri angle) (#. ri target_angle)))
+                                                (#while (> adiff 180)).(#body
+                                                        (-= (#. ri angle) 360)
+                                                        (-= adiff 360))
+                                                (#while (< adiff (-#unary 180))).(#body
+                                                        (+= (#. ri angle) 360)
+                                                        (+= adiff 360))
+                                                (#if
+                                                    (< (abs (- (#. ri target_angle) (#. ri angle))) 10).(#body
+                                                            (= (#. ri angle) (#. ri target_angle)))
+                                                    #else.(#body
+                                                            (= (#. ri angle) (+ (* 0.6 (#. ri target_angle)) (* 0.4 (#. ri angle))))))
+                                                (= redraw_need true))))
+                            (#if
+                                (!= (#. frot_info target_angle) (#. frot_info angle)).(#body
+                                        (= (adiff#var real) (- (#. frot_info angle) (#. frot_info target_angle)))
+                                        (#while (> adiff 180)).(#body
+                                                (-= (#. frot_info angle) 360)
+                                                (-= adiff 360))
+                                        (#while (< adiff (-#unary 180))).(#body
+                                                (+= (#. frot_info angle) 360)
+                                                (+= adiff 360))
+                                        (#if
+                                            (< (abs (- (#. frot_info target_angle) (#. frot_info angle))) 10).(#body
+                                                    (= (#. frot_info angle) (#. frot_info target_angle)))
+                                            #else.(#body
+                                                    (= (#. frot_info angle) (+ (* 0.6 (#. frot_info target_angle)) (* 0.4 (#. frot_info angle))))))
+                                        (= redraw_need true)))
+                            (#if
+                                (< (#. selected x) 150).(#body
+                                        (= redraw_need true)
+                                        (+= (#. dx (#[ (#. selected line))) (- 150 (#. selected x))))
+                                (> (#. selected x) (- sx2 150)).(#body
+                                        (= redraw_need true)
+                                        (-= (#. dx (#[ (#. selected line))) (- (#. selected x) (- sx2 150)))))
+                            (#if
+                                (< (#. selected y) 150).(#body
+                                        (= redraw_need true)
+                                        (+= dy (- 150 (#. selected y))))
+                                (> (#. selected y) (- sy2 300)).(#body
+                                        (= redraw_need true)
+                                        (-= dy (- (#. selected y) (- sy2 300)))))
+                            (#if
+                                redraw_need.(#body
+                                        redraw))))
+                (#if
+                    (== (#. rect x) 0).(#body
+                            (#. cr save)
+                            (/= (#. size width) 5)
+                            (= (w#var real) 200)
+                            (= (h#var real) (/ (* w (#. size height)) (#. size width)))
+                            (#. cr (scale (/ (#. size width) w) (/ (#. size height) h)))
+                            (#. cr (setLineWidth m_lineWidth))
+                            (#. cr (rectangle 0 0 w h))
+                            (#. cr clip)
+                            (= (c#var Color) (Color 0.9 0.9 1.0 1.0))
+                            (#. cr (setSourceRgba (#. c r) (#. c g) (#. c b) (#. c a)))
+                            (#. cr paint)
+                            (= c (Color 0.5 0.5 1.0 1.0))
+                            (#. cr (setSourceRgba (#. c r) (#. c g) (#. c b) (#. c a)))
+                            (#. cr (moveTo 100 0))
+                            (#. cr (lineTo 200 50))
+                            (#. cr (lineTo 100 100))
+                            (#. cr (lineTo 0 50))
+                            (#. cr closePath)
+                            (#. cr fill)
+                            (= c (Color 1.0 1.0 1.0 1.0))
+                            (#. cr (setSourceRgba (#. c r) (#. c g) (#. c b) (#. c a)))
+                            (#. cr (rectangle 50 25 100 50))
+                            (#. cr fill)
+                            (= c (Color 0.0 0.0 0.0 1.0))
+                            (#. cr (setSourceRgba (#. c r) (#. c g) (#. c b) (#. c a)))
+                            (#. cr (rectangle 50 25 50 25))
+                            (#. cr stroke)
+                            (drawText cr "." 75 37.5 50 c)
+                            (#. cr (rectangle 100 25 50 25))
+                            (#. cr stroke)
+                            (drawText cr "+" 125 37.5 50 c)
+                            (#. cr (rectangle 50 50 50 25))
+                            (#. cr stroke)
+                            (drawText cr "," 75 62.5 50 c)
+                            (#. cr (rectangle 100 50 25 25))
+                            (#. cr stroke)
+                            (drawText cr "<" 112.5 62.5 25 c)
+                            (#. cr (rectangle 125 50 25 25))
+                            (#. cr stroke)
+                            (drawText cr ">" 137.5 62.5 25 c)
+                            (= (y#var real) 125)
+                            (= (x#var real) 5)
+                            (= c (Color 1.0 1.0 1.0 1.0))
+                            (#. cr (setSourceRgba (#. c r) (#. c g) (#. c b) (#. c a)))
+                            (#. cr (rectangle x y 190 20))
+                            (#. cr fill)
+                            (= c (Color 0.0 0.0 0.0 1.0))
+                            (#. cr (setSourceRgba (#. c r) (#. c g) (#. c b) (#. c a)))
+                            (#. cr (rectangle x y 190 20))
+                            (#. cr stroke)
+                            (drawText cr (#. selected text) (+ x (/ 190 2)) (+ y 10) 180 c)
+                            (= x 5)
+                            (+= y 35)
+                            (buttons#var ([]#type Button))
+                            (#if
+                                (&& (!is (#. selected parent) null) (|| (== (#. selected parent type) "body") (== (#. selected parent type) "root") (== (#. selected parent type) "module") (== (#. selected parent type) "struct") (== (#. selected parent type) "class"))).(#body
+                                        (#foreach . type ([] "import" "class" "struct" "function" "enum" "var")).(#body
+                                                (~= buttons ([] (Button (~ "#" type) (typeColor type) null))))))
+                            (#if
+                                (&& (!is (#. selected parent) null) (== (#. selected parent type) "body")).(#body
+                                        (~= buttons ([] (Button "" c null)))
+                                        (#foreach . type ([] "if" "switch" "for" "foreach" "while" "do" "return")).(#body
+                                                (~= buttons ([] (Button (~ "#" type) (typeColor type) null))))))
+                            (symbols#var ([]#type Button))
+                            (sel#var Expression)
+                            (fsel#var ([]#type Expression))
+                            (#if
+                                (|| (> sizesInvalid 0) (!is selected oselected)).(#body
+                                        (= sel selected)
+                                        (= fsel ([] selected))
+                                        (#if
+                                            (&& (!is (#. sel parent) null) (== (#. sel parent type) ".")).(#body
+                                                    (= sel (#. sel parent))))
+                                        (#if
+                                            (&& (== (#. sel type) ".") (!#unary (#. sel arguments empty))).(#body
+                                                    (= fsel (#. sel arguments))
+                                                    (= sel (#. sel arguments (#[ 0)))))
+                                        (= symbols (getSymbols sel))))
+                            (~= buttons symbols)
+                            (#foreach . but buttons).(#body
+                                    (#if
+                                        (#. but text empty).(#body
+                                                (= x 5)
+                                                (+= y 35)
+                                                #continue))
+                                    (= (wi#var real) (textWidth (#. but text)))
+                                    (#if
+                                        (> (+ x wi) 200).(#body
+                                                (= x 5)
+                                                (+= y 25)))
+                                    (= c (#. but c))
+                                    (#. cr (setSourceRgba (#. c r) (#. c g) (#. c b) (#. c a)))
+                                    (#. cr (rectangle x y (+ wi 5) 20))
+                                    (#. cr fill)
+                                    (= c (Color 0.0 0.0 0.0 1.0))
+                                    (#. cr (setSourceRgba (#. c r) (#. c g) (#. c b) (#. c a)))
+                                    (#. cr (rectangle x y (+ wi 5) 20))
+                                    (#. cr stroke)
+                                    (drawText cr (#. but text) (+ x (/ (+ wi 5) 2)) (+ y 10) (+ wi 5) c)
+                                    (+= x (+ wi 10)))
+                            (#. cr restore)
+                            (#if
+                                (|| (> sizesInvalid 0) (!is selected oselected)).(#body
+                                        (= fields (getFields (#. sel operator) symbols fsel))
+                                        (= oselected selected)
+                                        (= ofunselected (parentOfFun oselected))
+                                        (= (ds#var auto) (#. DrawState init))
+                                        (= (#. ds force) true)
+                                        (getSize ([] fields) ds)
+                                        (= (expr#var auto) fselected)
+                                        (= (nr#var double) (- (/ (+ (#. expr a1) (#. expr a2)) 2) 180))
+                                        (#if
+                                            (< nr 0).(#body
+                                                    (+= nr 360)))
+                                        (= (#. frot_info target_angle) nr)
+                                        (= (#. frot_info fun) expr)))
+                            (#if
+                                (!#unary (#. fields arguments empty)).(#body
+                                        (#. cr save)
+                                        (#. cr (translate 0 (- (#. size height) (#. size width))))
+                                        (#. cr (scale (/ (#. size width) w) (/ (#. size height) h)))
+                                        (#. cr (scale (/ 2.0 3) (/ 2.0 3)))
+                                        (#. cr (setLineWidth m_lineWidth))
+                                        (#. cr (rectangle 0 0 300 300))
+                                        (#. cr clip)
+                                        (= c (Color 0.9 0.9 1.0 1.0))
+                                        (#. cr (setSourceRgba (#. c r) (#. c g) (#. c b) (#. c a)))
+                                        (#. cr paint)
+                                        (= c (Color 0.0 0.0 0.0 1.0))
+                                        (#. cr (setSourceRgba (#. c r) (#. c g) (#. c b) (#. c a)))
+                                        (#. cr (rectangle 0 0 300 300))
+                                        (#. cr stroke)
+                                        (= (ds#var auto) (#. DrawState init))
+                                        (= (#. ds force) true)
+                                        (= (#. ds sizes_invalid) 2)
+                                        (drawAll cr ([] fields) ds)
+                                        (#. cr restore)))))
+                (#return true))
+        (onSecondElapsed#function bool).(#body
+                redraw
+                (#return true))
+        (m_radius double).(0.40#init)
+        (m_lineWidth double).(1.0#init)
+        (rot_info ([]#type RotInfo))
+        (frot_info RotInfo) (.
+        foreground
+        oforeground).([]#type Expression)
+        (dx ([]#type real))
+        (dy real).(0#init)
+        (rlines ([]#type real))
+        (sizes_invalid int).(1#init)
+        (m_timeout Timeout)))
