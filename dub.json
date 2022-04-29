@@ -1,0 +1,15 @@
+{
+    "description": "Neparsy -- parsing result representation language",
+    "targetName": "neparsy",
+    "authors": [
+        "Nikolay (unDEFER) Krivchenkov"
+    ],
+    "name": "neparsy",
+    "copyright": "Copyright © 2022, Nikolay (unDEFER) Krivchenkov",
+    "license": "GPLv3",
+    "sourcePaths": ["src"],
+    "targetPath": ".",
+    "dependencies": {
+        "gtk-d:gtkd": "~>3.9.0"
+    }
+}
