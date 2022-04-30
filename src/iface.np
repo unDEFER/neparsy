@@ -1,4 +1,4 @@
-(iface#module
+(iface#module@D
     (#import std.stdio)
     (#import std.math)
     (#import std.datetime)
@@ -187,6 +187,7 @@
                                         (= clickX x)
                                         (= clickY y)
                                         (= click_processed false)
+                                        (= sizes_invalid 2)
                                         redraw
                                         (#return true)))))
                 (#return false))

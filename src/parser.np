@@ -1036,6 +1036,8 @@
                                                     (~= (#. type arguments) getArguments)))
                                         (~= (#. type arguments) eq)
                                         (#goto Name))
+                                ")".(#body
+                                        (#return ret))
                                 (#. LexemType Identifier).(#body
                                         (= (#. arg operator) (#. lexer lexem))
                                         (~= (#. arg arguments) type)
