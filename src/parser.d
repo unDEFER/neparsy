@@ -1468,6 +1468,10 @@ class Parser
                 type.arguments ~= eq;
                 goto Name;
             }
+            else if (lexer == ")")
+            {
+                return ret;
+            }
             else if (lexer == LexemType.Identifier)
             {
                 arg.operator = lexer.lexem;

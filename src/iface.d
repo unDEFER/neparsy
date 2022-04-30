@@ -229,6 +229,7 @@ public:
                 clickX = x;
                 clickY = y;
                 click_processed = false;
+                sizes_invalid = 2;
                 //writefln("W %sx%s", clickX, clickY);
                 redraw();
                 return true;

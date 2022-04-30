@@ -311,9 +311,10 @@ int main(string[] args)
 
                 expr.parent = root;
                 expr.index = root.arguments.length;
+                expr.label = "D";
                 root.arguments ~= expr;
 
-                modules ~= new SaveInfo(expr.operator~".d", true, expr);
+                modules ~= new SaveInfo(expr.operator~".np", true, expr);
             }
             else if (arg.endsWith(".np"))
             {
