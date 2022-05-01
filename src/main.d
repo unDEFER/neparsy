@@ -41,6 +41,7 @@ class MyWindow : ApplicationWindow
         addEvents(EventMask.KEY_PRESS_MASK | EventMask.BUTTON_PRESS_MASK);
 		addOnKeyPress(&keyPressCallback);
 		addOnButtonPress(&buttonPressCallback);
+		addOnScroll(&scrollCallback);
     }
 
     protected:
@@ -212,6 +213,13 @@ class MyWindow : ApplicationWindow
 
         //writefln("%s. %sx%s", button, x, y);
         return IFACE.click(button, x, y);
+    }
+
+    bool scrollCallback(Event event, Widget widget)
+    {
+        double deltaX, deltaY;
+        event.getScrollDeltas(deltaX, deltaY);
+        return IFACE.scroll(deltaX, deltaY);
     }
 }
 

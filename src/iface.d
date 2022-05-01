@@ -202,6 +202,7 @@ class Iface : DrawingArea
     real sx2 = 1200, sy2 = 900;
     real clickX, clickY;
     real clickRX, clickRY;
+    real scrollY = 0.0;
     bool click_processed = true;
     bool edit;
     bool post_edit;
@@ -236,6 +237,13 @@ public:
             }
         }
         return false;
+    }
+
+    bool scroll(double deltaX, double deltaY)
+    {
+        scrollY += deltaY*10;
+        redraw();
+        return true;
     }
 
     Expression findCircPos(Expression expr, int posa = 1, Expression root = null)
@@ -2381,7 +2389,8 @@ protected:
                         assert(dr1 > 0);
                         assert(dr2 > 0);
                         real Y = expr.y + (expr.r1+expr.r2-expr.d1-expr.d2)/4;
-                        drawArcText(cr, text, 360-a1, 360-a2, r, dr1, dr2, expr.x, Y, col, invert, colors);
+                        if (a2 > a1+10)
+                            drawArcText(cr, text, 360-a1, 360-a2, r, dr1, dr2, expr.x, Y, col, invert, colors);
                     }
 
                     if (expr.r1 == 0 && !expr.label.empty)
@@ -2843,6 +2852,9 @@ protected:
             }
             buttons ~= symbols;
 
+            cr.rectangle(0, y, w, h-y);
+            cr.clip();
+            cr.translate(0, scrollY);
             foreach(but; buttons)
             {
                 if (but.text.empty)
