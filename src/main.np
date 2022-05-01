@@ -29,7 +29,8 @@
                 (super application)
                 (addEvents (| (#. EventMask KEY_PRESS_MASK) (#. EventMask BUTTON_PRESS_MASK)))
                 (addOnKeyPress (&#unary keyPressCallback))
-                (addOnButtonPress (&#unary buttonPressCallback)))
+                (addOnButtonPress (&#unary buttonPressCallback))
+                (addOnScroll (&#unary scrollCallback)))
         (#: protected)
         (keyPressCallback#function bool (event Event) (widget Widget)).(#body
                 (val#var uint)
@@ -109,7 +110,12 @@
                 x#var
                 y#var).(double)
                 (#. event (getCoords x y))
-                (#return (#. IFACE (click button x y)))))
+                (#return (#. IFACE (click button x y))))
+        (scrollCallback#function bool (event Event) (widget Widget)).(#body (.
+                deltaX#var
+                deltaY#var).(double)
+                (#. event (getScrollDeltas deltaX deltaY))
+                (#return (#. IFACE (scroll deltaX deltaY)))))
     (IFACE Iface)
     (BranchInfo#struct
         (maxdeep int)
@@ -132,8 +138,11 @@
                                                 (= (pars#var Parser) (#new Parser))
                                                 (= (#. pars lexer) lex)
                                                 (= expr (#. pars parse))
-                                                (#. expr fixParents))
-                                        (#. args (#[ 2) (endsWith ".np")).(#body)
+                                                (#. expr fixParents)
+                                                (= (#. expr label) "D"))
+                                        (#. args (#[ 2) (endsWith ".np")).(#body
+                                                (= (mod#var ([]#type char)) (#. Expression (readFile (#. args (#[ 2)))))
+                                                (= expr (#new (Expression mod))))
                                         #else.(#body
                                                 (writefln "Can't convert file with unknown extension: `%s`" (#. args (#[ 2)))
                                                 (#return 1)))

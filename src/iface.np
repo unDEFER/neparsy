@@ -166,6 +166,7 @@
         clickY).(real) (.
         clickRX
         clickRY).(real)
+        (scrollY real).(0.0#init)
         (click_processed bool).(true#init)
         (edit bool)
         (post_edit bool)
@@ -191,6 +192,10 @@
                                         redraw
                                         (#return true)))))
                 (#return false))
+        (scroll#function bool (deltaX double) (deltaY double)).(#body
+                (+= scrollY (* deltaY 10))
+                redraw
+                (#return true))
         (findCircPos#function Expression (expr Expression) (posa int).(#init 1) (root Expression).(#init null)).(#body
                 (#if
                     (is root null).(#body
@@ -1741,7 +1746,9 @@
                                                 (assert (> dr1 0))
                                                 (assert (> dr2 0))
                                                 (= (Y#var real) (+ (#. expr y) (/ (- (+ (#. expr r1) (#. expr r2)) (#. expr d1) (#. expr d2)) 4)))
-                                                (drawArcText cr text (- 360 a1) (- 360 a2) r dr1 dr2 (#. expr x) Y col invert colors)))
+                                                (#if
+                                                    (> a2 (+ a1 10)).(#body
+                                                            (drawArcText cr text (- 360 a1) (- 360 a2) r dr1 dr2 (#. expr x) Y col invert colors)))))
                                     (#if
                                         (&& (== (#. expr r1) 0) (!#unary (#. expr label empty))).(#body
                                                 (drawText cr (~ "@" (#. expr label)) (#. expr x) (+ (#. expr y) (#. expr r3) 15) (* 2 (#. expr r3)) col)))
@@ -2044,6 +2051,9 @@
                                                     (= sel (#. sel arguments (#[ 0)))))
                                         (= symbols (getSymbols sel))))
                             (~= buttons symbols)
+                            (#. cr (rectangle 0 y w (- h y)))
+                            (#. cr clip)
+                            (#. cr (translate 0 scrollY))
                             (#foreach . but buttons).(#body
                                     (#if
                                         (#. but text empty).(#body
