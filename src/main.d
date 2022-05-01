@@ -255,9 +255,12 @@ int main(string[] args)
                 pars.lexer = lex;
                 expr = pars.parse();
                 expr.fixParents();
+                expr.label = "D";
             }
             else if (args[2].endsWith(".np"))
             {
+                char[] mod = Expression.readFile(args[2]);
+                expr = new Expression(mod);
             }
             else
             {
