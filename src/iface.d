@@ -2298,6 +2298,7 @@ protected:
                                 normAngle(a1);
                             //writefln("-2. %s#%s a1=%s | %s | %s/%s", expr.operator, expr.type, a1, mid, fa1, ea1);
                                 a1 = exp.brat * pow(a1, exp.arat);
+                                if (a1.isNaN) a1 = 0;
                                 a1 = mid-(180 - a1);
                                 normAngle(a1);
                             }
@@ -2313,6 +2314,7 @@ protected:
                             //writefln("2. %s#%s a1=%s | %s | %s/%s", expr.operator, expr.type, a1, mid, fa2, ea2);
 
                                 a1 = exp.brat * pow(a1, exp.arat);
+                                if (a1.isNaN) a1 = 0;
                                 a1 = mid - (180-a1);
                                 a1 = 360 - a1;
                                 normAngle(a1);
@@ -2326,6 +2328,7 @@ protected:
                                 normAngle(a2);
                             //writefln("-2. %s#%s a2=%s | %s | %s/%s", expr.operator, expr.type, a2, mid, fa1, ea1);
                                 a2 = exp.brat * pow(a2, exp.arat);
+                                if (a2.isNaN) a2 = 0;
                                 a2 = mid-(180 - a2);
                                 normAngle(a2);
                             }
@@ -2341,6 +2344,7 @@ protected:
                             //writefln("2. %s#%s a2=%s | %s | %s/%s", expr.operator, expr.type, a2, mid, fa2, ea2);
 
                                 a2 = exp.brat * pow(a2, exp.arat);
+                                if (a2.isNaN) a2 = 0;
                                 a2 = mid - (180-a2);
                                 a2 = 360 - a2;
                                 normAngle(a2);
@@ -2354,8 +2358,8 @@ protected:
                         }
                     }
 
-                    //writefln("%s#%s %s-%s => %s-%s", expr.operator, expr.type,
-                    //        expr.a1, expr.a2, a1, a2);
+                    //if (ds.force)
+                    //    writefln("%s %s-%s => %s-%s", expr, expr.a1, expr.a2, a1, a2);
                     if (a2 > a1+1)
                     {
                         a1 -= rot;
@@ -2493,7 +2497,7 @@ protected:
     Expression[] getFieldsType(string type, Button[] symbols, Expression[] fsel, Expression parent, int level = 1)
     {
         Expression[] ret;
-        if (level > 5) return ret;
+        if (level > 2 && fsel.empty) return ret;
 
         foreach (ref sym; symbols)
         {
