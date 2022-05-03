@@ -255,11 +255,12 @@ int main(string[] args)
                 pars.lexer = lex;
                 expr = pars.parse();
                 expr.fixParents();
+                expr.fixBbe();
                 expr.label = "D";
             }
             else if (args[2].endsWith(".np"))
             {
-                char[] mod = Expression.readFile(args[2]);
+                string mod = readText(args[2]);
                 expr = new Expression(mod);
             }
             else
@@ -319,6 +320,7 @@ int main(string[] args)
                 pars.lexer = lex;
                 Expression expr = pars.parse();
                 expr.fixParents();
+                expr.fixBbe();
 
                 expr.parent = root;
                 expr.index = root.arguments.length;
@@ -329,7 +331,7 @@ int main(string[] args)
             }
             else if (arg.endsWith(".np"))
             {
-                char[] mod = Expression.readFile(arg);
+                string mod = readText(arg);
                 Expression expr = new Expression(mod);
                 expr.parent = root;
                 expr.index = i;

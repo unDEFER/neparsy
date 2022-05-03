@@ -22,4 +22,18 @@ Ctrl+Comma -- add postfix child/extend influence to the left from parent
 
 Ctrl+Dot -- add postfix child/decrease influence to the right from parent
 
-Ctrl + Arrows - navigate by fields (when diagram visible on bottom of the left panel)
+Shift+Left, Shift+Right -- move current node to the left/right
+
+Ctrl + Arrows -- navigate by fields (when diagram visible on bottom of the left panel)
+
+Del -- remove node and all descendants
+
+Ctrl+Backspace -- remove descendants
+
+Ctrl+S -- save to neparsy-format
+
+Ctrl+D -- save to .d-file (@D modules)
+
+Ctrl+L -- make lexer module from syntax (@Lexer modules)
+
+Enter/Escape -- exit from edit mode

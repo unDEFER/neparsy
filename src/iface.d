@@ -443,6 +443,21 @@ public:
         return ret;
     }
 
+    void fixBbe(Expression expr)
+    {
+        if (expr !is null && expr.type != "comment" && expr.type != "string")
+        {
+            if (expr.arguments is null)
+            {
+                expr.bbe = BlockBE(null, null, null, false);
+            }
+            else
+            {
+                expr.bbe = BlockBE("(", ")", "\\", true);
+            }
+        }
+    }
+
     void updateView()
     {
         auto expr = selected;
@@ -464,6 +479,9 @@ public:
 
         if (expr.parent !is null && !expr.post)
             expr.parent.focus_index = expr.index;
+
+        fixBbe(selected);
+        fixBbe(selected.parent);
 
         //writefln("Select %s (%s), fsel %s", selected, rot_info.length, fselected);
         redraw();
@@ -622,6 +640,17 @@ public:
 
                 sizes_invalid = 1;
             }
+
+            if (selected.type == "string")
+            {
+                selected.bbe = BlockBE("\"", "\"", "\\", false);
+            }
+            else
+            {
+                selected.bbe = BlockBE("(", ")", "\\", true);
+            }
+
+            fixBbe(selected);
         }
     }
 
@@ -1634,18 +1663,14 @@ protected:
                 }
 
                 auto par = expr.parent;
-                if (par.post)
+                if (!par.post) par.pw[1] += expr.pw[1];
+                while (par.post)
                 {
-                    par.parent.pw[1] += expr.pw[1];
-                    //writefln("l%s. %s#%s <= %s#%s (%s <=== %s)", ds.llimit, par.parent.operator, par.parent.type,
-                    //        expr.operator, expr.type, par.parent.pw[1], expr.pw[1]);
-                }
-                else
-                {
+                    par = par.parent;
                     par.pw[1] += expr.pw[1];
-                    //writefln("l%s. %s#%s <= %s#%s (%s <=== %s)", ds.llimit, par.operator, par.type,
-                    //        expr.operator, expr.type, par.pw[1], expr.pw[1]);
                 }
+                //writefln("l%s. %s#%s <= %s#%s (%s <=== %s)", ds.llimit, par.operator, par.type,
+                //        expr.operator, expr.type, par.pw[1], expr.pw[1]);
 
                 //writefln("%s", ds.level);
                 (*ds.blocks) = max((*ds.blocks), ds.level);
@@ -1693,15 +1718,17 @@ protected:
                 }
 
                 //if (ds.level == 4)
-                //writefln("%s.%s %s#%s. %s", ds.block, ds.level, expr.operator, expr.type, expr.pw);
+                //writefln("%s.%s %s/%s. %s", ds.block, ds.level, expr, expr.parent, expr.pw);
                 assert(expr.pw.length > 0);
                 real w = expr.pw[1];
                 assert(w > 0);
                 auto par = expr.parent;
                 real parentw = par is null || ds.mode == Mode.Block ? w : par.pw[1];
+                while (par && par.post && par.parent.post) par = par.parent;
                 if (par !is null && par.post && par.type != "body")
                 {
                     //if (expr !is expr.center)
+                    //writefln("++ %s/%s. %s/%s", par, par.parent, par.pw, par.parent.pw);
                         parentw = par.parent.pw[1] - par.pw[1];
                     //else
                     //    parentw = w;
@@ -1737,7 +1764,7 @@ protected:
                         expr.pw[0]/(ds.r+15) * 180/PI,
                         rw, w, sumpw, parentw);*/
                 //writefln("    %s-%s (%s/%s)", fr, to, sumpw, parentw);
-                assert(to > fr);
+                assert(to >= fr);
                 assert(sumpw <= parentw);
 
                 Color c = typeColor(expr.type);
@@ -2153,7 +2180,7 @@ protected:
                         }
                     }
 
-                    string text = (expr.post ? "." : "") ~ (expr.operator.empty ? expr.type : expr.operator);
+                    string text = (expr.post ? "." : "") ~ (expr.operator.empty ? expr.type : expr.operator) ~ (expr.arguments.empty && expr.bbe.begin == "(" ? "()" : "");
                     if (expr.type == "module" && !getModule(expr).saved)
                         text = text ~ " *";
 
@@ -2273,7 +2300,7 @@ protected:
                     assert(!expr.a1.isNaN);
                     assert(!expr.a2.isNaN);
                     assert(expr.r2 > expr.r1);
-                    assert(expr.a2 > expr.a1);
+                    assert(expr.a2 >= expr.a1);
 
                     real a1 = expr.a1;
                     real a2 = expr.a2;
@@ -2298,7 +2325,7 @@ protected:
                                 normAngle(a1);
                             //writefln("-2. %s#%s a1=%s | %s | %s/%s", expr.operator, expr.type, a1, mid, fa1, ea1);
                                 a1 = exp.brat * pow(a1, exp.arat);
-                                if (a1.isNaN) a1 = 0;
+                                if (a1.isNaN || a1 > 3600) a1 = 0;
                                 a1 = mid-(180 - a1);
                                 normAngle(a1);
                             }
@@ -2314,7 +2341,7 @@ protected:
                             //writefln("2. %s#%s a1=%s | %s | %s/%s", expr.operator, expr.type, a1, mid, fa2, ea2);
 
                                 a1 = exp.brat * pow(a1, exp.arat);
-                                if (a1.isNaN) a1 = 0;
+                                if (a1.isNaN || a1 > 3600) a1 = 0;
                                 a1 = mid - (180-a1);
                                 a1 = 360 - a1;
                                 normAngle(a1);
@@ -2328,7 +2355,7 @@ protected:
                                 normAngle(a2);
                             //writefln("-2. %s#%s a2=%s | %s | %s/%s", expr.operator, expr.type, a2, mid, fa1, ea1);
                                 a2 = exp.brat * pow(a2, exp.arat);
-                                if (a2.isNaN) a2 = 0;
+                                if (a2.isNaN || a2 > 3600) a2 = 0;
                                 a2 = mid-(180 - a2);
                                 normAngle(a2);
                             }
@@ -2344,7 +2371,7 @@ protected:
                             //writefln("2. %s#%s a2=%s | %s | %s/%s", expr.operator, expr.type, a2, mid, fa2, ea2);
 
                                 a2 = exp.brat * pow(a2, exp.arat);
-                                if (a2.isNaN) a2 = 0;
+                                if (a2.isNaN || a2 > 3600) a2 = 0;
                                 a2 = mid - (180-a2);
                                 a2 = 360 - a2;
                                 normAngle(a2);

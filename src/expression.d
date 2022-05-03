@@ -18,6 +18,24 @@ import std.string;
 
 import iface;
 
+struct BlockBE
+{
+    string begin;
+    string end;
+    string escape;
+    bool nested;
+}
+
+struct ParserState
+{
+    BlockBE strings = BlockBE("\"", "\"", "\\", false);
+    BlockBE comments = BlockBE("//", "\n", null, false);
+    BlockBE brackets = BlockBE("(", ")", "\\", true);
+    string sharp = "#";
+    string at = "@";
+    string dot = ".";
+}
+
 class Expression
 {
     real x = 0, y = 0;
@@ -36,7 +54,10 @@ class Expression
     string operator;
     string type;
     string label;
+    BlockBE bbe = BlockBE("(", ")", "\\", true);
+    string sharp = "#", at = "@", dot = ".";
     long app_args;
+    Expression[] comments;
     Expression[] arguments;
     Expression[] post_operations;
     Expression parent;
@@ -53,348 +74,373 @@ class Expression
     {
     }
 
-    this(char[] line)
+    dchar getEscape(dchar c)
     {
-        long app_args = 1;
-        if (line[0] == '(' && line[$-1] == ')')
+        switch (c)
         {
-            line = line[1..$-1];
+            case 'n':
+                return '\n';
+            case 'r':
+                return '\r';
+            case 't':
+                return '\t';
+            default:
+                return c;
+        }
+    }
 
-            auto operator = line;
-            char[] type;
-            char[] label;
+    string getBlock(ref char[] line, BlockBE be)
+    {
+        assert(line.startsWith(be.begin));
+        line = line[be.begin.length .. $];
 
-            auto sp = line.find(" ");
-            if (!sp.empty)
+        string res = "";
+
+        bool escape;
+        int nest;
+        while (!line.empty)
+        {
+            if (escape)
             {
-                operator = line[0..sp.ptr - line.ptr];
-                auto sh = operator.findSplit("#");
-                if (!sh[1].empty)
-                {
-                    operator = sh[0];
-                    type = sh[2];
-                }
-                sh = operator.findSplit("@");
-                if (!sh[1].empty)
-                {
-                    operator = sh[0];
-                    label = sh[2];
-                }
-                else
-                {
-                    sh = type.findSplit("@");
-                    if (!sh[1].empty)
-                    {
-                        type = sh[0];
-                        label = sh[2];
-                    }
-                }
-
-                line = sp[1..$];
-
-                do
-                {
-                    if (line[0] == '(')
-                    {
-                        int brackets = 0;
-                        bool str = false;
-                        bool chr = false;
-                        bool slash = false;
-                        bool sharp = false;
-                        foreach(i, c; line)
-                        {
-                            if (sharp) sharp = false;
-                            else if (str)
-                            {
-                                if (slash) slash = false;
-                                else if (c == '\\') slash = true;
-                                else if (c == '\"') str = false;
-                            }
-                            else if (chr)
-                            {
-                                if (slash) slash = false;
-                                else if (c == '\\') slash = true;
-                                else if (c == '\'') chr = false;
-                            }
-                            else if (c == '\"')
-                                str = true;
-                            else if (c == '\'')
-                                chr = true;
-                            else if (c == '#')
-                                sharp = true;
-                            else if (c == '(')
-                                brackets++;
-                            else if (c == ')')
-                            {
-                                brackets--;
-                                if (brackets == 0)
-                                {
-                                    Expression ne = new Expression(line[0..i+1]);
-                                    ne.parent = this;
-                                    if (ne.operator == ".")
-                                    {
-                                        foreach(k, ne2; ne.arguments)
-                                        {
-                                            ne2.parent = this;
-                                            ne2.index = this.arguments.length + k;
-                                        }
-
-                                        this.arguments ~= ne.arguments;
-                                        app_args = ne.arguments.length;
-                                        this.post_operations ~= ne.post_operations;
-                                    }
-                                    else
-                                    {
-                                        ne.index = this.arguments.length;
-                                        this.arguments ~= ne;
-                                        app_args = 1;
-                                    }
-                                    if (line.length > i+1 && line[i+1] == ' ')
-                                        line = line[i+2..$];
-                                    else if (line.length > i+1 && line[i+1] == '.')
-                                        line = line[i+1..$];
-                                    else line = line[0..0];
-                                    break;
-                                }
-                            }
-                        }
-                        assert(brackets == 0);
-                    }
-                    else if (line[0] == '.')
-                    {
-                        line = line[1..$];
-
-                        if (!line.empty && line[0] == '.')
-                        {
-                            Expression ne = new Expression;
-                            ne.parent = this;
-                            ne.index = this.arguments.length;
-                            ne.operator = "..";
-                            this.arguments ~= ne;
-                            app_args = 1;
-
-                            if (line.length > 1 && line[1] == ' ')
-                                line = line[2..$];
-                            else
-                                line = line[1..$];
-                        }
-                        else if (!line.empty && line[0] == '(')
-                        {
-                            int brackets = 0;
-                            bool str = false;
-                            bool chr = false;
-                            bool slash = false;
-                            bool sharp = false;
-                            foreach(i, c; line)
-                            {
-                                if (sharp) sharp = false;
-                                else if (str)
-                                {
-                                    if (slash) slash = false;
-                                    else if (c == '\\') slash = true;
-                                    else if (c == '\"') str = false;
-                                }
-                                else if (chr)
-                                {
-                                    if (slash) slash = false;
-                                    else if (c == '\\') slash = true;
-                                    else if (c == '\'') chr = false;
-                                }
-                                else if (c == '\"')
-                                    str = true;
-                                else if (c == '\'')
-                                    chr = true;
-                                else if (c == '#')
-                                    sharp = true;
-                                else if (c == '(')
-                                    brackets++;
-                                else if (c == ')')
-                                {
-                                    brackets--;
-                                    if (brackets == 0)
-                                    {
-                                        Expression ne = new Expression(line[0..i+1]);
-                                        //writefln("%s", line);
-                                        ne.parent = this.arguments[$-1];
-                                        ne.post = true;
-                                        ne.index = this.arguments[$-1].post_operations.length;
-                                        this.arguments[$-1].post_operations ~= ne;
-                                        ne.app_args = app_args;
-                                        if (line.length > i+1 && line[i+1] == ' ')
-                                            line = line[i+2..$];
-                                        else if (line.length > i+1 && line[i+1] == '.')
-                                            line = line[i+1..$];
-                                        else line = line[0..0];
-                                        break;
-                                    }
-                                }
-                            }
-                            assert(brackets == 0);
-                        }
-                        else if (line.empty || line[0] == ' ')
-                        {
-                            Expression ne = new Expression;
-                            ne.parent = this;
-                            ne.index = this.arguments.length;
-                            this.arguments ~= ne;
-                            app_args = 1;
-
-                            if (!line.empty)
-                                line = line[1..$];
-                        }
-                    }
-                    else if (line[0] == '"')
-                    {
-                        bool escape = true;
-                        foreach(i, c; line)
-                        {
-                            if (c == '"' && !escape)
-                            {
-                                Expression ne = new Expression;
-                                ne.parent = this;
-                                ne.index = this.arguments.length;
-                                ne.operator = line[0..i+1].idup;
-                                this.arguments ~= ne;
-                                app_args = 1;
-
-                                line = line[i+1..$];
-                                if (!line.empty && line[0] == '#')
-                                {
-                                    sp = line.findAmong(" .");
-                                    this.type = line[1..sp.ptr - line.ptr].idup;
-                                    line = sp;
-                                }
-
-                                if (!line.empty && line[0] == ' ') line = line[1..$];
-
-                                break;
-                            }
-
-                            if (c == '\\' && !escape)
-                                escape = true;
-                            else
-                                escape = false;
-                        }
-
-                    }
-                    else
-                    {
-                        auto ch = line.findAmong(" .");
-                        while (!ch.empty && ch[0] == '.' && ch[1] != '(')
-                            ch = ch[1..$].findAmong(" .");
-                        if (!ch.empty && ch[0] == '.')
-                        {
-                            Expression ne = new Expression;
-                            ne.parent = this;
-                            ne.index = this.arguments.length;
-                            ne.operator = line[0..ch.ptr - line.ptr].idup;
-                            auto ssh = ne.operator.findSplit("#");
-                            if (!ssh[1].empty)
-                            {
-                                ne.operator = ssh[0];
-                                ne.type = ssh[2];
-                            }
-                            this.arguments ~= ne;
-                            app_args = 1;
-
-                            line = ch;
-                        }
-                        else if (!ch.empty && ch[0] == ' ')
-                        {
-                            Expression ne = new Expression;
-                            ne.parent = this;
-                            ne.index = this.arguments.length;
-                            ne.operator = line[0..ch.ptr - line.ptr].idup;
-                            auto ssh = ne.operator.findSplit("#");
-                            if (!ssh[1].empty)
-                            {
-                                ne.operator = ssh[0];
-                                ne.type = ssh[2];
-                            }
-                            ssh = ne.operator.findSplit("@");
-                            if (!ssh[1].empty)
-                            {
-                                ne.operator = ssh[0];
-                                ne.label = ssh[2];
-                            }
-                            else
-                            {
-                                ssh = ne.type.findSplit("@");
-                                if (!ssh[1].empty)
-                                {
-                                    ne.type = ssh[0];
-                                    ne.label = ssh[2];
-                                }
-                            }
-                            this.arguments ~= ne;
-                            app_args = 1;
-
-                            line = ch[1..$];
-                        }
-                        else
-                        {
-                            Expression ne = new Expression;
-                            ne.parent = this;
-                            ne.index = this.arguments.length;
-                            ne.operator = line.idup;
-                            auto ssh = ne.operator.findSplit("#");
-                            if (!ssh[1].empty)
-                            {
-                                ne.operator = ssh[0];
-                                ne.type = ssh[2];
-                            }
-                            ssh = ne.operator.findSplit("@");
-                            if (!ssh[1].empty)
-                            {
-                                ne.operator = ssh[0];
-                                ne.label = ssh[2];
-                            }
-                            else
-                            {
-                                ssh = ne.type.findSplit("@");
-                                if (!ssh[1].empty)
-                                {
-                                    ne.type = ssh[0];
-                                    ne.label = ssh[2];
-                                }
-                            }
-                            this.arguments ~= ne;
-                            app_args = 1;
-
-                            line = line[0..0];
-                        }
-                    }
-                } while (line.length > 0);
+                escape = false;
+                dchar c = line.decodeFront();
+                res ~= getEscape(c);
+            }
+            else if ( !be.escape.empty && line.startsWith(be.escape) )
+            {
+                escape = true;
+                //res ~= line[0..be.escape.length];
+                line = line[be.escape.length .. $];
+            }
+            else if ( be.nested && line.startsWith(be.begin) )
+            {
+                nest++;
+                res ~= line[0..be.begin.length];
+                line = line[be.begin.length .. $];
+            }
+            else if ( line.startsWith(be.end) )
+            {
+                line = line[be.end.length .. $];
+                if (nest == 0) return res;
+                nest--;
             }
             else
             {
-                auto sh = operator.findSplit("#");
-                if (!sh[1].empty)
+                res ~= line.decodeFront();
+            }
+        }
+
+        return res;
+    }
+
+    BlockBE getBE()
+    {
+        BlockBE be = BlockBE(operator);
+        foreach(arg; arguments)
+        {
+            switch(arg.type)
+            {
+                case "end":
+                    be.end = arg.operator;
+                    break;
+                case "escape":
+                    be.escape = arg.operator;
+                    break;
+                case "nested":
+                    be.nested = true;
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        return be;
+    }
+
+    this(ref char[] line, ParserState ps = ParserState.init)
+    {
+        Init:
+        while (!line.empty && (line[0] == ' ' || line[0] == '\n'))
+        {
+            line = line[1..$];
+        }
+
+        if ( line.startsWith(ps.comments.begin) )
+        {
+            auto ne = new Expression;
+            ne.operator = getBlock(line, ps.comments);
+            ne.type = "comment";
+            ne.bbe = ps.comments;
+
+            ne.sharp = ps.sharp;
+            ne.at = ps.at;
+            ne.dot = ps.dot;
+
+            comments ~= ne;
+            goto Init;
+        }
+
+        sharp = ps.sharp;
+        at = ps.at;
+        dot = ps.dot;
+
+        bool in_brackets;
+        string dot_bracket = ps.dot ~ ps.brackets.begin;
+        BlockBE brackets = ps.brackets;
+        if ( line.startsWith(ps.strings.begin) )
+        {
+            operator = getBlock(line, ps.strings);
+            type = "string";
+            bbe = ps.strings;
+            goto Post;
+        }
+
+        if ( line.startsWith(ps.brackets.begin) )
+        {
+            line = line[ps.brackets.begin.length .. $];
+            in_brackets = true;
+            bbe = ps.brackets;
+        }
+        else bbe = BlockBE(null, null, null, false);
+
+        while (!line.empty)
+        {
+            if (line.startsWith(ps.brackets.begin))
+            {
+                goto Arguments;
+            }
+            else if (line.startsWith(ps.brackets.escape))
+            {
+                line = line[ps.brackets.escape.length .. $];
+                dchar c = line.decodeFront();
+                operator ~= getEscape(c);
+            }
+            else if (line[0] == ' ' || line[0] == '\n')
+            {
+                line = line[1..$];
+                goto Arguments;
+            }
+            else if (line.startsWith(ps.brackets.end))
+            {
+                if (in_brackets)
                 {
-                    operator = sh[0];
-                    type = sh[2];
+                    line = line[ps.brackets.end.length .. $];
+                    goto Post;
                 }
-                sh = operator.findSplit("@");
-                if (!sh[1].empty)
+                goto End;
+            }
+            else if (!in_brackets && line.startsWith(dot_bracket))
+            {
+                goto Post;
+            }
+            else if (line.startsWith(ps.sharp))
+            {
+                line = line[ps.sharp.length .. $];
+                goto Sharp;
+            }
+            else if (line.startsWith(ps.at))
+            {
+                line = line[ps.at.length .. $];
+                goto At;
+            }
+            else
+                operator ~= line.decodeFront();
+        }
+
+        Sharp:
+        while (!line.empty)
+        {
+            if (line.startsWith(ps.brackets.begin))
+            {
+                goto Arguments;
+            }
+            else if (line.startsWith(ps.brackets.escape))
+            {
+                line = line[ps.brackets.escape.length .. $];
+                dchar c = line.decodeFront();
+                type ~= getEscape(c);
+            }
+            else if (line[0] == ' ' || line[0] == '\n')
+            {
+                line = line[1..$];
+                goto Arguments;
+            }
+            else if (line.startsWith(ps.brackets.end))
+            {
+                if (in_brackets)
                 {
-                    operator = sh[0];
-                    label = sh[2];
+                    line = line[ps.brackets.end.length .. $];
+                    goto Post;
+                }
+                goto End;
+            }
+            else if (!in_brackets && line.startsWith(dot_bracket))
+            {
+                goto Post;
+            }
+            else if (line.startsWith(ps.at))
+            {
+                line = line[ps.at.length .. $];
+                goto At;
+            }
+            else
+                type ~= line.decodeFront();
+        }
+
+        At:
+        while (!line.empty)
+        {
+            if (line.startsWith(ps.brackets.end))
+            {
+                if (in_brackets)
+                {
+                    line = line[ps.brackets.end.length .. $];
+                    goto Post;
+                }
+                goto End;
+            }
+            else if (line.startsWith(ps.brackets.escape))
+            {
+                line = line[ps.brackets.escape.length .. $];
+                dchar c = line.decodeFront();
+                label ~= getEscape(c);
+            }
+            else if (line.startsWith(ps.brackets.begin))
+            {
+                goto Arguments;
+            }
+            else if (line[0] == ' ' || line[0] == '\n')
+            {
+                line = line[1..$];
+                goto Arguments;
+            }
+            else if (!in_brackets && line.startsWith(dot_bracket))
+            {
+                goto Post;
+            }
+            else
+                label ~= line.decodeFront();
+        }
+
+        Arguments:
+        if (in_brackets)
+        {
+            while (!line.empty)
+            {
+                if ( line.startsWith(ps.brackets.end) )
+                {
+                    line = line[ps.brackets.end.length .. $];
+                    break;
+                }
+                else if (line[0] == ' ' || line[0] == '\n')
+                {
+                    line = line[1..$];
                 }
                 else
                 {
-                    sh = type.findSplit("@");
-                    if (!sh[1].empty)
+                    auto ne = new Expression(line, ps);
+
+                    bool processed;
+
+                    switch (ne.type)
                     {
-                        type = sh[0];
-                        label = sh[2];
+                        case "strings":
+                            ps.strings = ne.getBE();
+                            processed = true;
+                            break;
+                        case "comments":
+                            ps.comments = ne.getBE();
+                            processed = true;
+                            break;
+                        case "sharp":
+                            ps.sharp = ne.operator;
+                            processed = true;
+                            break;
+                        case "at":
+                            ps.at = ne.operator;
+                            processed = true;
+                            break;
+                        case "dot":
+                            ps.dot = ne.operator;
+                            processed = true;
+                            break;
+                        case "end":
+                            if (type == "brackets" && ne.index == 0)
+                            {
+                                ps.brackets.begin = operator;
+                                ps.brackets.end = ne.operator;
+                                operator = ps.dot;
+                                processed = true;
+                            }
+                            break;
+                        case "escape":
+                            if (type == "brackets" && ne.index == 1)
+                            {
+                                ps.brackets.escape = ne.operator;
+                                processed = true;
+                            }
+                            break;
+                        default:
+                            if (type == "brackets" && ne.operator.empty && ne.type.empty && ne.label.empty && ne.arguments.empty && ne.post_operations.empty)
+                            {
+                                ps.brackets = brackets;
+                                processed = true;
+                            }
+                            break;
+                    }
+
+                    if (ne.operator == ps.dot && !ne.arguments.empty)
+                    {
+                        foreach(arg; ne.arguments)
+                        {
+                            arg.parent = this;
+                            arg.index += arguments.length;
+                        }
+
+                        arguments ~= ne.arguments;
+
+                        foreach(arg; ne.post_operations)
+                        {
+                            arg.parent = arguments[$-1];
+                            arg.index += arguments[$-1].post_operations.length;
+                            arg.app_args = ne.arguments.length;
+                        }
+
+                        arguments[$-1].post_operations ~= ne.post_operations;
+                    }
+                    else if (!processed)
+                    {
+                        ne.parent = this;
+                        ne.index = arguments.length;
+                        arguments ~= ne;
                     }
                 }
             }
-
-            this.operator = operator.idup;
-            this.type = type.idup;
-            this.label = label.idup;
         }
+
+        Post:
+        if (line.startsWith(dot_bracket))
+        {
+            line = line[ps.dot.length .. $];
+            auto ne = new Expression(line, ps);
+            ne.parent = this;
+            ne.post = true;
+            ne.app_args = 1;
+            post_operations ~= ne;
+        }
+
+        End:
+        while (!line.empty && (line[0] == ' ' || line[0] == '\n'))
+        {
+            line = line[1..$];
+        }
+    }
+
+    this(string line)
+    {
+        char[] l = line.dup;
+        this(l);
+        assert(l.empty);
     }
 
     void addChild(Expression c)
@@ -423,6 +469,22 @@ class Expression
         return ret;
     }
 
+    void fixBbe()
+    {
+        if (arguments.empty && bbe.begin == "(")
+            bbe = BlockBE(null, null, null, false);
+
+        foreach (ind, arg; arguments)
+        {
+            arg.fixBbe();
+        }
+
+        foreach (ind, arg; post_operations)
+        {
+            arg.fixBbe();
+        }
+    }
+
     void fixParents(Expression p = null, long i = 0, bool ps = false)
     {
         parent = p;
@@ -441,12 +503,123 @@ class Expression
         }
     }
 
-    string save(int tab = 0, long[] cbr = null, bool force_brackets = false)
+    string save()
     {
-        string savestr = this.operator ~ (this.type.empty ? "" : "#" ~ this.type) ~ (this.label.empty ? "" : "@" ~ this.label);
+        ParserState ps;
+        return save(ps);
+    }
+
+    static string escape(string str, BlockBE be, bool space = true)
+    {
+        if (be.escape.empty) return str;
+
+        string res;
+        while (!str.empty)
+        {
+            if (str.startsWith(be.begin) || str.startsWith(be.end) || str.startsWith(be.escape) || space && str.startsWith(" "))
+            {
+                res ~= be.escape;
+                res ~= str.decodeFront();
+            }
+            else if (str.startsWith("\n"))
+            {
+                res ~= be.escape;
+                res ~= "n";
+                str.decodeFront();
+            }
+            else if (str.startsWith("\r"))
+            {
+                res ~= be.escape;
+                res ~= "r";
+                str.decodeFront();
+            }
+            else if (str.startsWith("\t"))
+            {
+                res ~= be.escape;
+                res ~= "t";
+                str.decodeFront();
+            }
+            else
+            {
+                res ~= str.decodeFront();
+            }
+        }
+
+        return res;
+    }
+
+    string save(ref ParserState ps, int tab = 0, long[] cbr = null, bool force_brackets = false)
+    {
+        string op = operator;
+        string prestr, poststr;
+        string savestr;
+
+        BlockBE obr = ps.brackets;
+
+        foreach(j, arg; comments)
+        {
+            prestr ~= arg.save(ps, tab+1, null, false);
+        }
+
+        if (ps.sharp != sharp)
+        {
+            prestr ~= ps.brackets.begin ~ sharp ~ ps.sharp ~ "sharp" ~ ps.brackets.end ~ " ";
+            ps.sharp = sharp;
+        }
+        if (ps.at != at)
+        {
+            prestr ~= ps.brackets.begin ~ at ~ ps.sharp ~ "at" ~ ps.brackets.end ~ " ";
+            ps.at = at;
+        }
+        if (ps.dot != dot)
+        {
+            prestr ~= ps.brackets.begin ~ dot ~ ps.sharp ~ "dot" ~ ps.brackets.end ~ " ";
+            ps.dot = dot;
+        }
+
+        if (type == "comment")
+        {
+            op = bbe.begin ~ escape(op, bbe, false) ~ bbe.end;
+            if (ps.comments != bbe)
+            {
+                ps.comments = bbe;
+                prestr ~= ps.brackets.begin ~ bbe.begin ~ ps.sharp ~ "comments " ~ escape(bbe.end, ps.brackets) ~ ps.sharp ~ "end";
+                if (!bbe.escape.empty) prestr ~= " " ~ bbe.escape ~ ps.sharp ~ "escape";
+                if (bbe.nested) prestr ~= " " ~ ps.sharp ~ "escape";
+                prestr ~= ps.brackets.end ~ " ";
+            }
+            savestr ~= op;
+        }
+        else if (type == "string")
+        {
+            op = bbe.begin ~ escape(op, bbe, false) ~ bbe.end;
+            if (ps.strings != bbe)
+            {
+                ps.strings = bbe;
+                prestr ~= ps.brackets.begin ~ bbe.begin ~ ps.sharp ~ "strings " ~ bbe.end ~ ps.sharp ~ "end";
+                if (!bbe.escape.empty) prestr ~= " " ~ bbe.escape ~ ps.sharp ~ "escape";
+                if (bbe.nested) prestr ~= " " ~ ps.sharp ~ "escape";
+                prestr ~= ps.brackets.end ~ " ";
+            }
+            savestr ~= op;
+        }
+        else
+        {
+            op = escape(op, bbe);
+            if (ps.brackets != bbe && !bbe.begin.empty)
+            {
+                prestr ~= ps.brackets.begin ~ bbe.begin ~ ps.sharp ~ "brackets " ~ bbe.end ~ ps.sharp ~ "end" ~ " ";
+                poststr = " " ~ bbe.begin ~ bbe.end ~ ps.brackets.end;
+
+                ps.brackets = bbe;
+            }
+            savestr ~= op ~ (this.type.empty ? "" : ps.sharp ~ escape(type, bbe)) ~ (this.label.empty ? "" : ps.at ~ escape(label, bbe));
+            if (!bbe.begin.empty)
+                force_brackets = true;
+        }
 
         if (savestr.empty)
-            savestr = ".";
+            savestr = ps.dot;
 
         if (!this.arguments.empty)
         {
@@ -470,7 +643,7 @@ class Expression
                 {
                     if (m == i)
                     {
-                        savestr ~= " (.";
+                        savestr ~= " " ~ ps.brackets.begin ~ ps.dot;
                     }
                 }
                 
@@ -484,15 +657,15 @@ class Expression
                 }
 
                 if (this.type == "body" || this.type == "module" || this.type == "class" || this.type == "struct" || this.type == "if" || this.type == "switch")
-                    savestr ~= "\n" ~ (' '.repeat((tab+1)*4).array) ~ arg.save(tab+1, br);
+                    savestr ~= "\n" ~ (' '.repeat((tab+1)*4).array) ~ arg.save(ps, tab+1, br, false);
                 else
-                    savestr ~= " " ~ arg.save(tab+1, br);
+                    savestr ~= " " ~ arg.save(ps, tab+1, br, false);
             }
 
-            savestr = "("~savestr~")";
+            savestr = ps.brackets.begin ~ savestr ~ ps.brackets.end;
         }
         else if (force_brackets)
-            savestr = "("~savestr~")";
+            savestr = ps.brackets.begin ~ savestr ~ ps.brackets.end;
 
         long cj = 0;
 
@@ -500,14 +673,15 @@ class Expression
         {
             if (cj < cbr.length && cbr[cj] == j)
             {
-                savestr ~= ')';
+                savestr ~= ps.brackets.end;
                 cj++;
             }
 
-            savestr ~= "." ~ arg.save(tab+1, null, true);
+            savestr ~= ps.dot ~ arg.save(ps, tab+1, null, true);
         }
 
-        return savestr;
+        ps.brackets = obr;
+        return prestr ~ savestr ~ poststr;
     }
 
     string saveD(int tab = 0, Expression[] post = null, string ptype = null, string inner = null)
@@ -1157,6 +1331,32 @@ class Expression
                     }
                     break;
 
+                case "string":
+                    savestr ~= "\"" ~ escape(operator, bbe, false) ~ "\"";
+
+                    if (ptype == "if" && !this.post_operations.empty)
+                    {
+                        savestr ~= ")\n";
+                    }
+                    else if (ptype == "case")
+                    {
+                        savestr ~= ":\n";
+                    }
+
+                    foreach(i, arg; this.post_operations)
+                    {
+                        if (arg.type == "switch")
+                            savestr = arg.saveD(tab, null, "postop", savestr);
+                        else
+                            savestr ~= arg.saveD(tab, null, "postop");
+                    }
+
+                    if (ptype != "if" && ptype != "case" && tab >= 0)
+                    {
+                        savestr = tabstr ~ savestr ~ "\n";
+                    }
+                    break;
+
                 case "?":
                     if (arguments.length >= 3)
                     {
@@ -1370,6 +1570,10 @@ class Expression
                                 }
                                 savestr ~= ")";
                             }
+                            else if (!bbe.begin.empty)
+                            {
+                                savestr ~= "()";
+                            }
 
                             if (ptype == "if" && !this.post_operations.empty)
                             {
@@ -1479,23 +1683,23 @@ class Expression
     {
         if (operator == "save")
         {
-            Expression ne = new Expression("(="~(!label.empty?"@"~label:"")~" back2 this)".dup);
+            Expression ne = new Expression("(="~(!label.empty?"@"~label:"")~" back2 this)");
             code.addChild(ne);
         }
         else if (operator == "back")
         {
-            Expression ne = new Expression("(="~(!label.empty?"@"~label:"")~" this back2)".dup);
+            Expression ne = new Expression("(="~(!label.empty?"@"~label:"")~" this back2)");
             code.addChild(ne);
         }
         else if (type == "switch")
         {
-            Expression ne = new Expression("(="~(!label.empty?"@"~label:"")~" back this)".dup);
+            Expression ne = new Expression("(="~(!label.empty?"@"~label:"")~" back this)");
             code.addChild(ne);
 
-            ne = new Expression("(nextChr)".dup);
+            ne = new Expression("(nextChr)");
             code.addChild(ne);
 
-            ne = new Expression(("(#if)").dup);
+            ne = new Expression(("(#if)"));
             code.addChild(ne);
             
             code = ne;
@@ -1505,27 +1709,27 @@ class Expression
             Expression ne;
             if (operator.startsWith("is"))
             {
-                ne = new Expression("(#module (#. chr "~operator~").(#body))".dup);
+                ne = new Expression("(#module (#. chr "~operator~").(#body))");
                 ne = ne.arguments[0];
             }
             else if (operator == "!" && arguments[0].operator.startsWith("is"))
             {
-                ne = new Expression("(#module (! (#. chr "~arguments[0].operator~")).(#body))".dup);
+                ne = new Expression("(#module (! (#. chr "~arguments[0].operator~")).(#body))");
                 ne = ne.arguments[0];
             }
             else if (operator.length > 2 && operator[0] == '\'' && operator[$-1] == '\'' || operator == "EOF")
             {
-                ne = new Expression("(#module (== chr "~operator~").(#body))".dup);
+                ne = new Expression("(#module (== chr "~operator~").(#body))");
                 ne = ne.arguments[0];
             }
             else if (operator.length > 2 && operator[0] == '"' && operator[$-1] == '"')
             {
-                ne = new Expression("(#module (! (#. "~operator~" (find chr) empty)).(#body))".dup);
+                ne = new Expression("(#module (! (#. "~operator~" (find chr) empty)).(#body))");
                 ne = ne.arguments[0];
             }
             else if (type == "\"")
             {
-                ne = new Expression("(#module (! (#. replace_this (find chr) empty)).(#body))".dup);
+                ne = new Expression("(#module (! (#. replace_this (find chr) empty)).(#body))");
                 ne = ne.arguments[0];
                 auto dc = this.deepcopy;
                 ne.arguments[0].arguments[0].replace(dc);
@@ -1533,7 +1737,7 @@ class Expression
             }
             else if (type == "default")
             {
-                ne = new Expression("(#module (true).(#body (= this back)))".dup);
+                ne = new Expression("(#module (true).(#body (= this back)))");
                 ne = ne.arguments[0];
             }
             else
@@ -1544,7 +1748,7 @@ class Expression
 
             if (post_operations.empty && (code.arguments.empty || code.arguments[$-1].operator != "||" || !code.arguments[$-1].post_operations[0].arguments.empty))
             {
-                Expression ne2 = new Expression("(#module (||).(#body))".dup);
+                Expression ne2 = new Expression("(#module (||).(#body))");
                 ne2 = ne2.arguments[0];
 
                 ne.post_operations = null;
@@ -1571,13 +1775,13 @@ class Expression
         {
             Expression ne;
 
-            Expression back = new Expression("(= this back)".dup);
+            Expression back = new Expression("(= this back)");
 
             if (arguments.length <= 1)
             {
                 if (arguments[0].operator == "!")
                 {
-                    ne = new Expression(("(#module (#do"~(!label.empty?"@"~label:"")~" !).(#body (= back this) nextChr))").dup);
+                    ne = new Expression(("(#module (#do"~(!label.empty?"@"~label:"")~" !).(#body (= back this) nextChr))"));
                     ne = ne.arguments[0];
                     code.addChild(ne);
                     code.addChild(back);
@@ -1586,7 +1790,7 @@ class Expression
                 }
                 else
                 {
-                    ne = new Expression(("(#module (#do).(#body (= back this) nextChr))").dup);
+                    ne = new Expression(("(#module (#do).(#body (= back this) nextChr))"));
                     ne = ne.arguments[0];
                     code.addChild(ne);
                     code.addChild(back);
@@ -1596,7 +1800,7 @@ class Expression
             }
             else
             {
-                ne = new Expression(("(#module (#do ||).(#body (= back this) nextChr))").dup);
+                ne = new Expression(("(#module (#do ||).(#body (= back this) nextChr))"));
                 ne = ne.arguments[0];
                 code.addChild(ne);
                 code.addChild(back);
@@ -1610,19 +1814,19 @@ class Expression
             Expression ne;
             if (operator.startsWith("is"))
             {
-                ne = new Expression("(#. chr "~operator~")".dup);
+                ne = new Expression("(#. chr "~operator~")");
             }
             else if (operator.length > 2 && operator[0] == '\'' && operator[$-1] == '\'' || operator == "EOF")
             {
-                ne = new Expression("(== chr "~operator~")".dup);
+                ne = new Expression("(== chr "~operator~")");
             }
             else if (operator.length > 2 && operator[0] == '"' && operator[$-1] == '"')
             {
-                ne = new Expression("(! (#. "~operator~" (find chr) empty))".dup);
+                ne = new Expression("(! (#. "~operator~" (find chr) empty))");
             }
             else if (type == "\"")
             {
-                ne = new Expression("(! (#. replace_this (find chr) empty))".dup);
+                ne = new Expression("(! (#. replace_this (find chr) empty))");
                 auto dc = this.deepcopy;
                 ne.arguments[0].arguments[0].replace(dc);
                 dc.post_operations = null;
@@ -1637,7 +1841,7 @@ class Expression
         }
         else if (parent.type == "goto")
         {
-            Expression ne = new Expression("(#goto "~operator~")".dup);
+            Expression ne = new Expression("(#goto "~operator~")");
             code.addChild(ne);
         }
         else if (parent.type == "return")
@@ -1646,11 +1850,11 @@ class Expression
             
             if (main)
             {
-                ne = new Expression("(= type (#. LexemType "~operator~"))".dup);
+                ne = new Expression("(= type (#. LexemType "~operator~"))");
                 code.addChild(ne);
             }
 
-            ne = new Expression("(#return)".dup);
+            ne = new Expression("(#return)");
             code.addChild(ne);
         }
 
@@ -1719,7 +1923,8 @@ class Expression
     Expression toLexer()
     {
         Expression code, lexemTypes, lexer;
-        Expression ret = new Expression(readFile("lexer_templ.np"));
+        char[] text = readFile("lexer_templ.np");
+        Expression ret = new Expression(text);
         ret.findBlocks(code, lexemTypes, lexer);
         assert(lexemTypes !is null);
         assert(code !is null);
@@ -1777,6 +1982,7 @@ class Expression
         copy.hidden = hidden;
         copy.level = level;
         copy.levels = levels;
+        copy.bbe = bbe;
         
         copy.x = x;
         copy.y = y;

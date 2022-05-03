@@ -9,6 +9,7 @@ import expression;
 class Parser
 {
     Lexer lexer;
+    Expression[] comments;
     void getLexem()
     {
         if (backed)
@@ -18,7 +19,28 @@ class Parser
         }
         do
         {
-            lexer.getLexem;
+            lexer.getLexem();
+            if (lexer == LexemType.Comment)
+            {
+                Expression c = new Expression;
+                if (lexer.lexem.startsWith("/*"))
+                {
+                    c.operator = lexer.lexem[2..($ - 2)];
+                    c.bbe = BlockBE("/*", "*/", null, false);
+                }
+                else if (lexer.lexem.startsWith("/+"))
+                {
+                    c.operator = lexer.lexem[2..($ - 2)];
+                    c.bbe = BlockBE("/+", "+/", null, true);
+                }
+                else if (lexer.lexem.startsWith("//"))
+                {
+                    c.operator = lexer.lexem[2..$];
+                    c.bbe = BlockBE("//", "\n", null, false);
+                }
+                c.type = "comment";
+                comments ~= c;
+            }
         }
         while ((lexer == LexemType.Blank) || (lexer == LexemType.Comment));
     }
@@ -185,7 +207,7 @@ class Parser
         }
         else
         {
-            writefln("Expected  or ; not %s", lexer);
+            writefln("Expected . or ; not %s", lexer);
             assert(0);
         }
     }
@@ -193,6 +215,8 @@ class Parser
     {
         Expression ret = new Expression;
         ret.type = "struct";
+        ret.comments = comments;
+        comments = [];
         getLexem;
         if (lexer == LexemType.Identifier)
         {
@@ -216,6 +240,8 @@ class Parser
     {
         Expression ret = new Expression;
         ret.type = "class";
+        ret.comments = comments;
+        comments = [];
         getLexem;
         if (lexer == LexemType.Identifier)
         {
@@ -624,18 +650,22 @@ class Parser
             Expression expr = new Expression;
             expr.type = "if";
             expr.post_operations ~= post;
+            expr.comments = comments;
+            comments = [];
             Init:
             getLexem;
             if (lexer == "(")
             {
                 Expression cond = getExpression;
+                cond.comments = comments;
+                comments = [];
                 if (lexer == ")")
                 {
                     {}
                 }
                 else
                 {
-                    writefln("Expected  not %s", lexer);
+                    writefln("Expected . not %s", lexer);
                     assert(0);
                 }
                 cond.post_operations = [getBody];
@@ -676,17 +706,21 @@ class Parser
             Expression expr = new Expression;
             expr.type = "switch";
             expr.post_operations ~= post;
+            expr.comments = comments;
+            comments = [];
             getLexem;
             if (lexer == "(")
             {
                 Expression var = getExpression;
+                var.comments = comments;
+                comments = [];
                 if (lexer == ")")
                 {
                     {}
                 }
                 else
                 {
-                    writefln("Expected  not %s", lexer);
+                    writefln("Expected . not %s", lexer);
                     assert(0);
                 }
                 var.post_operations ~= expr;
@@ -749,6 +783,8 @@ class Parser
             Expression expr = new Expression;
             expr.type = "for";
             expr.post_operations ~= post;
+            expr.comments = comments;
+            comments = [];
             getLexem;
             if (lexer == "(")
             {
@@ -781,7 +817,7 @@ class Parser
                 }
                 else
                 {
-                    writefln("Expected  not %s", lexer);
+                    writefln("Expected . not %s", lexer);
                     assert(0);
                 }
                 expr.post_operations = [getBody];
@@ -799,6 +835,8 @@ class Parser
             Expression expr = new Expression;
             expr.type = "foreach";
             expr.post_operations ~= post;
+            expr.comments = comments;
+            comments = [];
             getLexem;
             if (lexer == "(")
             {
@@ -868,7 +906,7 @@ class Parser
                 }
                 else
                 {
-                    writefln("Expected  not %s", lexer);
+                    writefln("Expected . not %s", lexer);
                     assert(0);
                 }
                 expr.post_operations = [getBody];
@@ -886,6 +924,8 @@ class Parser
             Expression expr = new Expression;
             expr.type = "while";
             expr.post_operations ~= post;
+            expr.comments = comments;
+            comments = [];
             getLexem;
             if (lexer == "(")
             {
@@ -896,7 +936,7 @@ class Parser
                 }
                 else
                 {
-                    writefln("Expected  not %s", lexer);
+                    writefln("Expected . not %s", lexer);
                     assert(0);
                 }
                 expr.post_operations = [getBody];
@@ -915,6 +955,8 @@ class Parser
             expr.type = "do";
             expr.post_operations ~= post;
             expr.post_operations = [getBody];
+            expr.comments = comments;
+            comments = [];
             getLexem;
             if (lexer == "while")
             {
@@ -934,7 +976,7 @@ class Parser
                 }
                 else
                 {
-                    writefln("Expected  not %s", lexer);
+                    writefln("Expected . not %s", lexer);
                     assert(0);
                 }
                 expr.arguments = [cexpr];
@@ -960,6 +1002,8 @@ class Parser
         {
             Expression expr = new Expression;
             expr.type = lexer.lexem;
+            expr.comments = comments;
+            comments = [];
             getLexem;
             if (lexer == LexemType.Identifier)
             {
@@ -991,6 +1035,8 @@ class Parser
             Expression expr = new Expression;
             expr.type = "return";
             Expression e = getExpression;
+            expr.comments = comments;
+            comments = [];
             if (e !is null)
             {
                 expr.arguments ~= e;
@@ -1286,7 +1332,7 @@ class Parser
             }
             else
             {
-                writefln("Expected  or Identifier or AssignOperator not %s", lexer);
+                writefln("Expected . or Identifier or AssignOperator not %s", lexer);
                 assert(0);
             }
         }
@@ -1376,7 +1422,7 @@ class Parser
             }
             else
             {
-                writefln("Expected  or Identifier or AssignOperator not %s", lexer);
+                writefln("Expected . or Identifier or AssignOperator not %s", lexer);
                 assert(0);
             }
         }
@@ -1503,7 +1549,7 @@ class Parser
                 }
                 else
                 {
-                    writefln(", or  Expected not %s", lexer);
+                    writefln(", or . Expected not %s", lexer);
                     assert(0);
                 }
             }
@@ -1518,13 +1564,13 @@ class Parser
             }
             else
             {
-                writefln(", or  or () Expected not %s", lexer);
+                writefln(", or . or () Expected not %s", lexer);
                 assert(0);
             }
         }
         else
         {
-            writefln("Expected Identifier or  not %s", lexer);
+            writefln("Expected Identifier or . not %s", lexer);
             assert(0);
         }
         return ret;
@@ -1547,7 +1593,7 @@ class Parser
             }
             else
             {
-                writefln("Expected , or  not %s", lexer);
+                writefln("Expected , or . not %s", lexer);
                 assert(0);
             }
         }
@@ -1557,7 +1603,7 @@ class Parser
         }
         else
         {
-            writefln("Expected  not %s", lexer);
+            writefln("Expected . not %s", lexer);
             assert(0);
         }
         return ret;
@@ -1630,7 +1676,16 @@ class Parser
             }
             goto Operator;
         }
-        else if (lexer == LexemType.String         || lexer == LexemType.Number         || lexer == LexemType.Float         || lexer == LexemType.Character         || lexer == LexemType.LenOperator)
+        else if (lexer == LexemType.String)
+        {
+            Expression arg = new Expression;
+            arg.operator = lexer.lexem[1..($ - 1)];
+            arg.type = "string";
+            arg.bbe = BlockBE("\"", "\"", "\\");
+            ed.addChild(arg);
+            getLexem;
+        }
+        else if (lexer == LexemType.Number         || lexer == LexemType.Float         || lexer == LexemType.Character         || lexer == LexemType.LenOperator)
         {
             Expression arg = new Expression;
             arg.operator = lexer.lexem;
@@ -1681,7 +1736,7 @@ class Parser
             }
             else
             {
-                writefln("Expected  not %s", lexer);
+                writefln("Expected . not %s", lexer);
                 assert(0);
             }
         }
