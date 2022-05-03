@@ -74,7 +74,7 @@ class Expression
     {
     }
 
-    dchar getEscape(dchar c)
+    static dchar getEscape(dchar c)
     {
         switch (c)
         {
@@ -87,6 +87,33 @@ class Expression
             default:
                 return c;
         }
+    }
+
+    static string readEscaped(string line, string escChar)
+    {
+        string res = "";
+        bool escape;
+
+        while (!line.empty)
+        {
+            if (escape)
+            {
+                escape = false;
+                dchar c = line.decodeFront();
+                res ~= getEscape(c);
+            }
+            else if ( line.startsWith(escChar) )
+            {
+                escape = true;
+                line = line[escChar.length .. $];
+            }
+            else
+            {
+                res ~= line.decodeFront();
+            }
+        }
+
+        return res;
     }
 
     string getBlock(ref char[] line, BlockBE be)

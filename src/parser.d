@@ -117,6 +117,8 @@ class Parser
     Expression getImport()
     {
         Expression ret = new Expression;
+        ret.comments = comments;
+        comments = [];
         ret.type = "import";
         string  modname;
         Init:
@@ -1679,7 +1681,7 @@ class Parser
         else if (lexer == LexemType.String)
         {
             Expression arg = new Expression;
-            arg.operator = lexer.lexem[1..($ - 1)];
+            arg.operator = Expression.readEscaped(lexer.lexem[1..($ - 1)], "\\");
             arg.type = "string";
             arg.bbe = BlockBE("\"", "\"", "\\");
             ed.addChild(arg);
