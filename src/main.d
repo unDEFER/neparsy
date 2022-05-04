@@ -319,7 +319,7 @@ int main(string[] args)
                 expr.fixParents();
 
                 expr.parent = root;
-                expr.operator = expr.operator~".np";
+                expr.operator = arg[0..$-2]~".np";
                 expr.type = "*";
                 expr.index = root.arguments.length;
                 root.arguments ~= expr;
