@@ -9,7 +9,7 @@ import expression;
 class Parser
 {
     Lexer lexer;
-    Expression[] comments;
+    Expression cexpr;
     void getLexem()
     {
         if (backed)
@@ -19,33 +19,21 @@ class Parser
         }
         do
         {
-            lexer.getLexem();
+            lexer.getLexem;
             if (lexer == LexemType.Comment)
             {
-                Expression c = new Expression;
-                if (lexer.lexem.startsWith("/*"))
-                {
-                    c.operator = lexer.lexem[2..($ - 2)];
-                    c.bbe = BlockBE("/*", "*/", null, false);
-                }
-                else if (lexer.lexem.startsWith("/+"))
-                {
-                    c.operator = lexer.lexem[2..($ - 2)];
-                    c.bbe = BlockBE("/+", "+/", null, true);
-                }
-                else if (lexer.lexem.startsWith("//"))
-                {
-                    c.operator = lexer.lexem[2..$];
-                    c.bbe = BlockBE("//", "\n", null, false);
-                }
-                c.type = "comment";
-                comments ~= c;
+                Expression com = new Expression;
+                com.bt = BlockType.Comment;
+                com.operator = lexer.lexem;
+                cexpr.arguments ~= com;
             }
         }
         while ((lexer == LexemType.Blank) || (lexer == LexemType.Comment));
     }
     Expression parse()
     {
+        Expression file = new Expression;
+        cexpr = file;
         Expression ret = new Expression;
         Init:
         getLexem;
@@ -53,6 +41,9 @@ class Parser
         {
             ret.type = "module";
             ret.operator = getModuleName;
+            ret.label = "D";
+            file.arguments ~= ret;
+            cexpr = ret;
             goto Init;
         }
         else if (lexer == "import")
@@ -89,7 +80,7 @@ class Parser
             writefln("Unexpected %s", lexer);
             assert(0);
         }
-        return ret;
+        return file;
     }
     string getModuleName()
     {
@@ -117,8 +108,6 @@ class Parser
     Expression getImport()
     {
         Expression ret = new Expression;
-        ret.comments = comments;
-        comments = [];
         ret.type = "import";
         string  modname;
         Init:
@@ -217,8 +206,6 @@ class Parser
     {
         Expression ret = new Expression;
         ret.type = "struct";
-        ret.comments = comments;
-        comments = [];
         getLexem;
         if (lexer == LexemType.Identifier)
         {
@@ -242,8 +229,6 @@ class Parser
     {
         Expression ret = new Expression;
         ret.type = "class";
-        ret.comments = comments;
-        comments = [];
         getLexem;
         if (lexer == LexemType.Identifier)
         {
@@ -616,9 +601,12 @@ class Parser
     {
         Expression ret = new Expression;
         ret.type = "body";
+        Expression oexpr = cexpr;
+        cexpr = ret;
         Init:
         Expression[] s = getStatement;
         ret.arguments ~= s;
+        cexpr = oexpr;
         return ret;
     }
     Expression getCaseBody()
@@ -652,15 +640,12 @@ class Parser
             Expression expr = new Expression;
             expr.type = "if";
             expr.post_operations ~= post;
-            expr.comments = comments;
-            comments = [];
+            cexpr = expr;
             Init:
             getLexem;
             if (lexer == "(")
             {
                 Expression cond = getExpression;
-                cond.comments = comments;
-                comments = [];
                 if (lexer == ")")
                 {
                     {}
@@ -708,14 +693,10 @@ class Parser
             Expression expr = new Expression;
             expr.type = "switch";
             expr.post_operations ~= post;
-            expr.comments = comments;
-            comments = [];
             getLexem;
             if (lexer == "(")
             {
                 Expression var = getExpression;
-                var.comments = comments;
-                comments = [];
                 if (lexer == ")")
                 {
                     {}
@@ -785,8 +766,6 @@ class Parser
             Expression expr = new Expression;
             expr.type = "for";
             expr.post_operations ~= post;
-            expr.comments = comments;
-            comments = [];
             getLexem;
             if (lexer == "(")
             {
@@ -837,8 +816,6 @@ class Parser
             Expression expr = new Expression;
             expr.type = "foreach";
             expr.post_operations ~= post;
-            expr.comments = comments;
-            comments = [];
             getLexem;
             if (lexer == "(")
             {
@@ -926,8 +903,6 @@ class Parser
             Expression expr = new Expression;
             expr.type = "while";
             expr.post_operations ~= post;
-            expr.comments = comments;
-            comments = [];
             getLexem;
             if (lexer == "(")
             {
@@ -957,8 +932,6 @@ class Parser
             expr.type = "do";
             expr.post_operations ~= post;
             expr.post_operations = [getBody];
-            expr.comments = comments;
-            comments = [];
             getLexem;
             if (lexer == "while")
             {
@@ -1004,8 +977,6 @@ class Parser
         {
             Expression expr = new Expression;
             expr.type = lexer.lexem;
-            expr.comments = comments;
-            comments = [];
             getLexem;
             if (lexer == LexemType.Identifier)
             {
@@ -1037,8 +1008,6 @@ class Parser
             Expression expr = new Expression;
             expr.type = "return";
             Expression e = getExpression;
-            expr.comments = comments;
-            comments = [];
             if (e !is null)
             {
                 expr.arguments ~= e;
@@ -1065,6 +1034,8 @@ class Parser
         {
             Expression a = new Expression;
             a.type = "{";
+            Expression oexpr = cexpr;
+            cexpr = a;
             Body:
             Expression[] b = getStatement;
             if (b !is null)
@@ -1075,6 +1046,7 @@ class Parser
             getLexem;
             if (lexer == "}")
             {
+                cexpr = oexpr;
                 return a.arguments;
             }
             else
@@ -1681,9 +1653,8 @@ class Parser
         else if (lexer == LexemType.String)
         {
             Expression arg = new Expression;
-            arg.operator = Expression.readEscaped(lexer.lexem[1..($ - 1)], "\\");
-            arg.type = "string";
-            arg.bbe = BlockBE("\"", "\"", "\\");
+            arg.operator = lexer.lexem;
+            arg.bt = BlockType.String;
             ed.addChild(arg);
             getLexem;
         }

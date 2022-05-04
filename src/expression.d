@@ -15,6 +15,7 @@ import std.algorithm;
 import std.range: repeat;
 import std.array;
 import std.string;
+import std.file;
 
 import iface;
 
@@ -26,10 +27,18 @@ struct BlockBE
     bool nested;
 }
 
+enum BlockType
+{
+    Code = 0,
+    String,
+    Comment,
+    File
+}
+
 struct ParserState
 {
-    BlockBE strings = BlockBE("\"", "\"", "\\", false);
-    BlockBE comments = BlockBE("//", "\n", null, false);
+    BlockBE[] strings = [];
+    BlockBE[] comments = [];
     BlockBE brackets = BlockBE("(", ")", "\\", true);
     string sharp = "#";
     string at = "@";
@@ -54,10 +63,8 @@ class Expression
     string operator;
     string type;
     string label;
-    BlockBE bbe = BlockBE("(", ")", "\\", true);
-    string sharp = "#", at = "@", dot = ".";
+    BlockType bt;
     long app_args;
-    Expression[] comments;
     Expression[] arguments;
     Expression[] post_operations;
     Expression parent;
@@ -118,10 +125,9 @@ class Expression
 
     string getBlock(ref char[] line, BlockBE be)
     {
+        char[] sline = line;
         assert(line.startsWith(be.begin));
         line = line[be.begin.length .. $];
-
-        string res = "";
 
         bool escape;
         int nest;
@@ -130,34 +136,31 @@ class Expression
             if (escape)
             {
                 escape = false;
-                dchar c = line.decodeFront();
-                res ~= getEscape(c);
+                line.decodeFront();
             }
             else if ( !be.escape.empty && line.startsWith(be.escape) )
             {
                 escape = true;
-                //res ~= line[0..be.escape.length];
                 line = line[be.escape.length .. $];
             }
             else if ( be.nested && line.startsWith(be.begin) )
             {
                 nest++;
-                res ~= line[0..be.begin.length];
                 line = line[be.begin.length .. $];
             }
             else if ( line.startsWith(be.end) )
             {
                 line = line[be.end.length .. $];
-                if (nest == 0) return res;
+                if (nest == 0) return sline[0..line.ptr - sline.ptr].idup;
                 nest--;
             }
             else
             {
-                res ~= line.decodeFront();
+                line.decodeFront();
             }
         }
 
-        return res;
+        return sline[0..line.ptr - sline.ptr].idup;
     }
 
     BlockBE getBE()
@@ -184,51 +187,100 @@ class Expression
         return be;
     }
 
-    this(ref char[] line, ParserState ps = ParserState.init)
+    this(ref char[] line, ParserState ps = ParserState.init, Expression parent = null)
     {
-        Init:
-        while (!line.empty && (line[0] == ' ' || line[0] == '\n'))
+        if (parent is null)
         {
-            line = line[1..$];
+            bt = BlockType.File;
+            while (!line.empty)
+            {
+                auto ne = new Expression(line, ps, this);
+                ne.parent = this;
+                ne.index = arguments.length;
+                arguments ~= ne;
+            }
+            return;
         }
 
-        if ( line.startsWith(ps.comments.begin) )
+        if (ps.comments.empty)
         {
-            auto ne = new Expression;
-            ne.operator = getBlock(line, ps.comments);
-            ne.type = "comment";
-            ne.bbe = ps.comments;
+            char[] sline = line;
 
-            ne.sharp = ps.sharp;
-            ne.at = ps.at;
-            ne.dot = ps.dot;
+            while (!line.empty)
+            {
+                if ( line.startsWith(ps.brackets.begin) )
+                {
+                    if (line !is sline)
+                    {
+                        operator = sline[0 .. line.ptr - sline.ptr].idup;
+                        bt = BlockType.Comment;
+                        return;
+                    }
+                    goto Init;
+                }
+                else
+                {
+                    while (!line.empty && !line.startsWith("\n"))
+                    {
+                        line.decodeFront();
+                    }
 
-            comments ~= ne;
-            goto Init;
+                    if (!line.empty)
+                    {
+                        line.decodeFront();
+                    }
+                }
+            }
         }
+        else
+        {
+            Init:
+            while (!line.empty && (line[0] == ' ' || line[0] == '\n'))
+            {
+                line = line[1..$];
+            }
 
-        sharp = ps.sharp;
-        at = ps.at;
-        dot = ps.dot;
+            foreach(be; ps.comments)
+            {
+                if ( line.startsWith(be.begin) )
+                {
+                    operator = getBlock(line, be);
+                    bt = BlockType.Comment;
+                    return;
+                }
+            }
+        }
 
         bool in_brackets;
         string dot_bracket = ps.dot ~ ps.brackets.begin;
         BlockBE brackets = ps.brackets;
-        if ( line.startsWith(ps.strings.begin) )
+
+        foreach(be; ps.strings)
         {
-            operator = getBlock(line, ps.strings);
-            type = "string";
-            bbe = ps.strings;
-            goto Post;
+            if ( line.startsWith(be.begin) )
+            {
+                operator = getBlock(line, be);
+                bt = BlockType.String;
+
+                if (line.startsWith(ps.sharp))
+                {
+                    line = line[ps.sharp.length .. $];
+                    goto Sharp;
+                }
+                else if (line.startsWith(ps.at))
+                {
+                    line = line[ps.at.length .. $];
+                    goto At;
+                }
+                else goto Post;
+            }
         }
 
         if ( line.startsWith(ps.brackets.begin) )
         {
             line = line[ps.brackets.begin.length .. $];
             in_brackets = true;
-            bbe = ps.brackets;
         }
-        else bbe = BlockBE(null, null, null, false);
 
         while (!line.empty)
         {
@@ -350,8 +402,24 @@ class Expression
         }
 
         Arguments:
+        if (type == "module")
+        {
+            switch(label)
+            {
+                case "D":
+                case "Lexer":
+                    ps.comments = [BlockBE("\\", "\n"), BlockBE("/*", "*/"), BlockBE("/+", "+/", null, true)];
+                    ps.strings = [BlockBE("\"", "\"", "\\")];
+                    break;
+                default:
+                    break;
+            }
+        }
+
         if (in_brackets)
         {
+            arguments = [];
+
             while (!line.empty)
             {
                 if ( line.startsWith(ps.brackets.end) )
@@ -365,56 +433,7 @@ class Expression
                 }
                 else
                 {
-                    auto ne = new Expression(line, ps);
-
-                    bool processed;
-
-                    switch (ne.type)
-                    {
-                        case "strings":
-                            ps.strings = ne.getBE();
-                            processed = true;
-                            break;
-                        case "comments":
-                            ps.comments = ne.getBE();
-                            processed = true;
-                            break;
-                        case "sharp":
-                            ps.sharp = ne.operator;
-                            processed = true;
-                            break;
-                        case "at":
-                            ps.at = ne.operator;
-                            processed = true;
-                            break;
-                        case "dot":
-                            ps.dot = ne.operator;
-                            processed = true;
-                            break;
-                        case "end":
-                            if (type == "brackets" && ne.index == 0)
-                            {
-                                ps.brackets.begin = operator;
-                                ps.brackets.end = ne.operator;
-                                operator = ps.dot;
-                                processed = true;
-                            }
-                            break;
-                        case "escape":
-                            if (type == "brackets" && ne.index == 1)
-                            {
-                                ps.brackets.escape = ne.operator;
-                                processed = true;
-                            }
-                            break;
-                        default:
-                            if (type == "brackets" && ne.operator.empty && ne.type.empty && ne.label.empty && ne.arguments.empty && ne.post_operations.empty)
-                            {
-                                ps.brackets = brackets;
-                                processed = true;
-                            }
-                            break;
-                    }
+                    auto ne = new Expression(line, ps, this);
 
                     if (ne.operator == ps.dot && !ne.arguments.empty)
                     {
@@ -435,7 +454,7 @@ class Expression
 
                         arguments[$-1].post_operations ~= ne.post_operations;
                     }
-                    else if (!processed)
+                    else
                     {
                         ne.parent = this;
                         ne.index = arguments.length;
@@ -449,7 +468,7 @@ class Expression
         if (line.startsWith(dot_bracket))
         {
             line = line[ps.dot.length .. $];
-            auto ne = new Expression(line, ps);
+            auto ne = new Expression(line, ps, this);
             ne.parent = this;
             ne.post = true;
             ne.app_args = 1;
@@ -496,22 +515,6 @@ class Expression
         return ret;
     }
 
-    void fixBbe()
-    {
-        if (arguments.empty && bbe.begin == "(")
-            bbe = BlockBE(null, null, null, false);
-
-        foreach (ind, arg; arguments)
-        {
-            arg.fixBbe();
-        }
-
-        foreach (ind, arg; post_operations)
-        {
-            arg.fixBbe();
-        }
-    }
-
     void fixParents(Expression p = null, long i = 0, bool ps = false)
     {
         parent = p;
@@ -528,12 +531,6 @@ class Expression
         {
             arg.fixParents(this, ind, true);
         }
-    }
-
-    string save()
-    {
-        ParserState ps;
-        return save(ps);
     }
 
     static string escape(string str, BlockBE be, bool space = true)
@@ -575,77 +572,36 @@ class Expression
         return res;
     }
 
+    string save()
+    {
+        ParserState ps;
+        return save(ps);
+    }
+
     string save(ref ParserState ps, int tab = 0, long[] cbr = null, bool force_brackets = false)
     {
         string op = operator;
-        string prestr, poststr;
         string savestr;
 
-        BlockBE obr = ps.brackets;
-
-        foreach(j, arg; comments)
-        {
-            prestr ~= arg.save(ps, tab+1, null, false);
+        if (bt == BlockType.File)
+        {            
         }
-
-        if (ps.sharp != sharp)
+        else if (bt == BlockType.Comment)
         {
-            prestr ~= ps.brackets.begin ~ sharp ~ ps.sharp ~ "sharp" ~ ps.brackets.end ~ " ";
-            ps.sharp = sharp;
+            return op;
         }
-        if (ps.at != at)
+        else if (bt == BlockType.String)
         {
-            prestr ~= ps.brackets.begin ~ at ~ ps.sharp ~ "at" ~ ps.brackets.end ~ " ";
-            ps.at = at;
-        }
-        if (ps.dot != dot)
-        {
-            prestr ~= ps.brackets.begin ~ dot ~ ps.sharp ~ "dot" ~ ps.brackets.end ~ " ";
-            ps.dot = dot;
-        }
-
-        if (type == "comment")
-        {
-            op = bbe.begin ~ escape(op, bbe, false) ~ bbe.end;
-            if (ps.comments != bbe)
-            {
-                ps.comments = bbe;
-                prestr ~= ps.brackets.begin ~ bbe.begin ~ ps.sharp ~ "comments " ~ escape(bbe.end, ps.brackets) ~ ps.sharp ~ "end";
-                if (!bbe.escape.empty) prestr ~= " " ~ bbe.escape ~ ps.sharp ~ "escape";
-                if (bbe.nested) prestr ~= " " ~ ps.sharp ~ "escape";
-                prestr ~= ps.brackets.end ~ " ";
-            }
-            savestr ~= op;
-        }
-        else if (type == "string")
-        {
-            op = bbe.begin ~ escape(op, bbe, false) ~ bbe.end;
-            if (ps.strings != bbe)
-            {
-                ps.strings = bbe;
-                prestr ~= ps.brackets.begin ~ bbe.begin ~ ps.sharp ~ "strings " ~ bbe.end ~ ps.sharp ~ "end";
-                if (!bbe.escape.empty) prestr ~= " " ~ bbe.escape ~ ps.sharp ~ "escape";
-                if (bbe.nested) prestr ~= " " ~ ps.sharp ~ "escape";
-                prestr ~= ps.brackets.end ~ " ";
-            }
             savestr ~= op;
         }
         else
         {
+            auto bbe = ps.brackets;
             op = escape(op, bbe);
-            if (ps.brackets != bbe && !bbe.begin.empty)
-            {
-                prestr ~= ps.brackets.begin ~ bbe.begin ~ ps.sharp ~ "brackets " ~ bbe.end ~ ps.sharp ~ "end" ~ " ";
-                poststr = " " ~ bbe.begin ~ bbe.end ~ ps.brackets.end;
-
-                ps.brackets = bbe;
-            }
             savestr ~= op ~ (this.type.empty ? "" : ps.sharp ~ escape(type, bbe)) ~ (this.label.empty ? "" : ps.at ~ escape(label, bbe));
-            if (!bbe.begin.empty)
-                force_brackets = true;
         }
 
-        if (savestr.empty)
+        if (savestr.empty && bt != BlockType.File)
             savestr = ps.dot;
 
         if (!this.arguments.empty)
@@ -685,13 +641,16 @@ class Expression
 
                 if (this.type == "body" || this.type == "module" || this.type == "class" || this.type == "struct" || this.type == "if" || this.type == "switch")
                     savestr ~= "\n" ~ (' '.repeat((tab+1)*4).array) ~ arg.save(ps, tab+1, br, false);
-                else
+                else if (bt != BlockType.File)
                     savestr ~= " " ~ arg.save(ps, tab+1, br, false);
+                else
+                    savestr ~= arg.save(ps, 0, br, false);
             }
 
-            savestr = ps.brackets.begin ~ savestr ~ ps.brackets.end;
+            if (bt != BlockType.File)
+                savestr = ps.brackets.begin ~ savestr ~ ps.brackets.end;
         }
-        else if (force_brackets)
+        else if (force_brackets || arguments !is null)
             savestr = ps.brackets.begin ~ savestr ~ ps.brackets.end;
 
         long cj = 0;
@@ -707,8 +666,7 @@ class Expression
             savestr ~= ps.dot ~ arg.save(ps, tab+1, null, true);
         }
 
-        ps.brackets = obr;
-        return prestr ~ savestr ~ poststr;
+        return savestr;
     }
 
     string saveD(int tab = 0, Expression[] post = null, string ptype = null, string inner = null)
@@ -845,7 +803,14 @@ class Expression
                 break;
 
             default:
-                handled = false;
+                if (bt == BlockType.File)
+                {            
+                    foreach(i, arg; this.arguments)
+                    {
+                        savestr ~= arg.saveD(tab, null, this.type);
+                    }
+                }
+                else handled = false;
                 break;
         }
         
@@ -1358,32 +1323,6 @@ class Expression
                     }
                     break;
 
-                case "string":
-                    savestr ~= "\"" ~ escape(operator, bbe, false) ~ "\"";
-
-                    if (ptype == "if" && !this.post_operations.empty)
-                    {
-                        savestr ~= ")\n";
-                    }
-                    else if (ptype == "case")
-                    {
-                        savestr ~= ":\n";
-                    }
-
-                    foreach(i, arg; this.post_operations)
-                    {
-                        if (arg.type == "switch")
-                            savestr = arg.saveD(tab, null, "postop", savestr);
-                        else
-                            savestr ~= arg.saveD(tab, null, "postop");
-                    }
-
-                    if (ptype != "if" && ptype != "case" && tab >= 0)
-                    {
-                        savestr = tabstr ~ savestr ~ "\n";
-                    }
-                    break;
-
                 case "?":
                     if (arguments.length >= 3)
                     {
@@ -1597,7 +1536,7 @@ class Expression
                                 }
                                 savestr ~= ")";
                             }
-                            else if (!bbe.begin.empty)
+                            else if (arguments !is null)
                             {
                                 savestr ~= "()";
                             }
@@ -1950,13 +1889,14 @@ class Expression
     Expression toLexer()
     {
         Expression code, lexemTypes, lexer;
-        char[] text = readFile("lexer_templ.np");
+        string text = readText("lexer_templ.np");
         Expression ret = new Expression(text);
         ret.findBlocks(code, lexemTypes, lexer);
         assert(lexemTypes !is null);
         assert(code !is null);
 
-        ret.operator = "lexer_synth";
+        ret.operator = "lexer_synth.np";
+        ret.arguments[0].operator = "lexer_synth";
 
         bool[string] lTypes = (bool[string]).init;
 
@@ -2009,7 +1949,7 @@ class Expression
         copy.hidden = hidden;
         copy.level = level;
         copy.levels = levels;
-        copy.bbe = bbe;
+        copy.bt = bt;
         
         copy.x = x;
         copy.y = y;

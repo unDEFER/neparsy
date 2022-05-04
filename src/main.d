@@ -255,7 +255,6 @@ int main(string[] args)
                 pars.lexer = lex;
                 expr = pars.parse();
                 expr.fixParents();
-                expr.fixBbe();
                 expr.label = "D";
             }
             else if (args[2].endsWith(".np"))
@@ -308,7 +307,6 @@ int main(string[] args)
 
         Expression root = new Expression();
         root.type = "root";
-        SaveInfo*[] modules;
 
         foreach (i, arg; args[1..$])
         {
@@ -320,24 +318,21 @@ int main(string[] args)
                 pars.lexer = lex;
                 Expression expr = pars.parse();
                 expr.fixParents();
-                expr.fixBbe();
 
                 expr.parent = root;
+                expr.operator = expr.operator~".np";
+                expr.type = "*";
                 expr.index = root.arguments.length;
-                expr.label = "D";
                 root.arguments ~= expr;
-
-                modules ~= new SaveInfo(expr.operator~".np", true, expr);
             }
             else if (arg.endsWith(".np"))
             {
                 string mod = readText(arg);
                 Expression expr = new Expression(mod);
                 expr.parent = root;
+                expr.operator = arg;
                 expr.index = i;
                 root.arguments ~= expr;
-
-                modules ~= new SaveInfo(arg, true, expr);
             }
             else
             {
@@ -345,7 +340,7 @@ int main(string[] args)
             }
         }
 
-		IFACE = new Iface(root, modules);
+		IFACE = new Iface(root);
 		win.add(IFACE);
 		IFACE.show();
 		win.showAll();

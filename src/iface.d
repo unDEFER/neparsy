@@ -143,13 +143,6 @@ struct RotInfo
     Expression fun;
 }
 
-struct SaveInfo
-{
-    string filename;
-    bool saved;
-    Expression root;
-}
-
 struct Button
 {
     string text;
@@ -206,14 +199,12 @@ class Iface : DrawingArea
     bool click_processed = true;
     bool edit;
     bool post_edit;
-    SaveInfo*[] modules;
 
 public:
-	this(Expression _expression, SaveInfo*[] _modules)
+	this(Expression _expression)
 	{
         root_expr = _expression;
         selected = _expression;
-        modules = _modules;
         RotInfo ri;
         ri.fun = selected;
         rot_info ~= ri;
@@ -443,21 +434,6 @@ public:
         return ret;
     }
 
-    void fixBbe(Expression expr)
-    {
-        if (expr !is null && expr.type != "comment" && expr.type != "string")
-        {
-            if (expr.arguments is null)
-            {
-                expr.bbe = BlockBE(null, null, null, false);
-            }
-            else
-            {
-                expr.bbe = BlockBE("(", ")", "\\", true);
-            }
-        }
-    }
-
     void updateView()
     {
         auto expr = selected;
@@ -479,9 +455,6 @@ public:
 
         if (expr.parent !is null && !expr.post)
             expr.parent.focus_index = expr.index;
-
-        fixBbe(selected);
-        fixBbe(selected.parent);
 
         //writefln("Select %s (%s), fsel %s", selected, rot_info.length, fselected);
         redraw();
@@ -539,7 +512,7 @@ public:
 
             selected = sel.arguments[$-1];
 
-            getModule(selected).saved = false;
+            getFile(selected).type = "*";
             sizes_invalid = 1;
             getSize([root_expr], DrawState.init);
             updateView();
@@ -640,17 +613,6 @@ public:
 
                 sizes_invalid = 1;
             }
-
-            if (selected.type == "string")
-            {
-                selected.bbe = BlockBE("\"", "\"", "\\", false);
-            }
-            else
-            {
-                selected.bbe = BlockBE("(", ")", "\\", true);
-            }
-
-            fixBbe(selected);
         }
     }
 
@@ -668,7 +630,7 @@ public:
         }
 
         selected.operator ~= key;
-        getModule(selected).saved = false;
+        getFile(selected).type = "*";
         sizes_invalid = 1;
         redraw();
         edit = true;
@@ -681,7 +643,7 @@ public:
 
         if (!selected.operator.empty)
             selected.operator = selected.operator[0..$-selected.operator.strideBack];
-        getModule(selected).saved = false;
+        getFile(selected).type = "*";
         sizes_invalid = 1;
         redraw();
         edit = true;
@@ -715,7 +677,7 @@ public:
             selected.parent.arguments = selected.parent.arguments[0..selected.index+1] ~ ne ~ selected.parent.arguments[selected.index+1..$];
             selected = ne;
         }
-        getModule(selected).saved = false;
+        getFile(selected).type = "*";
         sizes_invalid = 1;
         getSize([root_expr], DrawState.init);
         updateView();
@@ -756,7 +718,7 @@ public:
             ne.arguments = [selected];
             selected = ne;
         }
-        getModule(selected).saved = false;
+        getFile(selected).type = "*";
         sizes_invalid = 2;
         getSize([root_expr], DrawState.init);
         updateView();
@@ -793,7 +755,7 @@ public:
         selected.arguments = ne ~ selected.arguments;
         selected = ne;
 
-        getModule(selected).saved = false;
+        getFile(selected).type = "*";
         sizes_invalid = 2;
         getSize([root_expr], DrawState.init);
         updateView();
@@ -844,7 +806,7 @@ public:
                 selected.app_args++;
         }
 
-        getModule(selected).saved = false;
+        getFile(selected).type = "*";
         sizes_invalid = 1;
         getSize([root_expr], DrawState.init);
         updateView();
@@ -880,7 +842,7 @@ public:
                 selected.app_args--;
         }
 
-        getModule(selected).saved = false;
+        getFile(selected).type = "*";
         sizes_invalid = 1;
         getSize([root_expr], DrawState.init);
         updateView();
@@ -930,7 +892,7 @@ public:
                 selected = selected.parent;
             }
         }
-        getModule(selected).saved = false;
+        getFile(selected).type = "*";
         sizes_invalid = 1;
         updateView();
         edit = true;
@@ -945,7 +907,7 @@ public:
         selected.post_operations = null;
         selected.focus_index = 0;
 
-        getModule(selected).saved = false;
+        getFile(selected).type = "*";
         sizes_invalid = 1;
         updateView();
         edit = true;
@@ -980,7 +942,7 @@ public:
         }
         selected = c;
 
-        getModule(selected).saved = false;
+        getFile(selected).type = "*";
         sizes_invalid = 1;
         getSize([root_expr], DrawState.init);
         updateView();
@@ -1005,7 +967,7 @@ public:
             selected.index--;
         }
 
-        getModule(selected).saved = false;
+        getFile(selected).type = "*";
         sizes_invalid = 2;
         getSize([root_expr], DrawState.init);
         updateView();
@@ -1031,7 +993,7 @@ public:
             selected.index++;
         }
 
-        getModule(selected).saved = false;
+        getFile(selected).type = "*";
         sizes_invalid = 2;
         getSize([root_expr], DrawState.init);
         updateView();
@@ -1072,31 +1034,29 @@ public:
         }
     }
 
-    SaveInfo *getModule(Expression expr)
+    Expression getFile(Expression expr)
+    {
+        if (expr.parent is null) return null;
+        if (expr.bt != BlockType.File) return getFile(expr.parent);
+        return expr;
+    }
+
+    Expression getModule(Expression expr)
     {
         if (expr.parent is null) return null;
         if (expr.type != "module") return getModule(expr.parent);
-        foreach (mod; modules)
-        {
-            if (mod.root is expr)
-                return mod;
-        }
-
-        SaveInfo *mod = new SaveInfo(expr.operator~".np", false, expr);
-        modules ~= mod;
-
-        return mod;
+        return expr;
     }
 
     void save()
     {
-        auto mod = getModule(selected);
-        if (mod is null) return;
-        if (!mod.saved)
+        auto efile = getFile(selected);
+        if (efile is null) return;
+        if (efile.type == "*")
         {
-            mod.saved = true;
-            string savestr = mod.root.save();
-            auto file = File(mod.filename, "w");
+            efile.type = "";
+            string savestr = efile.save();
+            auto file = File(efile.operator, "w");
             file.writeln(savestr);
         }
     }
@@ -1104,14 +1064,15 @@ public:
     void saveD()
     {
         auto mod = getModule(selected);
-        if (mod is null) return;
-        auto filename = mod.filename;
+        auto efile = getFile(mod);
+        if (efile is null) return;
+        auto filename = efile.operator;
         if ( filename.endsWith(".np") )
             filename = filename[0..$-3];
 
-        if (mod.root.label == "D")
+        if (mod.label == "D")
         {
-            string savestr = mod.root.saveD();
+            string savestr = efile.saveD();
             auto file = File(filename~".d", "w");
             file.writeln(savestr);
         }
@@ -1120,10 +1081,11 @@ public:
     void toLexer()
     {
         auto mod = getModule(selected);
-        if (mod is null) return;
-        if (mod.root.label == "Lexer")
+        auto efile = getFile(mod);
+        if (efile is null) return;
+        if (mod.label == "Lexer")
         {
-            auto root = mod.root.toLexer();
+            auto root = efile.toLexer();
             root.parent = root_expr;
             root.index = root_expr.arguments.length;
             root_expr.arguments ~= root;
@@ -2180,8 +2142,8 @@ protected:
                         }
                     }
 
-                    string text = (expr.post ? "." : "") ~ (expr.operator.empty ? expr.type : expr.operator) ~ (expr.arguments.empty && expr.bbe.begin == "(" ? "()" : "");
-                    if (expr.type == "module" && !getModule(expr).saved)
+                    string text = (expr.post ? "." : "") ~ (expr.operator.empty ? expr.type : expr.operator) ~ (expr.arguments.empty && expr.arguments !is null ? "()" : "");
+                    if (expr.bt == BlockType.File && expr.type == "*")
                         text = text ~ " *";
 
                     Color col = Color(0.0, 0.0, 0.0, 1.0);
