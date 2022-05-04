@@ -511,7 +511,7 @@ class Expression
         {
             pp.postop = c;
             c.parent = pp;
-            c.index = -1;
+            if (c.index == 0) c.index = -1;
             pp = c;
         }
     }
@@ -617,14 +617,19 @@ class Expression
             long[] a, b, c;
             foreach(i, arg; this.arguments)
             {
-                if (arg.postop !is null)
+                auto arg2 = arg.postop;
+                long j;
+                while (arg2 !is null)
                 {
-                    if (arg.postop.index < -1)
+                    if (arg2.index < -1)
                     {
-                        a ~= i+arg.postop.index+1;
+                        a ~= i+arg2.index+1;
                         b ~= i;
-                        c ~= 0;
+                        c ~= j;
                     }
+
+                    arg2 = arg2.postop;
+                    j++;
                 }
             }
 
@@ -661,17 +666,24 @@ class Expression
         else if (force_brackets || arguments !is null)
             savestr = ps.brackets.begin ~ savestr ~ ps.brackets.end;
 
-        long cj = 0;
-
-        if (postop !is null)
+        if (index >= 0)
         {
-            if (cj < cbr.length && cbr[cj] == 0)
-            {
-                savestr ~= ps.brackets.end;
-                cj++;
-            }
+            long cj = 0;
 
-            savestr ~= ps.dot ~ postop.save(ps, tab+1, null, true);
+            auto arg = postop;
+            long j;
+            while (arg !is null)
+            {
+                if (cj < cbr.length && cbr[cj] == j)
+                {
+                    savestr ~= ps.brackets.end;
+                    cj++;
+                }
+
+                savestr ~= ps.dot ~ arg.save(ps, tab+1, null, true);
+                arg = arg.postop;
+                j++;
+            }
         }
 
         return savestr;

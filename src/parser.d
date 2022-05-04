@@ -541,7 +541,6 @@ class Parser
             Expression expr = new Expression;
             expr.arguments ~= ret;
             ret = expr;
-            ret.postop = type;
             Var2:
             getLexem;
             if (lexer == LexemType.Identifier)
@@ -570,8 +569,8 @@ class Parser
             }
             else if (lexer == ";")
             {
-                type.index = (ret.arguments.length);
-                ret.arguments[($ - 1)].postop = type;
+                type.index = (-ret.arguments.length);
+                ret.arguments[($ - 1)].addPosts([type]);
                 return ret.arguments;
             }
             else
@@ -1180,7 +1179,7 @@ class Parser
                         }
                         else if (lexer == ";")
                         {
-                            type.index = (multi.arguments.length);
+                            type.index = (-multi.arguments.length);
                             var.postop = type;
                             return multi.arguments;
                         }
