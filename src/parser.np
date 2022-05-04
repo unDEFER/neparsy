@@ -106,7 +106,7 @@
                                                         (#. LexemType Identifier).(#body
                                                                 (= (rename#var Expression) (#new Expression))
                                                                 (= (#. rename operator) (#. lexer lexem))
-                                                                (~= (#. name post_operations) rename)
+                                                                (= (#. name postop) rename)
                                                                 getLexem
                                                                 (lexer#if
                                                                     ",".(#body
@@ -256,7 +256,7 @@
                                                     (= (init Expression) (#new Expression))
                                                     (= (#. init operator) (#. lexer lexem))
                                                     (= (#. init type) "init")
-                                                    (~= (#. val post_operations) init)
+                                                    (= (#. val postop) init)
                                                     getLexem
                                                     #noop)
                                             #else.(#body
@@ -298,7 +298,7 @@
                     ":".(#body
                             (= (#. type type) ":")
                             (= (#. type arguments) pp)
-                            (= (#. type post_operations) null)
+                            (= (#. type postop) null)
                             (#return [type]))
                     "this".(#body
                             (= (#. type type) "constructor"))
@@ -311,7 +311,7 @@
                 (lexer#if@Var
                     (#. LexemType Identifier).(#body
                             (= (#. ret operator) (#. lexer lexem))
-                            (~= (#. type post_operations) pp)
+                            (#. type (addPosts pp))
                             (~= (#. ret arguments) type)
                             getLexem)
                     "*".(#body
@@ -367,7 +367,7 @@
                             (lexer#if
                                 "{".(#body
                                         back
-                                        (~= (#. ret post_operations) (#[ getBody)))
+                                        (= (#. ret postop) getBody))
                                 ";".(#body
                                         #noop)
                                 #else.(#body
@@ -378,7 +378,6 @@
                             (= (expr#var Expression) (#new Expression))
                             (~= (#. expr arguments) ret)
                             (= ret expr)
-                            (~= (#. ret post_operations) type)
                             getLexem@Var2
                             (lexer#if
                                 (#. LexemType Identifier).(#body
@@ -395,11 +394,11 @@
                                 "=".(#body
                                         (= (init Expression) getExpression)
                                         (= (#. init type) "init")
-                                        (~= (#. expr arguments (#[ (- $ 1)) post_operations) init)
+                                        (= (#. expr arguments (#[ (- $ 1)) postop) init)
                                         (#goto Comma))
                                 ";".(#body
-                                        (= (#. type app_args) (#. ret arguments length))
-                                        (~= (#. ret arguments (#[ (- $ 1)) post_operations) type)
+                                        (= (#. type index) (-#unary (#. ret arguments length)))
+                                        (#. ret arguments (#[ (- $ 1)) (addPosts [type]))
                                         (#return (#. ret arguments)))
                                 #else.(#body
                                         (writefln (#" = or , or ; Expected not %s) lexer)
@@ -407,7 +406,7 @@
                     "=".(#body
                             (= (init Expression) getExpression)
                             (= (#. init type) "init")
-                            (~= (#. ret post_operations) init)
+                            (= (#. ret postop) init)
                             (#goto Eq))
                     ";".(#body
                             #noop)
@@ -446,7 +445,7 @@
                     "if".(#body
                             (= (expr#var Expression) (#new Expression))
                             (= (#. expr type) "if")
-                            (~= (#. expr post_operations) post)
+                            (#. expr (addPosts post))
                             (= cexpr expr)
                             getLexem@Init
                             (lexer#if
@@ -458,7 +457,7 @@
                                             #else.(#body
                                                     (writefln (#" Expected . not %s) lexer)
                                                     (assert 0)))
-                                        (= (#. cond post_operations) (#[ getBody))
+                                        (= (#. cond postop) getBody)
                                         (~= (#. expr arguments) cond)
                                         (= back lexer)
                                         getLexem
@@ -473,7 +472,7 @@
                                                                 (= lexer back)
                                                                 (= (els Expression) (#new Expression))
                                                                 (= (#. els type) "else")
-                                                                (= (#. els post_operations) (#[ getBody))
+                                                                (= (#. els postop) getBody)
                                                                 (~= (#. expr arguments) els))))
                                             #else.(#body
                                                     (= lexer back))))
@@ -484,7 +483,7 @@
                     "switch".(#body
                             (= (expr#var Expression) (#new Expression))
                             (= (#. expr type) "switch")
-                            (~= (#. expr post_operations) post)
+                            (#. expr (addPosts post))
                             getLexem
                             (lexer#if
                                 "(".(#body
@@ -495,7 +494,7 @@
                                             #else.(#body
                                                     (writefln (#" Expected . not %s) lexer)
                                                     (assert 0)))
-                                        (~= (#. var post_operations) expr)
+                                        (= (#. var postop) expr)
                                         getLexem
                                         (lexer#if
                                             "{".(#body
@@ -519,8 +518,8 @@
                                             #else.(#body
                                                     (= lexer back)
                                                     (= (bod Expression) getCaseBody)
-                                                    (= (#. bod app_args) (- (#. expr arguments length) ind))
-                                                    (~= (#. expr arguments (#[ (- $ 1)) post_operations) bod)
+                                                    (= (#. bod index) (- ind (#. expr arguments length)))
+                                                    (= (#. expr arguments (#[ (- $ 1)) postop) bod)
                                                     (#goto Case)))
                                         (lexer#if
                                             ":".(#body
@@ -534,7 +533,7 @@
                     "for".(#body
                             (= (expr#var Expression) (#new Expression))
                             (= (#. expr type) "for")
-                            (~= (#. expr post_operations) post)
+                            (#. expr (addPosts post))
                             getLexem
                             (lexer#if
                                 "(".(#body
@@ -561,7 +560,7 @@
                                             #else.(#body
                                                     (writefln (#" Expected . not %s) lexer)
                                                     (assert 0)))
-                                        (= (#. expr post_operations) (#[ getBody))
+                                        (= (#. expr postop) getBody)
                                         (= (#. expr arguments) (#[ iexpr cexpr pexpr))
                                         (#return [expr]))
                                 #else.(#body
@@ -570,7 +569,7 @@
                     "foreach".(#body
                             (= (expr#var Expression) (#new Expression))
                             (= (#. expr type) "foreach")
-                            (~= (#. expr post_operations) post)
+                            (#. expr (addPosts post))
                             getLexem
                             (lexer#if
                                 "(".(#body
@@ -614,7 +613,7 @@
                                             #else.(#body
                                                     (writefln (#" Expected ; not %s) lexer)
                                                     (assert 0)))
-                                        (~= (#. bvar post_operations) p1)
+                                        (#. bvar (addPosts p1))
                                         (= (cexpr Expression) getExpression)
                                         (lexer#if
                                             ")".(#body
@@ -622,7 +621,7 @@
                                             #else.(#body
                                                     (writefln (#" Expected . not %s) lexer)
                                                     (assert 0)))
-                                        (= (#. expr post_operations) (#[ getBody))
+                                        (= (#. expr postop) getBody)
                                         (= (#. expr arguments) (#[ avar bvar cexpr))
                                         (#return [expr]))
                                 #else.(#body
@@ -631,7 +630,7 @@
                     "while".(#body
                             (= (expr#var Expression) (#new Expression))
                             (= (#. expr type) "while")
-                            (~= (#. expr post_operations) post)
+                            (#. expr (addPosts post))
                             getLexem
                             (lexer#if
                                 "(".(#body
@@ -642,7 +641,7 @@
                                             #else.(#body
                                                     (writefln (#" Expected . not %s) lexer)
                                                     (assert 0)))
-                                        (= (#. expr post_operations) (#[ getBody))
+                                        (= (#. expr postop) getBody)
                                         (= (#. expr arguments) (#[ cexpr))
                                         (#return [expr]))
                                 #else.(#body
@@ -651,8 +650,8 @@
                     "do".(#body
                             (= (expr#var Expression) (#new Expression))
                             (= (#. expr type) "do")
-                            (~= (#. expr post_operations) post)
-                            (= (#. expr post_operations) (#[ getBody))
+                            (#. expr (addPosts post))
+                            (#. expr (addPosts (#[ getBody)))
                             getLexem
                             (lexer#if
                                 "while".(#body
@@ -823,7 +822,7 @@
                                                     (= (#. expr arguments) null)
                                                     (= (multi#var Expression) (#new Expression))
                                                     (~= (#. multi arguments) expr)
-                                                    (~= (#. multi post_operations) type)
+                                                    (= (#. multi postop) type)
                                                     getLexem@Var
                                                     (lexer#if
                                                         (#. LexemType Identifier).(#body
@@ -836,8 +835,8 @@
                                                                     ",".(#body
                                                                             (#goto Var))
                                                                     ";".(#body
-                                                                            (= (#. type app_args) (#. multi arguments length))
-                                                                            (~= (#. var post_operations) type)
+                                                                            (= (#. type index) (-#unary (#. multi arguments length)))
+                                                                            (= (#. var postop) type)
                                                                             (#return (#. multi arguments)))
                                                                     "=".(#body
                                                                             (= (assign#var Expression) (#new Expression))
@@ -897,7 +896,7 @@
                                                     (lexer#if
                                                         "{".(#body
                                                                 (= lexer back)
-                                                                (~= (#. expr post_operations) (#[ getBody))
+                                                                (= (#. expr postop) getBody)
                                                                 (#return [expr]))
                                                         ";".(#body
                                                                 (#return [expr]))
@@ -1073,7 +1072,7 @@
                                         (= (init Expression) getExpression)
                                         (= (#. iarg type) "init")
                                         (#. iarg (addChild init))
-                                        (~= (#. arg post_operations) iarg)
+                                        (= (#. arg postop) iarg)
                                         (lexer#if
                                             ")".(#body
                                                     #noop)
@@ -1506,3 +1505,4 @@
         (back#function void).(#body
                 (= backed true))
         (backed bool)))
+

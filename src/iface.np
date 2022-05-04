@@ -216,7 +216,7 @@
                     (is root null).(#body
                             (= root root_expr)))
                 (= (ret#var Expression) root)
-                (#foreach . arg (~ (#. root arguments) (#. root post_operations))).(#body
+                (#foreach . arg (~ (#. root arguments) (#? (is (#. root postop) null) [] ([] (#. root postop))))).(#body
                         //if (arg.hidden && arg.type != "body" && !isNeedHide(arg)) continue;
                         //if (arg.hidden && arg.type != "body" && !isNeedHide(arg)) continue;
                         (= arg (findCircPos expr posa arg))
@@ -312,17 +312,15 @@
                             (= root expr)))
                 (= (ret#var Expression) root)
                 (#if
-                    (&& (#. root post) (< (+ (#. root index) 1) (#. root parent post_operations length))).(#body
-                            (= ret (#. root parent post_operations (#[ (+ (#. root index) 1)))))
                     (!#unary (#. root arguments empty)).(#body
                             (= ret (#. root arguments (#[ (#. root focus_index)))))
-                    (!#unary (#. root post_operations empty)).(#body
-                            (= ret (#. root post_operations (#[ 0))))
+                    (!is (#. root postop) null).(#body
+                            (= ret (#. root postop)))
                     #else.(#body
                             (= (f#var auto) (parentOfFun root))
                             (#if
-                                (&& (!is f null) (!#unary (#. f post_operations empty))).(#body
-                                        (= ret (#. f post_operations (#[ 0)))))))
+                                (&& (!is f null) (!is (#. f postop) null)).(#body
+                                        (= ret (#. f postop))))))
                 (#if
                     (== (#. ret type) "body").(#body
                             (#if
@@ -337,7 +335,7 @@
                 (#if
                     (!is (#. root parent) null).(#body
                             (#if
-                                (#. root post).(#body
+                                (< (#. root index) 0).(#body
                                         (#if
                                             (&& (> dir 0) (> (#. root arguments length) 0)).(#body
                                                     (= ret (#. root arguments (#[ 0))))))
@@ -360,7 +358,7 @@
                 (= (#. ri fun) expr)
                 (~= rot_info ri)
                 (#if
-                    (&& (!is (#. expr parent) null) (!#unary (#. expr post))).(#body
+                    (&& (!is (#. expr parent) null) (>= (#. expr index) 0)).(#body
                             (= (#. expr parent focus_index) (#. expr index)))
                     //writefln("Select %s (%s), fsel %s", selected, rot_info.length, fselected);
                     //writefln("Select %s (%s), fsel %s", selected, rot_info.length, fselected);
@@ -371,7 +369,7 @@
                 (#if
                     (&& (!is (#. sel parent) null) (== (#. sel parent type) ".")).(#body
                             (= sel (#. sel parent)))
-                    (&& (!is (#. selected parent) null) (!#unary (#. selected post))).(#body
+                    (&& (!is (#. selected parent) null) (>= (#. selected index) 0)).(#body
                             (= (ne#var auto) (#new (Expression)))
                             (= (#. ne type) ".")
                             (= (#. ne parent) (#. selected parent))
@@ -381,10 +379,11 @@
                             (= (#. ne r1) (#. selected r1))
                             (= (#. ne r2) (#. selected r2))
                             (= (#. ne center) (#. selected center))
-                            (= (#. ne post_operations) (#. selected post_operations))
-                            (= (#. selected post_operations) null)
-                            (#foreach . arg (#. ne post_operations)).(#body
-                                    (= (#. arg parent) ne))
+                            (= (#. ne postop) (#. selected postop))
+                            (= (#. selected postop) null)
+                            (#if
+                                (!is (#. ne postop) null).(#body
+                                        (= (#. ne postop parent) ne)))
                             (= (#. selected parent arguments (#[ (#. selected index))) ne)
                             (= (#. selected parent) ne)
                             (= (#. selected index) 0)
@@ -542,7 +541,7 @@
                             #return))
                 (end_edit)
                 (#if
-                    (&& (!is (#. selected parent) null) (!#unary (#. selected post))).(#body
+                    (&& (!is (#. selected parent) null) (>= (#. selected index) 0)).(#body
                             (= (ne#var auto) (#new (Expression)))
                             (= (#. ne parent) (#. selected parent))
                             (= (#. ne index) (+ (#. selected index) 1))
@@ -569,7 +568,7 @@
                             (print '.')
                             #return))
                 (#if
-                    (&& (!is (#. selected parent) null) (!#unary (#. selected post))).(#body
+                    (&& (!is (#. selected parent) null) (>= (#. selected index) 0)).(#body
                             (= (ne#var auto) (#new (Expression)))
                             (= (#. ne parent) (#. selected parent))
                             (= (#. ne index) (#. selected index))
@@ -578,10 +577,11 @@
                             (= (#. ne r1) (#. selected r1))
                             (= (#. ne r2) (#. selected r2))
                             (= (#. ne center) (#. selected center))
-                            (= (#. ne post_operations) (#. selected post_operations))
-                            (= (#. selected post_operations) null)
-                            (#foreach . arg (#. ne post_operations)).(#body
-                                    (= (#. arg parent) ne))
+                            (= (#. ne postop) (#. selected postop))
+                            (= (#. selected postop) null)
+                            (#if
+                                (!is (#. ne postop) null).(#body
+                                        (= (#. ne postop parent) ne)))
                             (= (#. selected parent arguments (#[ (#. selected index))) ne)
                             (= (#. selected parent) ne)
                             (= (#. selected index) 0)
@@ -624,36 +624,34 @@
                     (is selected null).(#body
                             #return))
                 (#if
-                    (&& (!#unary post_edit) (#. selected post_operations empty)).(#body
+                    (&& (!#unary post_edit) (is (#. selected postop) null)).(#body
                             (= (ne#var auto) (#new (Expression)))
                             (= (#. ne parent) selected)
-                            (= (#. ne index) (#. selected post_operations length))
-                            (= (#. ne post) true)
-                            (= (#. ne app_args) 1)
+                            (= (#. ne index) (-#unary 1))
                             (= (#. ne x) (#. selected x))
                             (= (#. ne y) (#. selected y))
                             (= (#. ne center) (#. selected center))
-                            (~= (#. selected post_operations) ne)
+                            (= (#. selected postop) ne)
                             (= selected ne)
                             (#if
                                 (|| (== (#. ne parent type) "function") (== (#. ne parent type) "for") (== (#. ne parent type) "while") (== (#. ne parent type) "do") (== (#. ne parent type) "foreach") (== (#. ne parent parent type) "if") (== (#. ne parent parent type) "switch")).(#body
                                         (= (#. ne type) "body")
                                         (comma)
                                         (= selected ne))))
-                    (!#unary (#. selected post_operations empty)).(#body
-                            (= (pe#var Expression) (#. selected post_operations (#[ 0)))
+                    (!is (#. selected postop) null).(#body
+                            (= (pe#var Expression) (#. selected postop))
                             (#if
-                                (>= (#. selected index) (#. pe app_args)).(#body
-                                        (++#post (#. pe app_args)))))
+                                (>= (#. selected index) (-#unary (#. pe index))).(#body
+                                        (--#post (#. pe index)))))
                     #else.(#body
                             (= (ep#var Expression) (#. selected parent))
-                            (#while (#. ep post)).(#body
-                                    (assert (is (#. ep parent post_operations (#[ (#. ep index))) ep))
+                            (#while (< (#. ep index) 0)).(#body
+                                    (assert (is (#. ep parent postop) ep))
                                     (= ep (#. ep parent)))
                             (assert (is (#. ep parent arguments (#[ (#. ep index))) ep))
                             (#if
-                                (>= (#. ep index) (#. selected app_args)).(#body
-                                        (++#post (#. selected app_args))))))
+                                (>= (#. ep index) (-#unary (#. selected index))).(#body
+                                        (--#post (#. selected index))))))
                 (= (#. (getFile selected) type) "*")
                 (= sizes_invalid 1)
                 (getSize ([] root_expr) (#. DrawState init))
@@ -664,26 +662,24 @@
                     (is selected null).(#body
                             #return))
                 (#if
-                    (&& (!#unary post_edit) (#. selected post_operations empty)).(#body
+                    (&& (!#unary post_edit) (is (#. selected postop) null)).(#body
                             (= (ne#var auto) (#new (Expression)))
                             (= (#. ne parent) selected)
-                            (= (#. ne index) (#. selected post_operations length))
-                            (= (#. ne post) true)
-                            (= (#. ne app_args) 1)
+                            (= (#. ne index) (-#unary 1))
                             (= (#. ne x) (#. selected x))
                             (= (#. ne y) (#. selected y))
                             (= (#. ne center) (#. selected center))
-                            (~= (#. selected post_operations) ne)
+                            (= (#. selected postop) ne)
                             (= selected ne))
-                    (!#unary (#. selected post_operations empty)).(#body
-                            (= (pe#var Expression) (#. selected post_operations (#[ 0)))
+                    (!is (#. selected postop) null).(#body
+                            (= (pe#var Expression) (#. selected postop))
                             (#if
-                                (> (#. pe app_args) 1).(#body
-                                        (--#post (#. pe app_args)))))
+                                (< (#. pe index) (-#unary 1)).(#body
+                                        (++#post (#. pe index)))))
                     #else.(#body
                             (#if
-                                (> (#. selected app_args) 1).(#body
-                                        (--#post (#. selected app_args))))))
+                                (< (#. selected index) (-#unary 1)).(#body
+                                        (++#post (#. selected index))))))
                 (= (#. (getFile selected) type) "*")
                 (= sizes_invalid 1)
                 (getSize ([] root_expr) (#. DrawState init))
@@ -707,7 +703,7 @@
                                 (> (#. selected parent focus_index) 0).(#body
                                         (--#post (#. selected parent focus_index))))
                             (#if
-                                (!#unary (#. selected post)).(#body
+                                (>= (#. selected index) 0).(#body
                                         (#foreach . arg (#. selected parent arguments (#[ (+ (#. selected index) 1) .. $))).(#body
                                                 (--#post (#. arg index)))
                                         (= (#. selected parent arguments) (~ (#. selected parent arguments (#[ 0 .. (#. selected index))) (#. selected parent arguments (#[ (+ (#. selected index) 1) .. $))))
@@ -717,9 +713,7 @@
                                             #else.(#body
                                                     (= selected (#. selected parent)))))
                                 #else.(#body
-                                        (#foreach . arg (#. selected parent post_operations (#[ (+ (#. selected index) 1) .. $))).(#body
-                                                (--#post (#. arg index)))
-                                        (= (#. selected parent post_operations) (~ (#. selected parent post_operations (#[ 0 .. (#. selected index))) (#. selected parent post_operations (#[ (+ (#. selected index) 1) .. $))))
+                                        (= (#. selected parent postop) null)
                                         (= selected (#. selected parent))))))
                 (= (#. (getFile selected) type) "*")
                 (= sizes_invalid 1)
@@ -731,7 +725,7 @@
                     (is selected null).(#body
                             #return))
                 (= (#. selected arguments) null)
-                (= (#. selected post_operations) null)
+                (= (#. selected postop) null)
                 (= (#. selected focus_index) 0)
                 (= (#. (getFile selected) type) "*")
                 (= sizes_invalid 1)
@@ -750,12 +744,12 @@
                             #return))
                 (= (c#var auto) (#. scopy deepcopy))
                 (#if
-                    (!#unary (#. selected post)).(#body
+                    (>= (#. selected index) 0).(#body
                             (= (#. selected parent arguments (#[ (#. selected index))) c)
                             (= (#. c parent) (#. selected parent))
                             (= (#. c index) (#. selected index)))
                     #else.(#body
-                            (= (#. selected parent post_operations (#[ (#. selected index))) c)
+                            (= (#. selected parent postop) c)
                             (= (#. c parent) (#. selected parent))
                             (= (#. c index) (#. selected index))))
                 (= selected c)
@@ -771,15 +765,9 @@
                 (#if
                     (<= (#. selected index) 0).(#body
                             #return))
-                (#if
-                    (!#unary (#. selected post)).(#body
-                            (++#post (#. selected parent arguments (#[ (- (#. selected index) 1)) index))
-                            (swap (#. selected parent arguments (#[ (#. selected index))) (#. selected parent arguments (#[ (- (#. selected index) 1))))
-                            (--#post (#. selected index)))
-                    #else.(#body
-                            (++#post (#. selected parent post_operations (#[ (- (#. selected index) 1)) index))
-                            (swap (#. selected parent post_operations (#[ (#. selected index))) (#. selected parent post_operations (#[ (- (#. selected index) 1))))
-                            (--#post (#. selected index))))
+                (++#post (#. selected parent arguments (#[ (- (#. selected index) 1)) index))
+                (swap (#. selected parent arguments (#[ (#. selected index))) (#. selected parent arguments (#[ (- (#. selected index) 1))))
+                (--#post (#. selected index))
                 (= (#. (getFile selected) type) "*")
                 (= sizes_invalid 2)
                 (getSize ([] root_expr) (#. DrawState init))
@@ -790,20 +778,14 @@
                     (is selected null).(#body
                             #return))
                 (#if
-                    (!#unary (#. selected post)).(#body
-                            (#if
-                                (>= (#. selected index) (- (#. selected parent arguments length) 1)).(#body
-                                        #return))
-                            (--#post (#. selected parent arguments (#[ (+ (#. selected index) 1)) index))
-                            (swap (#. selected parent arguments (#[ (#. selected index))) (#. selected parent arguments (#[ (+ (#. selected index) 1))))
-                            (++#post (#. selected index)))
-                    #else.(#body
-                            (#if
-                                (>= (#. selected index) (- (#. selected parent post_operations length) 1)).(#body
-                                        #return))
-                            (--#post (#. selected parent post_operations (#[ (+ (#. selected index) 1)) index))
-                            (swap (#. selected parent post_operations (#[ (#. selected index))) (#. selected parent post_operations (#[ (+ (#. selected index) 1))))
-                            (++#post (#. selected index))))
+                    (<= (#. selected index) 0).(#body
+                            #return))
+                (#if
+                    (>= (#. selected index) (- (#. selected parent arguments length) 1)).(#body
+                            #return))
+                (--#post (#. selected parent arguments (#[ (+ (#. selected index) 1)) index))
+                (swap (#. selected parent arguments (#[ (#. selected index))) (#. selected parent arguments (#[ (+ (#. selected index) 1))))
+                (++#post (#. selected index))
                 (= (#. (getFile selected) type) "*")
                 (= sizes_invalid 2)
                 (getSize ([] root_expr) (#. DrawState init))
@@ -1013,7 +995,7 @@
                             (|| (== (#. expr type) ".") (== (#. expr type) "[")).(#body
                                     (+= tw (arcTextWidthRecursive (#. expr arguments) radius)))
                             #else.(#body
-                                    (= (text#var string) (~ (#? (#. expr post) "." "") (#? (#. expr operator empty) (#. expr type) (#. expr operator))))
+                                    (= (text#var string) (~ (#? (< (#. expr index) 0) "." "") (#? (#. expr operator empty) (#. expr type) (#. expr operator))))
                                     (#if
                                         (#. text empty).(#body
                                                 (= text ".")))
@@ -1225,7 +1207,7 @@
                                     (#if
                                         (== i 0).(#body
                                                 (= (#. expr center levels) 0)))
-                                    (= (text#var string) (~ (#? (#. expr post) "." "") (#? (#. expr operator empty) (#. expr type) (#. expr operator))))
+                                    (= (text#var string) (~ (#? (< (#. expr index) 0) "." "") (#? (#. expr operator empty) (#. expr type) (#. expr operator))))
                                     (#if
                                         (#. text empty).(#body
                                                 (= text ".")))
@@ -1236,7 +1218,9 @@
                                     (= (#. ds2 post_dir) 0)
                                     (= ds2 (getSize (#cast (#. Expression #[) (#. expr arguments)) ds2))
                                     (= (#. ds2 post_dir) 1)
-                                    (= ds2 (getSize (#cast (#. Expression #[) (#. expr post_operations)) ds2))
+                                    (#if
+                                        (!is (#. expr postop) null).(#body
+                                                (= ds2 (getSize (#cast (#. Expression #[) ([] (#. expr postop))) ds2))))
                                     (#if
                                         (< (#. expr pw (#[ 1)) (#. expr pw (#[ 0))).(#body
                                                 (= (#. expr pw (#[ 1)) (#. expr pw (#[ 0))))
@@ -1274,13 +1258,13 @@
                             (>= (#. ds llimit) 0).(#body
                                     //writefln("%s. %s#%s", ds.llimit, expr.operator, expr.type);
                                     (#if
-                                        (&& (!is (#. expr parent) null) (|| (== (#. expr parent type) "root") (== (#. expr parent type) "module") (== (#. expr parent type) "body"))).(#body
+                                        (&& (!is (#. expr parent) null) (|| (== (#. expr parent type) "root") (== (#. expr parent type) "module") (== (#. expr parent bt) (#. BlockType File)) (== (#. expr parent type) "body"))).(#body
                                                 #continue))
                                     (= (ds2#var auto) ds)
                                     (#if
-                                        (|| (is (#. expr parent) null) (!#unary (#. expr parent post)) (== (#. expr parent type) "body") (== (#. expr parent type) "module")).(#body
+                                        (|| (is (#. expr parent) null) (>= (#. expr parent index) 0) (== (#. expr parent type) "body") (== (#. expr parent type) "module") (== (#. expr parent bt) (#. BlockType File))).(#body
                                                 (++#post (#. ds2 level))))
-                                    (= (text#var string) (~ (#? (#. expr post) "." "") (#? (#. expr operator empty) (#. expr type) (#. expr operator))))
+                                    (= (text#var string) (~ (#? (< (#. expr index) 0) "." "") (#? (#. expr operator empty) (#. expr type) (#. expr operator))))
                                     (#if
                                         (#. text empty).(#body
                                                 (= text ".")))
@@ -1288,13 +1272,15 @@
                                     (= (#. ds2 post_dir) 0)
                                     (= ds2 (getSize (#cast (#. Expression #[) (#. expr arguments)) ds2))
                                     (= (#. ds2 post_dir) 1)
-                                    (= ds2 (getSize (#cast (#. Expression #[) (#. expr post_operations)) ds2))
+                                    (#if
+                                        (!is (#. expr postop) null).(#body
+                                                (= ds2 (getSize (#cast (#. Expression #[) ([] (#. expr postop))) ds2))))
                                     (#if
                                         (< (#. expr pw (#[ 1)) (#. expr pw (#[ 0))).(#body
                                                 (= (#. expr pw (#[ 1)) (#. expr pw (#[ 0)))))
                                     (= (par#var auto) (#. expr parent))
                                     (#if
-                                        (!#unary (#. par post)).(#body
+                                        (>= (#. par index) 0).(#body
                                                 (+= (#. par pw (#[ 1)) (#. expr pw (#[ 1))))
                                         //writefln("l%s. %s#%s <= %s#%s (%s <=== %s)", ds.llimit, par.operator, par.type,
                                         //        expr.operator, expr.type, par.pw[1], expr.pw[1]);
@@ -1302,36 +1288,36 @@
                                         //writefln("l%s. %s#%s <= %s#%s (%s <=== %s)", ds.llimit, par.operator, par.type,
                                         //        expr.operator, expr.type, par.pw[1], expr.pw[1]);
                                         //writefln("%s", ds.level);)
-                                    (#while (#. par post)).(#body
+                                    (#while (< (#. par index) 0)).(#body
                                             (= par (#. par parent))
                                             (+= (#. par pw (#[ 1)) (#. expr pw (#[ 1))))
                                     (= (*#unary (#. ds blocks)) (max (*#unary (#. ds blocks)) (#. ds level)))
                                     (#if
-                                        (#. expr post).(#body
+                                        (< (#. expr index) 0).(#body
                                                 (++#post (#. ds level))))))
                         (#if
                             (< (#. ds llimit) 0).(#body
                                     (#if
-                                        (#. expr post).(#body
-                                                //writefln("%s-%s:%s: %s", f, t, expr.app_args, rf);
-                                                //writefln("%s-%s:%s: %s", f, t, expr.app_args, rf);
-                                                (assert (is (#. expr parent post_operations (#[ (#. expr index))) expr))
+                                        (< (#. expr index) 0).(#body
+                                                //writefln("%s-%s:%s: %s", f, t, expr.index, rf);
+                                                //writefln("%s-%s:%s: %s", f, t, expr.index, rf);
+                                                (assert (is (#. expr parent postop) expr))
                                                 (= (ep#var Expression) (#. expr parent))
-                                                (#while (#. ep post)).(#body
-                                                        (assert (is (#. ep parent post_operations (#[ (#. ep index))) ep))
+                                                (#while (< (#. ep index) 0)).(#body
+                                                        (assert (is (#. ep parent postop) ep))
                                                         (= ep (#. ep parent)))
-                                                //writefln("%s/%s. %s. %s..%s", expr.operator, ep.operator, ep.parent.arguments.length, ep.index-expr.app_args+1, ep.index+1);
-                                                //writefln("%s/%s. %s. %s..%s", expr.operator, ep.operator, ep.parent.arguments.length, ep.index-expr.app_args+1, ep.index+1);
+                                                //writefln("%s/%s. %s. %s..%s", expr.operator, ep.operator, ep.parent.arguments.length, ep.index+expr.index+1, ep.index+1);
+                                                //writefln("%s/%s. %s. %s..%s", expr.operator, ep.operator, ep.parent.arguments.length, ep.index+expr.index+1, ep.index+1);
                                                 (assert (is (#. ep parent arguments (#[ (#. ep index))) ep))
                                                 (#if
-                                                    (&& (== (#. ds mode) (#. Mode Circle)) (> (+ (- (#. ep index) (#. expr app_args)) 1) 0) (> (#. ep parent arguments length) (#. ep index))).(#body
-                                                            (= (#. ds f) (#. ep parent arguments (#[ (+ (- (#. ep index) (#. expr app_args)) 1)) a1))
+                                                    (&& (== (#. ds mode) (#. Mode Circle)) (> (+ (#. ep index) (#. expr index) 1) 0) (> (#. ep parent arguments length) (#. ep index))).(#body
+                                                            (= (#. ds f) (#. ep parent arguments (#[ (+ (#. ep index) (#. expr index) 1)) a1))
                                                             (= (#. ds t) (#. ep parent arguments (#[ (#. ep index)) a2))))
-                                                (#foreach . pre (#. ep parent arguments (#[ (+ (- (#. ep index) (#. expr app_args)) 1) .. (+ (#. ep index) 1)))).(#body
+                                                (#foreach . pre (#. ep parent arguments (#[ (+ (#. ep index) (#. expr index) 1) .. (+ (#. ep index) 1)))).(#body
                                                         //ds.r = max(ds.r, pre.r3);
                                                         (#if
                                                             (&& (== (#. expr type) "body") (|| (== (#. ep parent type) "if") (== (#. ep parent type) "switch"))).(#body
-                                                                    (= (hue#var real) (/ (+ (- (* 1.0 (#. ep index)) (/ (#. expr app_args) 2.0)) 1.0) (+ (#. ep parent arguments length) 1)))
+                                                                    (= (hue#var real) (/ (+ (* 1.0 (#. ep index)) (/ (#. expr index) 2.0) 1.0) (+ (#. ep parent arguments length) 1)))
                                                                     (= (#. pre c) (#. Color (hsv hue 0.5 1.0))))))))
                                     (#if
                                         (== (#. ds mode) (#. Mode Block)).(#body
@@ -1347,10 +1333,10 @@
                                     (assert (> w 0))
                                     (= (par#var auto) (#. expr parent))
                                     (= (parentw#var real) (#? (|| (is par null) (== (#. ds mode) (#. Mode Block))) w (#. par pw (#[ 1))))
-                                    (#while (&& par (#. par post) (#. par parent post))).(#body
+                                    (#while (&& par (< (#. par index) 0) (< (#. par parent index) 0))).(#body
                                             (= par (#. par parent)))
                                     (#if
-                                        (&& (!is par null) (#. par post) (!= (#. par type) "body")).(#body
+                                        (&& (!is par null) (< (#. par index) 0) (!= (#. par type) "body")).(#body
                                                 //if (expr !is expr.center)
                                                 //writefln("++ %s/%s. %s/%s", par, par.parent, par.pw, par.parent.pw);
                                                 //if (expr !is expr.center)
@@ -1362,15 +1348,15 @@
                                                 //    parentw = w;)
                                         /*if (expr is expr.center)
                     parentw = (expr.r3)*2*PI;
-                if (par !is null && par.post && par is par.center)
+                if (par !is null && par.index < 0 && par is par.center)
                     parentw = (par.r3)*2*PI;*/
                                         /*if (expr is expr.center)
                     parentw = (expr.r3)*2*PI;
-                if (par !is null && par.post && par is par.center)
+                if (par !is null && par.index < 0 && par is par.center)
                     parentw = (par.r3)*2*PI;*/
                                         /*if (expr is expr.center)
                     parentw = (expr.r3)*2*PI;
-                if (par !is null && par.post && par is par.center)
+                if (par !is null && par.index < 0 && par is par.center)
                     parentw = (par.r3)*2*PI;*/)
                                     (assert (> parentw 0))
                                     (#if
@@ -1387,10 +1373,10 @@
                                                 (~= (#. expr center mw) 1.0)))
                                     (= (#. expr center mw (#[ (#. ds level))) (max (#. expr center mw (#[ (#. ds level))) rw))
                                     (#if
-                                        (&& (|| (&& (!#unary (#. expr post)) (== (#. expr index) (- (#. expressions length) 1))) (&& (#. expr post) (== (#. expr arguments length) 0))) (> (#. ds t) to)).(#body
+                                        (&& (|| (&& (>= (#. expr index) 0) (== (#. expr index) (- (#. expressions length) 1))) (&& (< (#. expr index) 0) (== (#. expr arguments length) 0))) (> (#. ds t) to)).(#body
                                                 (= to (#. ds t))))
                                     (#if
-                                        (!#unary (#. expr post)).(#body
+                                        (>= (#. expr index) 0).(#body
                                                 (+= sumpw w))
                                         /*if (ds.level == 4)
                 writefln("    %s => %s | %s => %s | %s | %s/%s/%s",
@@ -1447,7 +1433,7 @@
                                     (= (#. expr block) (#. ds block))
                                     (= (ds2#var DrawState) ds)
                                     (#if
-                                        (!#unary (#. expr post)).(#body
+                                        (>= (#. expr index) 0).(#body
                                                 (#if
                                                     (!#unary (isNeedHide expr)).(#body
                                                             (+= (#. ds2 r) 30)
@@ -1459,20 +1445,22 @@
                                                 (= fr to)
                                                 (= to (#. ds t))
                                                 (= (#. ds2 post_dir) (-#unary 1)))
-                                        //writefln("%s#%s %s >= %s %s", expr.operator, expr.type, expr.level, expr.center.levels, expr.post);)
+                                        //writefln("%s#%s %s >= %s %s", expr.operator, expr.type, expr.level, expr.center.levels, expr.index);)
                                     (= (#. ds2 f) fr)
                                     (= (#. ds2 t) to)
                                     (#if
-                                        (|| (== (#. expr type) "root") (== (#. expr type) "module") (== (#. expr type) "body")).(#body
+                                        (|| (== (#. expr type) "root") (== (#. expr type) "module") (== (#. expr bt) (#. BlockType File)) (== (#. expr type) "body")).(#body
                                                 (= (#. ds2 mode) (#. Mode Block))
                                                 (= (#. ds2 post_dir) 0))
                                         #else.(#body
                                                 (= (#. ds2 mode) (#. Mode Circle))))
                                     (= ds2 (getSize (#cast (#. Expression #[) (#. expr arguments)) ds2))
                                     (= (#. ds2 post_dir) 1)
-                                    (= ds2 (getSize (#cast (#. Expression #[) (#. expr post_operations)) ds2))
                                     (#if
-                                        (#. expr post).(#body
+                                        (!is (#. expr postop) null).(#body
+                                                (= ds2 (getSize (#cast (#. Expression #[) ([] (#. expr postop))) ds2))))
+                                    (#if
+                                        (< (#. expr index) 0).(#body
                                                 (#if
                                                     (!= (#. expr type) "body").(#body
                                                             (+= (#. ds r) 30)
@@ -1531,12 +1519,12 @@
                 (#if
                     (|| (== (#. expr type) "if") (== (#. expr type) "switch")).(#body
                             (#foreach . arg (#. expr arguments)).(#body
-                                    (assert (== (#. arg post_operations (#[ 0) type) "body"))
-                                    (~= ret (inExpressions (#. arg post_operations (#[ 0) arguments (#[ (- $ 1)))))))
+                                    (assert (== (#. arg postop type) "body"))
+                                    (~= ret (inExpressions (#. arg postop arguments (#[ (- $ 1)))))))
                     (|| (== (#. expr type) "for") (== (#. expr type) "foreach") (== (#. expr type) "while") (== (#. expr type) "do")).(#body
-                            (assert (== (#. expr arguments (#[ (- $ 1)) post_operations (#[ 0) type) "body"))
+                            (assert (== (#. expr arguments (#[ (- $ 1)) postop type) "body"))
                             (~= ret expr)
-                            (~= ret (inExpressions (#. expr arguments (#[ (- $ 1)) post_operations (#[ 0) arguments (#[ (- $ 1))))))
+                            (~= ret (inExpressions (#. expr arguments (#[ (- $ 1)) postop arguments (#[ (- $ 1))))))
                     #else.(#body
                             (= ret ([] expr))))
                 (#return ret))
@@ -1550,14 +1538,14 @@
                                         (#return ([] (#. expr parent))))))
                     #else.(#body
                             (#if
-                                (!#unary (#. expr post)).(#body
+                                (>= (#. expr index) 0).(#body
                                         (#return (inExpressions (#. expr parent arguments (#[ (- (#. expr index) 1)))))))))
                 (#return ([])))
         (inBody#function Expression (expr Expression)).(#body
                 (= (ret#var Expression) (#. expr parent))
                 (#while (!is ret null)).(#body
                         (#if
-                            (|| (== (#. ret type) "body") (== (#. ret type) "module")).(#body
+                            (|| (== (#. ret type) "body") (== (#. ret type) "module") (== (#. ret bt) (#. BlockType File))).(#body
                                     (#return ret)))
                         (= ret (#. ret parent)))
                 (#return null))
@@ -1565,14 +1553,14 @@
                 (= (ret#var Expression) expr)
                 (#while (!is ret null)).(#body
                         (#if
-                            (|| (== (#. ret type) "root") (== (#. ret type) "module") (== (#. ret type) "function") (== (#. ret type) "for") (== (#. ret type) "foreach") (== (#. ret type) "while") (== (#. ret type) "do") (&& (!is (#. ret parent) null) (|| (== (#. ret parent type) "if") (== (#. ret parent type) "switch")))).(#body
+                            (|| (== (#. ret type) "root") (== (#. ret type) "module") (== (#. ret bt) (#. BlockType File)) (== (#. ret type) "function") (== (#. ret type) "for") (== (#. ret type) "foreach") (== (#. ret type) "while") (== (#. ret type) "do") (&& (!is (#. ret parent) null) (|| (== (#. ret parent type) "if") (== (#. ret parent type) "switch")))).(#body
                                     (#if
-                                        (&& (!is (#. ret parent) null) (!#unary (#. ret post)) (|| (#. ret post_operations empty) (!= (#. ret post_operations (#[ 0) type) "body"))).(#body
+                                        (&& (!is (#. ret parent) null) (>= (#. ret index) 0) (|| (is (#. ret postop) null) (!= (#. ret postop type) "body"))).(#body
                                                 (#foreach . arg (#. ret parent arguments (#[ (+ (#. ret index) 1) .. $))).(#body
                                                         (#if
-                                                            (&& (!#unary (#. arg post_operations empty)) (== (#. arg post_operations (#[ 0) type) "body")).(#body
+                                                            (&& (!is (#. arg postop) null) (== (#. arg postop type) "body")).(#body
                                                                     (#if
-                                                                        (<= (+ (- (#. arg index) (#. arg post_operations (#[ 0) app_args)) 1) (#. ret index)).(#body
+                                                                        (<= (+ (#. arg index) (#. arg postop index) 1) (#. ret index)).(#body
                                                                                 (= ret arg)))
                                                                     #break)))))
                                     (#return ret)))
@@ -1583,7 +1571,7 @@
                 (= (ret#var Expression) (#. expr parent))
                 (#while (!is ret null)).(#body
                         (#if
-                            (|| (== (#. ret type) "body") (== (#. ret type) "root") (== (#. ret type) "module")).(#body
+                            (|| (== (#. ret type) "body") (== (#. ret type) "root") (== (#. ret type) "module") (== (#. ret bt) (#. BlockType File))).(#body
                                     (#if
                                         (!#unary body_was).(#body
                                                 (= body_was true))
@@ -1595,12 +1583,14 @@
                         (= ret (#. ret parent)))
                 (#return false))
         (isNeedHide#function bool (expr Expression)).(#body
-                (#return (&& (> (#. expr level) 0) (!#unary (#. expr post)) (|| (== (#. expr type) ".") (== (#. expr type) "[") (== (#. expr type) "\"") (&& (> (#. expr operator length) 0) (!#unary (#. "-+!&*" (find (#. expr operator)) empty)) (== (#. expr arguments length) 1))))))
+                (#return (&& (> (#. expr level) 0) (>= (#. expr index) 0) (|| (== (#. expr type) ".") (== (#. expr type) "[") (== (#. expr type) "\"") (&& (> (#. expr operator length) 0) (!#unary (#. "-+!&*" (find (#. expr operator)) empty)) (== (#. expr arguments length) 1))))))
         (hideRecursive#function void (expressions ([]#type Expression))).(#body
                 (#foreach . expr expressions).(#body
                         (= (#. expr hidden) true)
                         (hideRecursive (#. expr arguments))
-                        (hideRecursive (#. expr post_operations))))
+                        (#if
+                            (!is (#. expr postop) null).(#body
+                                    (hideRecursive ([] (#. expr postop)))))))
         (normAngle#function void (angle real ref)).(#body
                 (#while (< angle 0)).(#body
                         (+= angle 360))
@@ -1643,7 +1633,9 @@
                                         (!#unary po).(#body
                                                 (= (#. expr hidden) true)
                                                 (hideRecursive (#. expr arguments))
-                                                (hideRecursive (#. expr post_operations))
+                                                (#if
+                                                    (!is (#. expr postop) null).(#body
+                                                            (hideRecursive ([] (#. expr postop)))))
                                                 #continue)))
                             /*if (parentOf(expr, rotfun))
                 ds.hide = true;
@@ -1680,16 +1672,22 @@
                                                                         (#foreach . ri rot_info).(#body
                                                                                 (#if
                                                                                     (is (#. expr parent parent) (parentOfFun (#. ri fun))).(#body
+                                                                                            (#if
+                                                                                                (< (#. rlines length) (+ (#. ds line) 1)).(#body
+                                                                                                        (~= rlines 0.0)))
                                                                                             (+= (#. ds y) (+ 150 (max (#. rlines (#[ (#. ds line))) 50)))
                                                                                             (= (#. ds x) 0)
                                                                                             (++#post (#. ds line))
                                                                                             (#while (<= (#. dx length) (#. ds line))).(#body
                                                                                                     (~= dx 150))
                                                                                             #break))))
-                                                                (&& (!is (#. expr parent) null) (== (#. expr parent type) "module") (== (#. expr index) 0)).(#body
+                                                                (&& (!is (#. expr parent) null) (|| (== (#. expr parent type) "module") (== (#. expr parent bt) (#. BlockType File))) (== (#. expr index) 0)).(#body
                                                                         (#foreach . ri rot_info).(#body
                                                                                 (#if
                                                                                     (is (#. expr parent) (parentOfFun (#. ri fun))).(#body
+                                                                                            (#if
+                                                                                                (< (#. rlines length) (+ (#. ds line) 1)).(#body
+                                                                                                        (~= rlines 0.0)))
                                                                                             (+= (#. ds y) (+ 150 (max (#. rlines (#[ (#. ds line))) 50)))
                                                                                             (= (#. ds x) 0)
                                                                                             (++#post (#. ds line))
@@ -1700,7 +1698,9 @@
                                                     (== (#. ds line) (#. ds hideline)).(#body
                                                             (= (#. expr hidden) true)
                                                             (hideRecursive (#. expr arguments))
-                                                            (hideRecursive (#. expr post_operations))
+                                                            (#if
+                                                                (!is (#. expr postop) null).(#body
+                                                                        (hideRecursive ([] (#. expr postop)))))
                                                             #continue))))))
                         (#if
                             (!#unary (#. ds force)).(#body
@@ -1726,7 +1726,7 @@
                                                 (#if
                                                     (is expr (#. frot_info fun)).(#body
                                                             (= invert true)))))
-                                    (= (text#var string) (~ (#? (#. expr post) "." "") (#? (#. expr operator empty) (#. expr type) (#. expr operator)) (#? (&& (#. expr arguments empty) (!is (#. expr arguments) null)) "()" "")))
+                                    (= (text#var string) (~ (#? (< (#. expr index) 0) "." "") (#? (#. expr operator empty) (#. expr type) (#. expr operator)) (#? (&& (#. expr arguments empty) (!is (#. expr arguments) null)) "()" "")))
                                     (#if
                                         (&& (== (#. expr bt) (#. BlockType File)) (== (#. expr type) "*")).(#body
                                                 (= text (~ text " *"))))
@@ -1939,12 +1939,14 @@
                                     (#. cr (restore))))
                         (= (ds2#var DrawState) ds)
                         (#if
-                            (|| (== (#. expr type) "root") (== (#. expr type) "module") (== (#. expr type) "body")).(#body
+                            (|| (== (#. expr type) "root") (== (#. expr type) "module") (== (#. expr bt) (#. BlockType File)) (== (#. expr type) "body")).(#body
                                     (= (#. ds2 mode) (#. Mode Block)))
                             #else.(#body
                                     (= (#. ds2 mode) (#. Mode Circle))))
                         (= ds2 (drawAll cr (#cast (#. Expression #[) (#. expr arguments)) ds2))
-                        (= ds2 (drawAll cr (#cast (#. Expression #[) (#. expr post_operations)) ds2))
+                        (#if
+                            (!is (#. expr postop) null).(#body
+                                    (= ds2 (drawAll cr (#cast (#. Expression #[) ([] (#. expr postop))) ds2))))
                         (#if
                             (#. ds2 hide).(#body
                                     (= (#. ds hide) (#. ret hide) true)))
@@ -1964,12 +1966,12 @@
                                                 (~= ret (Button (#. ex arguments (#[ 0) operator) (typeColor (#. ex arguments (#[ 0) type)) (#. ex arguments (#[ 0) arguments (#[ 0) operator) (#. ex arguments (#[ 0)))))
                                         (&& (== (#. ex type) "var") (!#unary (#. ex operator empty)) (== (#. ex arguments length) 1)).(#body
                                                 (~= ret (Button (#. ex operator) (typeColor (#. ex type)) (#. ex arguments (#[ 0) operator) ex))))))
-                    (|| (== (#. expr parent type) "struct") (== (#. expr parent type) "class") (== (#. expr parent type) "root") (== (#. expr parent type) "module")).(#body
+                    (|| (== (#. expr parent type) "struct") (== (#. expr parent type) "class") (== (#. expr parent type) "root") (== (#. expr parent type) "module") (== (#. expr parent bt) (#. BlockType File))).(#body
                             (#foreach . ex (#. expr parent arguments)).(#body
                                     (#if
                                         (&& (!#unary (#. ex operator empty)) (>= (#. ex arguments length) 1)).(#body
                                                 (#if
-                                                    (|| (== (#. ex type) "struct") (== (#. ex type) "class") (== (#. ex type) "root") (== (#. ex type) "module") (== (#. ex type) "enum")).(#body
+                                                    (|| (== (#. ex type) "struct") (== (#. ex type) "class") (== (#. ex type) "root") (== (#. ex type) "module") (== (#. ex bt) (#. BlockType File)) (== (#. ex type) "enum")).(#body
                                                             (~= ret (Button (#. ex operator) (typeColor (#. ex type)) (#. ex type) ex)))
                                                     #else.(#body
                                                             (~= ret (Button (#. ex operator) (typeColor (#. ex type)) (#. ex arguments (#[ 0) operator) ex)))))
@@ -1982,7 +1984,7 @@
                                                                             (#if
                                                                                 (&& (!#unary (#. modarg operator empty)) (>= (#. modarg arguments length) 1)).(#body
                                                                                         (#if
-                                                                                            (|| (== (#. modarg type) "struct") (== (#. modarg type) "class") (== (#. modarg type) "root") (== (#. modarg type) "module") (== (#. modarg type) "enum")).(#body
+                                                                                            (|| (== (#. modarg type) "struct") (== (#. modarg type) "class") (== (#. modarg type) "root") (== (#. modarg type) "module") (== (#. modarg bt) (#. BlockType File)) (== (#. modarg type) "enum")).(#body
                                                                                                     (~= ret (Button (#. modarg operator) (typeColor (#. modarg type)) (#. modarg type) modarg)))
                                                                                             #else.(#body
                                                                                                     (~= ret (Button (#. modarg operator) (typeColor (#. modarg type)) (#. modarg arguments (#[ 0) operator) modarg)))))))
@@ -2234,7 +2236,7 @@
                             (+= y 35)
                             (buttons#var ([]#type Button))
                             (#if
-                                (&& (!is (#. selected parent) null) (|| (== (#. selected parent type) "body") (== (#. selected parent type) "root") (== (#. selected parent type) "module") (== (#. selected parent type) "struct") (== (#. selected parent type) "class"))).(#body
+                                (&& (!is (#. selected parent) null) (|| (== (#. selected parent type) "body") (== (#. selected parent type) "root") (== (#. selected parent type) "module") (== (#. selected parent bt) (#. BlockType File)) (== (#. selected parent type) "struct") (== (#. selected parent type) "class"))).(#body
                                         (#foreach . type ([] "import" "class" "struct" "function" "enum" "var")).(#body
                                                 (~= buttons ([] (Button (~ "#" type) (typeColor type) null))))))
                             (#if
