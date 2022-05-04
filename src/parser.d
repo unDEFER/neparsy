@@ -33,6 +33,7 @@ class Parser
     Expression parse()
     {
         Expression file = new Expression;
+        file.bt = BlockType.File;
         cexpr = file;
         Expression ret = new Expression;
         Init:

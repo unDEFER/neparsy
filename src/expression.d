@@ -644,7 +644,7 @@ class Expression
                 else if (bt != BlockType.File)
                     savestr ~= " " ~ arg.save(ps, tab+1, br, false);
                 else
-                    savestr ~= arg.save(ps, 0, br, false);
+                    savestr ~= arg.save(ps, 0, br, false) ~ "\n";
             }
 
             if (bt != BlockType.File)
