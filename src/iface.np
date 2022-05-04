@@ -1,3 +1,6 @@
+/**
+ * iface.d
+ */
 (iface#module@D
     (#import std.stdio)
     (#import std.math)
@@ -110,10 +113,6 @@
         (angle double).(0.0#init)
         (target_angle double).(0.0#init)
         (fun Expression))
-    (SaveInfo#struct
-        (filename string)
-        (saved bool)
-        (root Expression))
     (Button#struct
         (text string)
         (c Color)
@@ -124,29 +123,43 @@
             (#if
                 (== type "module").(#body
                         (= c (Color 1.0 0.4 0.4 1.0)))
+                // Red
                 (== type "class").(#body
                         (= c (Color 1.0 0.8 0.5 1.0)))
+                // Light Orange
                 (== type "struct").(#body
                         (= c (Color 1.0 0.6 0.0 1.0)))
+                // Saturated Orange
                 (== type "enum").(#body
                         (= c (Color 1.0 1.0 0.4 1.0)))
+                // Yellow
                 (== type "function").(#body
                         (= c (Color 0.4 1.0 0.4 1.0)))
+                // Green
                 (== type "var").(#body
                         (= c (Color 0.4 1.0 1.0 1.0)))
+                // Cyan
                 (== type "if").(#body
                         (= c (Color 0.8 0.8 1.0 1.0)))
+                // Light Blue
                 (== type "switch").(#body
                         (= c (Color 0.4 0.4 1.0 1.0)))
+                // Blue
                 (== type "for").(#body
                         (= c (Color 1.0 0.6 1.0 1.0)))
+                // Light Magenta
                 (== type "foreach").(#body
                         (= c (Color 1.0 0.1 1.0 1.0)))
+                // Saturated Magenta
                 (== type "while").(#body
                         (= c (Color 0.8 0.1 1.0 1.0)))
+                // Saturated Violet
                 (== type "do").(#body
-                        (= c (Color 0.9 0.6 1.0 1.0))))
+                        (= c (Color 0.9 0.6 1.0 1.0)))
+                // Light Violet
+                // Light Violet)
             (#return c))
+    //Override default signal handler:
     (Iface#class
         DrawingArea#superclass
         (root_expr Expression)
@@ -170,15 +183,15 @@
         (click_processed bool).(true#init)
         (edit bool)
         (post_edit bool)
-        (modules ([]#type (*#type SaveInfo)))
         (#: public)
-        (this#function #constructor (_expression Expression) (_modules ([]#type (#* SaveInfo)))).(#body
+        (this#function #constructor (_expression Expression)).(#body
                 (= root_expr _expression)
                 (= selected _expression)
-                (= modules _modules)
                 (ri#var RotInfo)
                 (= (#. ri fun) selected)
                 (~= rot_info ri)
+                //Attach our expose callback, which will draw the window.
+                //Attach our expose callback, which will draw the window.
                 (addOnDraw (&#unary drawCallback)))
         (click#function bool (button uint) (x double) (y double)).(#body
                 (#if
@@ -189,12 +202,14 @@
                                         (= clickY y)
                                         (= click_processed false)
                                         (= sizes_invalid 2)
-                                        redraw
+                                        //writefln("W %sx%s", clickX, clickY);
+                                        //writefln("W %sx%s", clickX, clickY);
+                                        (redraw)
                                         (#return true)))))
                 (#return false))
         (scroll#function bool (deltaX double) (deltaY double)).(#body
                 (+= scrollY (* deltaY 10))
-                redraw
+                (redraw)
                 (#return true))
         (findCircPos#function Expression (expr Expression) (posa int).(#init 1) (root Expression).(#init null)).(#body
                 (#if
@@ -202,6 +217,8 @@
                             (= root root_expr)))
                 (= (ret#var Expression) root)
                 (#foreach . arg (~ (#. root arguments) (#. root post_operations))).(#body
+                        //if (arg.hidden && arg.type != "body" && !isNeedHide(arg)) continue;
+                        //if (arg.hidden && arg.type != "body" && !isNeedHide(arg)) continue;
                         (= arg (findCircPos expr posa arg))
                         (= (expra#var real) (/ (+ (#. expr a1) (#. expr a2)) 2))
                         (= (arga#var real) (/ (+ (#. arg a1) (#. arg a2)) 2))
@@ -332,7 +349,9 @@
                 (= (nr#var double) (- (/ (+ (#. expr a1) (#. expr a2)) 2) 180))
                 (#if
                     (< nr 0).(#body
-                            (+= nr 360)))
+                            (+= nr 360))
+                    //ri.angle = ri.target_angle; // DEBUG
+                    //ri.angle = ri.target_angle; // DEBUG)
                 (ri#var RotInfo)
                 (#while (&& (!#unary (#. rot_info empty)) (>= (#. rot_info (#[ (- $ 1)) fun block) (#. expr block)))).(#body
                         (= (#. ri angle) (#. rot_info (#[ (- $ 1)) angle))
@@ -342,15 +361,18 @@
                 (~= rot_info ri)
                 (#if
                     (&& (!is (#. expr parent) null) (!#unary (#. expr post))).(#body
-                            (= (#. expr parent focus_index) (#. expr index))))
-                redraw)
+                            (= (#. expr parent focus_index) (#. expr index)))
+                    //writefln("Select %s (%s), fsel %s", selected, rot_info.length, fselected);
+                    //writefln("Select %s (%s), fsel %s", selected, rot_info.length, fselected);
+                    //writefln("Select %s (%s), fsel %s", selected, rot_info.length, fselected);)
+                (redraw))
         (updateFields#function void).(#body
                 (= (sel#var auto) selected)
                 (#if
                     (&& (!is (#. sel parent) null) (== (#. sel parent type) ".")).(#body
                             (= sel (#. sel parent)))
                     (&& (!is (#. selected parent) null) (!#unary (#. selected post))).(#body
-                            (= (ne#var auto) (#new Expression))
+                            (= (ne#var auto) (#new (Expression)))
                             (= (#. ne type) ".")
                             (= (#. ne parent) (#. selected parent))
                             (= (#. ne index) (#. selected index))
@@ -373,7 +395,7 @@
                             (= (#. sel arguments) [])
                             (= (fsel#var auto) fselected)
                             (#do (!is fsel null)).(#body
-                                    (= (ne#var auto) (#new Expression))
+                                    (= (ne#var auto) (#new (Expression)))
                                     (= (#. ne parent) sel)
                                     (= (#. ne operator) (#. fsel operator))
                                     (= (#. sel arguments) (~ ne (#. sel arguments)))
@@ -381,87 +403,87 @@
                             (#foreach i arg (#. sel arguments)).(#body
                                     (= (#. arg index) i))
                             (= selected (#. sel arguments (#[ (- $ 1))))
-                            (= (#. (getModule selected) saved) false)
+                            (= (#. (getFile selected) type) "*")
                             (= sizes_invalid 1)
                             (getSize ([] root_expr) (#. DrawState init))
-                            updateView
+                            (updateView)
                             (= post_edit false))))
         (left#function void).(#body
                 (#if
                     (is selected null).(#body
                             #return))
-                end_edit
+                (end_edit)
                 (= (s#var auto) (findSibling selected (-#unary 1)))
                 (#if
                     (|| (&& (is s selected) (!is (#. s center) s)) (#. s hidden)).(#body
                             (= selected (findCircPos selected (-#unary 1))))
                     #else.(#body
                             (= selected s)))
-                updateView)
+                (updateView))
         (right#function void).(#body
                 (#if
                     (is selected null).(#body
                             #return))
-                end_edit
+                (end_edit)
                 (= (s#var auto) (findSibling selected 1))
                 (#if
                     (|| (&& (is s selected) (!is (#. s center) s)) (#. s hidden)).(#body
                             (= selected (findCircPos selected 1)))
                     #else.(#body
                             (= selected s)))
-                updateView)
+                (updateView))
         (up#function void).(#body
                 (#if
                     (is selected null).(#body
                             #return))
-                end_edit
+                (end_edit)
                 (= selected (findParent selected))
-                updateView)
+                (updateView))
         (down#function void).(#body
                 (#if
                     (is selected null).(#body
                             #return))
-                end_edit
+                (end_edit)
                 (= selected (findChild selected))
-                updateView)
+                (updateView))
         (field_left#function void).(#body
                 (#if
                     (is fselected null).(#body
                             #return))
-                end_edit
+                (end_edit)
                 (= (s#var auto) (findSibling fselected (-#unary 1)))
                 (#if
                     (&& (is s fselected) (!is (#. s center) s)).(#body
                             (= fselected (findCircPos fselected (-#unary 1) fields)))
                     #else.(#body
                             (= fselected s)))
-                updateFields)
+                (updateFields))
         (field_right#function void).(#body
                 (#if
                     (is fselected null).(#body
                             #return))
-                end_edit
+                (end_edit)
                 (= (s#var auto) (findSibling fselected 1))
                 (#if
                     (&& (is s fselected) (!is (#. s center) s)).(#body
                             (= fselected (findCircPos fselected 1 fields)))
                     #else.(#body
                             (= fselected s)))
-                updateFields)
+                (updateFields))
         (field_up#function void).(#body
                 (#if
                     (is fselected null).(#body
                             #return))
-                end_edit
+                (end_edit)
                 (= fselected (findParent fselected))
-                updateFields)
+                (updateFields))
         (field_down#function void).(#body
                 (#if
                     (is fselected null).(#body
                             #return))
-                end_edit
+                (end_edit)
                 (= fselected (findChild fselected))
-                updateFields)
+                (updateFields))
         (end_edit#function void).(#body
                 (#if
                     edit.(#body
@@ -493,9 +515,9 @@
                                 #else.(#body
                                         (= (#. selected operator) "")))))
                 (~= (#. selected operator) key)
-                (= (#. (getModule selected) saved) false)
+                (= (#. (getFile selected) type) "*")
                 (= sizes_invalid 1)
-                redraw
+                (redraw)
                 (= edit true)
                 (= post_edit false))
         (backspace#function void).(#body
@@ -505,9 +527,9 @@
                 (#if
                     (!#unary (#. selected operator empty)).(#body
                             (= (#. selected operator) (#. selected operator (#[ 0 .. (- $ (#. selected operator strideBack)))))))
-                (= (#. (getModule selected) saved) false)
+                (= (#. (getFile selected) type) "*")
                 (= sizes_invalid 1)
-                redraw
+                (redraw)
                 (= edit true)
                 (= post_edit false))
         (space#function void).(#body
@@ -515,13 +537,13 @@
                     (is selected null).(#body
                             #return))
                 (#if
-                    (&& edit (!#unary (#. selected operator empty)) (== (#. selected operator (#[ 0)) '\"') (|| (== (#. selected operator length) 1) (!= (#. selected operator (#[ (- $ 1))) '\"'))).(#body
-                            (print ' ')
+                    (&& edit (!#unary (#. selected operator empty)) (== (#. selected operator (#[ 0)) '\\"') (|| (== (#. selected operator length) 1) (!= (#. selected operator (#[ (- $ 1))) '\\"'))).(#body
+                            (print '\ ')
                             #return))
-                end_edit
+                (end_edit)
                 (#if
                     (&& (!is (#. selected parent) null) (!#unary (#. selected post))).(#body
-                            (= (ne#var auto) (#new Expression))
+                            (= (ne#var auto) (#new (Expression)))
                             (= (#. ne parent) (#. selected parent))
                             (= (#. ne index) (+ (#. selected index) 1))
                             (= (#. ne x) (#. selected x))
@@ -533,10 +555,10 @@
                                     (++#post (#. arg index)))
                             (= (#. selected parent arguments) (~ (#. selected parent arguments (#[ 0 .. (+ (#. selected index) 1))) ne (#. selected parent arguments (#[ (+ (#. selected index) 1) .. $))))
                             (= selected ne)))
-                (= (#. (getModule selected) saved) false)
+                (= (#. (getFile selected) type) "*")
                 (= sizes_invalid 1)
                 (getSize ([] root_expr) (#. DrawState init))
-                updateView
+                (updateView)
                 (= post_edit false))
         (dot#function void).(#body
                 (#if
@@ -548,7 +570,7 @@
                             #return))
                 (#if
                     (&& (!is (#. selected parent) null) (!#unary (#. selected post))).(#body
-                            (= (ne#var auto) (#new Expression))
+                            (= (ne#var auto) (#new (Expression)))
                             (= (#. ne parent) (#. selected parent))
                             (= (#. ne index) (#. selected index))
                             (= (#. ne x) (#. selected x))
@@ -565,21 +587,21 @@
                             (= (#. selected index) 0)
                             (= (#. ne arguments) ([] selected))
                             (= selected ne)))
-                (= (#. (getModule selected) saved) false)
+                (= (#. (getFile selected) type) "*")
                 (= sizes_invalid 2)
                 (getSize ([] root_expr) (#. DrawState init))
-                updateView
+                (updateView)
                 (= post_edit false))
         (comma#function void).(#body
                 (#if
                     (is selected null).(#body
                             #return))
                 (#if
-                    (&& edit (|| (&& (!is (#. selected parent) null) (== (#. selected parent type) "\"")) (&& (!#unary (#. selected operator empty)) (== (#. selected operator (#[ 0)) '\"') (|| (== (#. selected operator length) 1) (!= (#. selected operator (#[ (- $ 1))) '\"'))))).(#body
+                    (&& edit (|| (&& (!is (#. selected parent) null) (== (#. selected parent type) "\"")) (&& (!#unary (#. selected operator empty)) (== (#. selected operator (#[ 0)) '\\"') (|| (== (#. selected operator length) 1) (!= (#. selected operator (#[ (- $ 1))) '\\"'))))).(#body
                             (print ',')
                             #return))
-                end_edit
-                (= (ne#var auto) (#new Expression))
+                (end_edit)
+                (= (ne#var auto) (#new (Expression)))
                 (= (#. ne parent) selected)
                 (= (#. ne index) 0)
                 (= (#. ne x) (#. selected x))
@@ -592,10 +614,10 @@
                         (++#post (#. arg index)))
                 (= (#. selected arguments) (~ ne (#. selected arguments)))
                 (= selected ne)
-                (= (#. (getModule selected) saved) false)
+                (= (#. (getFile selected) type) "*")
                 (= sizes_invalid 2)
                 (getSize ([] root_expr) (#. DrawState init))
-                updateView
+                (updateView)
                 (= post_edit false))
         (less#function void).(#body
                 (#if
@@ -603,7 +625,7 @@
                             #return))
                 (#if
                     (&& (!#unary post_edit) (#. selected post_operations empty)).(#body
-                            (= (ne#var auto) (#new Expression))
+                            (= (ne#var auto) (#new (Expression)))
                             (= (#. ne parent) selected)
                             (= (#. ne index) (#. selected post_operations length))
                             (= (#. ne post) true)
@@ -616,7 +638,7 @@
                             (#if
                                 (|| (== (#. ne parent type) "function") (== (#. ne parent type) "for") (== (#. ne parent type) "while") (== (#. ne parent type) "do") (== (#. ne parent type) "foreach") (== (#. ne parent parent type) "if") (== (#. ne parent parent type) "switch")).(#body
                                         (= (#. ne type) "body")
-                                        comma
+                                        (comma)
                                         (= selected ne))))
                     (!#unary (#. selected post_operations empty)).(#body
                             (= (pe#var Expression) (#. selected post_operations (#[ 0)))
@@ -632,10 +654,10 @@
                             (#if
                                 (>= (#. ep index) (#. selected app_args)).(#body
                                         (++#post (#. selected app_args))))))
-                (= (#. (getModule selected) saved) false)
+                (= (#. (getFile selected) type) "*")
                 (= sizes_invalid 1)
                 (getSize ([] root_expr) (#. DrawState init))
-                updateView
+                (updateView)
                 (= post_edit true))
         (greater#function void).(#body
                 (#if
@@ -643,7 +665,7 @@
                             #return))
                 (#if
                     (&& (!#unary post_edit) (#. selected post_operations empty)).(#body
-                            (= (ne#var auto) (#new Expression))
+                            (= (ne#var auto) (#new (Expression)))
                             (= (#. ne parent) selected)
                             (= (#. ne index) (#. selected post_operations length))
                             (= (#. ne post) true)
@@ -662,17 +684,17 @@
                             (#if
                                 (> (#. selected app_args) 1).(#body
                                         (--#post (#. selected app_args))))))
-                (= (#. (getModule selected) saved) false)
+                (= (#. (getFile selected) type) "*")
                 (= sizes_invalid 1)
                 (getSize ([] root_expr) (#. DrawState init))
-                updateView
+                (updateView)
                 (= post_edit true))
         (escape#function void).(#body
                 (#if
                     (|| edit post_edit).(#body
-                            end_edit
+                            (end_edit)
                             (= post_edit false)
-                            updateView)
+                            (updateView))
                     #else.(#body
                             (= edit true))))
         (del#function void).(#body
@@ -699,9 +721,9 @@
                                                 (--#post (#. arg index)))
                                         (= (#. selected parent post_operations) (~ (#. selected parent post_operations (#[ 0 .. (#. selected index))) (#. selected parent post_operations (#[ (+ (#. selected index) 1) .. $))))
                                         (= selected (#. selected parent))))))
-                (= (#. (getModule selected) saved) false)
+                (= (#. (getFile selected) type) "*")
                 (= sizes_invalid 1)
-                updateView
+                (updateView)
                 (= edit true)
                 (= post_edit false))
         (remove#function void).(#body
@@ -711,9 +733,9 @@
                 (= (#. selected arguments) null)
                 (= (#. selected post_operations) null)
                 (= (#. selected focus_index) 0)
-                (= (#. (getModule selected) saved) false)
+                (= (#. (getFile selected) type) "*")
                 (= sizes_invalid 1)
-                updateView
+                (updateView)
                 (= edit true)
                 (= post_edit false))
         (copy#function void).(#body
@@ -737,10 +759,10 @@
                             (= (#. c parent) (#. selected parent))
                             (= (#. c index) (#. selected index))))
                 (= selected c)
-                (= (#. (getModule selected) saved) false)
+                (= (#. (getFile selected) type) "*")
                 (= sizes_invalid 1)
                 (getSize ([] root_expr) (#. DrawState init))
-                updateView
+                (updateView)
                 (= post_edit false))
         (moveleft#function void).(#body
                 (#if
@@ -758,10 +780,10 @@
                             (++#post (#. selected parent post_operations (#[ (- (#. selected index) 1)) index))
                             (swap (#. selected parent post_operations (#[ (#. selected index))) (#. selected parent post_operations (#[ (- (#. selected index) 1))))
                             (--#post (#. selected index))))
-                (= (#. (getModule selected) saved) false)
+                (= (#. (getFile selected) type) "*")
                 (= sizes_invalid 2)
                 (getSize ([] root_expr) (#. DrawState init))
-                updateView
+                (updateView)
                 (= post_edit false))
         (moveright#function void).(#body
                 (#if
@@ -782,10 +804,10 @@
                             (--#post (#. selected parent post_operations (#[ (+ (#. selected index) 1)) index))
                             (swap (#. selected parent post_operations (#[ (#. selected index))) (#. selected parent post_operations (#[ (+ (#. selected index) 1))))
                             (++#post (#. selected index))))
-                (= (#. (getModule selected) saved) false)
+                (= (#. (getFile selected) type) "*")
                 (= sizes_invalid 2)
                 (getSize ([] root_expr) (#. DrawState init))
-                updateView
+                (updateView)
                 (= post_edit false))
         (redraw#function void).(#body (.
                 area#var
@@ -804,65 +826,73 @@
                             (= (#. area y) (#cast int (* (- (#. selected center y) 150) scale)))
                             (= (#. area width) (#cast int (* (* (#. selected center r3) 2) scale)))
                             (= (#. area height) (#cast int (* (+ (#. selected center r3) 150) scale)))
+                            //writefln("Queue redraw %sx%s - %sx%s", area.x, area.y, area.width, area.height);
+                            //writefln("Queue redraw %sx%s - %sx%s", area.x, area.y, area.width, area.height);
                             (queueDrawArea (#. area x) (#. area y) (#. area width) (#. area height))
+                            //writefln("Queue navigation redraw %sx%s - %sx%s", 0, 0, ar.width/6, ar.height);
+                            //writefln("Queue navigation redraw %sx%s - %sx%s", 0, 0, ar.width/6, ar.height);
                             (queueDrawArea 0 0 (/ (#. ar width) 6) (#. ar height)))
                     #else.(#body
                             (= sizes_invalid 2)
                             (queueDrawArea (#. area x) (#. area y) (#. area width) (#. area height)))))
-        (getModule#function (*#type SaveInfo) (expr Expression)).(#body
+        (getFile#function Expression (expr Expression)).(#body
+                (#if
+                    (is (#. expr parent) null).(#body
+                            (#return null)))
+                (#if
+                    (!= (#. expr bt) (#. BlockType File)).(#body
+                            (#return (getFile (#. expr parent)))))
+                (#return expr))
+        (getModule#function Expression (expr Expression)).(#body
                 (#if
                     (is (#. expr parent) null).(#body
                             (#return null)))
                 (#if
                     (!= (#. expr type) "module").(#body
                             (#return (getModule (#. expr parent)))))
-                (#foreach . mod modules).(#body
-                        (#if
-                            (is (#. mod root) expr).(#body
-                                    (#return mod))))
-                (= (mod#var (*#type SaveInfo)) (#new (SaveInfo (~ (#. expr operator) ".np") false expr)))
-                (~= modules mod)
-                (#return mod))
+                (#return expr))
         (save#function void).(#body
-                (= (mod#var auto) (getModule selected))
+                (= (efile#var auto) (getFile selected))
                 (#if
-                    (is mod null).(#body
+                    (is efile null).(#body
                             #return))
                 (#if
-                    (!#unary (#. mod saved)).(#body
-                            (= (#. mod saved) true)
-                            (= (savestr#var string) (#. mod root save))
-                            (= (file#var auto) (File (#. mod filename) "w"))
+                    (== (#. efile type) "*").(#body
+                            (= (#. efile type) "")
+                            (= (savestr#var string) (#. efile (save)))
+                            (= (file#var auto) (File (#. efile operator) "w"))
                             (#. file (writeln savestr)))))
         (saveD#function void).(#body
                 (= (mod#var auto) (getModule selected))
+                (= (efile#var auto) (getFile mod))
                 (#if
-                    (is mod null).(#body
+                    (is efile null).(#body
                             #return))
-                (= (filename#var auto) (#. mod filename))
+                (= (filename#var auto) (#. efile operator))
                 (#if
                     (#. filename (endsWith ".np")).(#body
                             (= filename (#. filename (#[ 0 .. (- $ 3))))))
                 (#if
-                    (== (#. mod root label) "D").(#body
-                            (= (savestr#var string) (#. mod root saveD))
+                    (== (#. mod label) "D").(#body
+                            (= (savestr#var string) (#. efile (saveD)))
                             (= (file#var auto) (File (~ filename ".d") "w"))
                             (#. file (writeln savestr)))))
         (toLexer#function void).(#body
                 (= (mod#var auto) (getModule selected))
+                (= (efile#var auto) (getFile mod))
                 (#if
-                    (is mod null).(#body
+                    (is efile null).(#body
                             #return))
                 (#if
-                    (== (#. mod root label) "Lexer").(#body
-                            (= (root#var auto) (#. mod root toLexer))
+                    (== (#. mod label) "Lexer").(#body
+                            (= (root#var auto) (#. efile (toLexer)))
                             (= (#. root parent) root_expr)
                             (= (#. root index) (#. root_expr arguments length))
                             (~= (#. root_expr arguments) root)
                             (= selected root)))
                 (= sizes_invalid 1)
                 (getSize ([] root_expr) (#. DrawState init))
-                updateView
+                (updateView)
                 (= post_edit false))
         (#: protected)
         (textWidth#function real (text string)).(#body
@@ -871,7 +901,7 @@
                 (#if
                     (!is res_cache null).(#body
                             (#return (*#unary res_cache))))
-                (= (context#var auto) (#. PgCairoFontMap getDefault createContext))
+                (= (context#var auto) (#. PgCairoFontMap (getDefault) (createContext)))
                 (= (layout#var auto) (#new (PgLayout context)))
                 (= (desc#var auto) (#. PgFontDescription (fromString "Times new roman,Sans")))
                 (#. desc (setAbsoluteSize (* 20 PANGO_SCALE)))
@@ -886,16 +916,16 @@
         (drawText#function void (cr (Scoped ! Context #!) ref) (text string) (X real) (Y real) (w real) (c Color) (inv bool).(#init false) (colors ([]#type ubyte)).(#init null)).(#body
                 (#if
                     inv.(#body
-                            (= c (#. c invert))))
+                            (= c (#. c (invert)))))
                 (#. cr (setSourceRgba (#. c r) (#. c g) (#. c b) (#. c a)))
                 (= (black#var Color) (Color 0.3 0.0 0.0 1.0))
                 (#if
                     inv.(#body
-                            (= black (#. black invert))))
+                            (= black (#. black (invert)))))
                 (= (selcol#var Color) (Color 1.0 0.0 0.0 1.0))
                 (#if
                     (!#unary inv).(#body
-                            (= selcol (#. selcol invert))))
+                            (= selcol (#. selcol (invert)))))
                 (= (layout#var auto) (#. PgCairo (createLayout cr)))
                 (= (desc#var auto) (#. PgFontDescription (fromString "Times new roman,Sans")))
                 (#. desc (setAbsoluteSize (* 20 PANGO_SCALE)))
@@ -924,7 +954,7 @@
                             (= (wi#var long) 0)
                             (#for (= (i long) 0) (< i (#. text length)) (+= i cur_chr_stride)).(#body
                                     (= cur_chr_stride (#. text (stride i)))
-                                    (= (chr#var string) (#. text (#[ i .. (+ i cur_chr_stride)) idup))
+                                    (= (chr#var string) (#. text (#[ i .. (+ i cur_chr_stride)) (idup)))
                                     (= (co#var ubyte) (#. colors (#[ wi)))
                                     co.(#switch
                                             0.(#body
@@ -954,14 +984,14 @@
                                     Height#var).(int)
                                     (#. layout (getSize Width Height))
                                     (+= XX (/ Width PANGO_SCALE 2))
-                                    (#. cr save)
+                                    (#. cr (save))
                                     (#. cr (translate XX YY))
                                     (#. cr (moveTo (-#unary (/ Width PANGO_SCALE 2)) 0))
                                     (#. PgCairo (showLayout cr layout))
-                                    (#. cr restore)
+                                    (#. cr (restore))
                                     (+= XX (/ Width PANGO_SCALE 2))))))
         (arcTextWidth#function real (text string) (radius real)).(#body
-                (= (context#var auto) (#. PgCairoFontMap getDefault createContext))
+                (= (context#var auto) (#. PgCairoFontMap (getDefault) (createContext)))
                 (= (layout#var auto) (#new (PgLayout context)))
                 (= (desc#var auto) (#. PgFontDescription (fromString "Times new roman,Sans")))
                 (#. desc (setAbsoluteSize (* 20 PANGO_SCALE)))
@@ -969,7 +999,7 @@
                 (= (eangle#var real) 0.0)
                 (#for (= (i long) 0) (< i (#. text length)) (+= i cur_chr_stride)).(#body
                         (= cur_chr_stride (#. text (stride i)))
-                        (= (chr#var string) (#. text (#[ i .. (+ i cur_chr_stride)) idup))
+                        (= (chr#var string) (#. text (#[ i .. (+ i cur_chr_stride)) (idup)))
                         (#. layout (setText chr)) (.
                         Width#var
                         Height#var).(int)
@@ -996,16 +1026,16 @@
                             (= colors (~ 0 colors 0))))
                 (#if
                     inv.(#body
-                            (= c (#. c invert))))
+                            (= c (#. c (invert)))))
                 (#. cr (setSourceRgba (#. c r) (#. c g) (#. c b) (#. c a)))
                 (= (black#var Color) (Color 0.3 0.0 0.0 1.0))
                 (#if
                     inv.(#body
-                            (= black (#. black invert))))
+                            (= black (#. black (invert)))))
                 (= (selcol#var Color) (Color 1.0 0.0 0.0 1.0))
                 (#if
                     (!#unary inv).(#body
-                            (= selcol (#. selcol invert))))
+                            (= selcol (#. selcol (invert)))))
                 (= (layout#var auto) (#. PgCairo (createLayout cr)))
                 (= (desc#var auto) (#. PgFontDescription (fromString "Times new roman,Sans")))
                 (#. desc (setAbsoluteSize (* 20 PANGO_SCALE)))
@@ -1037,7 +1067,7 @@
                 (= (eangle#var real) 0.0)
                 (#for (= (i long) 0) (< i (#. text length)) (+= i cur_chr_stride)).(#body
                         (= cur_chr_stride (#. text (stride i)))
-                        (= (chr#var string) (#. text (#[ i .. (+ i cur_chr_stride)) idup))
+                        (= (chr#var string) (#. text (#[ i .. (+ i cur_chr_stride)) (idup)))
                         (rect#var Rect)
                         (= (in_cache#var auto) (in chr cache))
                         (#if
@@ -1073,7 +1103,7 @@
                 (= (wi#var long) 0)
                 (#for (= (i long) 0) (< i (#. text length)) (+= i cur_chr_stride)).(#body
                         (= cur_chr_stride (#. text (stride i)))
-                        (= (chr#var string) (#. text (#[ i .. (+ i cur_chr_stride)) idup))
+                        (= (chr#var string) (#. text (#[ i .. (+ i cur_chr_stride)) (idup)))
                         (#if
                             (!is colors null).(#body
                                     (#. colors (#[ wi)).(#switch
@@ -1098,7 +1128,7 @@
                         (= (rect#var auto) (#. cache (#[ chr)))
                         (= (Width#var int) (#. rect w))
                         (= (Height#var int) (#. rect h))
-                        (#. cr save)
+                        (#. cr (save))
                         (+= angle (* (/ (* (/ (* dir Width) PANGO_SCALE) 35) radius) scale))
                         (assert (!#unary (#. angle isNaN)))
                         (assert (!#unary (#. X isNaN)))
@@ -1111,7 +1141,7 @@
                         (#. cr (moveTo (-#unary (/ Width PANGO_SCALE 2)) (-#unary (/ (* dir radius) s) (/ Height PANGO_SCALE 2))))
                         (+= angle (* (/ (* (/ (* dir Width) PANGO_SCALE) 35) radius) scale))
                         (#. PgCairo (showLayout cr layout))
-                        (#. cr restore)))
+                        (#. cr (restore))))
         (drawArc#function void (cr (Scoped ! Context #!) ref) (a_from real) (a_to real) (p1 real) (p2 real) (d1 real) (d2 real) (X real) (Y real) (c Color) (inv bool).(#init false) (lines bool).(#init true)).(#body
                 (assert (< a_from 1440))
                 (assert (< a_to 1440))
@@ -1124,7 +1154,7 @@
                 (= a_to (+ 270 a_to))
                 (#if
                     inv.(#body
-                            (= c (#. c invert))))
+                            (= c (#. c (invert)))))
                 (#. cr (setSourceRgba (#. c r) (#. c g) (#. c b) (#. c a)))
                 (#if
                     (> r1 0.01).(#body
@@ -1137,11 +1167,11 @@
                     (> r1 0.01).(#body
                             (#. cr (lineTo (+ X (* r1 (cos (/ (* a_to PI) 180)))) (+ Y1 (* r1 (sin (/ (* a_to PI) 180))))))
                             (#. cr (arcNegative X Y1 r1 (/ (* a_to PI) 180) (/ (* a_from PI) 180)))))
-                (#. cr fill)
+                (#. cr (fill))
                 (= (black#var Color) (Color 0 0 0.0 1.0))
                 (#if
                     inv.(#body
-                            (= black (#. black invert))))
+                            (= black (#. black (invert)))))
                 (#. cr (setSourceRgba (#. black r) (#. black g) (#. black b) (#. black a)))
                 (#if
                     (> r1 0.01).(#body
@@ -1155,12 +1185,13 @@
                                         (#. cr (lineTo (+ X (* r2 (cos (/ (* a_to PI) 180)))) (+ Y2 (* r2 (sin (/ (* a_to PI) 180))))))))))
                 (#. cr (moveTo (+ X (* r2 (cos (/ (* a_from PI) 180)))) (+ Y2 (* r2 (sin (/ (* a_from PI) 180))))))
                 (#. cr (arc X Y2 r2 (/ (* a_from PI) 180) (/ (* a_to PI) 180)))
-                (#. cr stroke)
+                (#. cr (stroke))
                 (#. cr (setLineWidth m_lineWidth)))
         (getSize#function DrawState (expressions ([]#type Expression)) (ds DrawState)).(#body
                 (= (ret#var DrawState) ds)
                 (#if
                     (&& (< (#. ds llimit) 0) (== (#. ds mode) (#. Mode Block))).(#body
+                            //p-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------m
                             (++#post (#. ds block))
                             (= (#. ds r) 0)
                             (= (#. ds d) 0)
@@ -1208,7 +1239,13 @@
                                     (= ds2 (getSize (#cast (#. Expression #[) (#. expr post_operations)) ds2))
                                     (#if
                                         (< (#. expr pw (#[ 1)) (#. expr pw (#[ 0))).(#body
-                                                (= (#. expr pw (#[ 1)) (#. expr pw (#[ 0)))))
+                                                (= (#. expr pw (#[ 1)) (#. expr pw (#[ 0))))
+                                        //writefln("%s#%s levels %s", expr.operator, expr.type, levels);
+                                        //writefln("%s#%s levels %s", expr.operator, expr.type, levels);
+                                        //writefln("%s. %s#%s r3=%s, levels=%s", ds.block, expr.operator, expr.type, expr.r3, expr.center.levels);
+                                        //if (expr.r3 < expr.center.levels*30)
+                                        //writefln("%s. %s#%s r3=%s, levels=%s", ds.block, expr.operator, expr.type, expr.r3, expr.center.levels);
+                                        //if (expr.r3 < expr.center.levels*30))
                                     (= width (#. expr pw (#[ 1)))
                                     (= (#. expr pw (#[ 1)) width)
                                     (= (#. expr r3) (/ width (* 2 PI)))
@@ -1235,6 +1272,7 @@
                                     (= (#. expr center) (#. expr parent center))))
                         (#if
                             (>= (#. ds llimit) 0).(#body
+                                    //writefln("%s. %s#%s", ds.llimit, expr.operator, expr.type);
                                     (#if
                                         (&& (!is (#. expr parent) null) (|| (== (#. expr parent type) "root") (== (#. expr parent type) "module") (== (#. expr parent type) "body"))).(#body
                                                 #continue))
@@ -1256,10 +1294,17 @@
                                                 (= (#. expr pw (#[ 1)) (#. expr pw (#[ 0)))))
                                     (= (par#var auto) (#. expr parent))
                                     (#if
-                                        (#. par post).(#body
-                                                (+= (#. par parent pw (#[ 1)) (#. expr pw (#[ 1))))
-                                        #else.(#body
-                                                (+= (#. par pw (#[ 1)) (#. expr pw (#[ 1)))))
+                                        (!#unary (#. par post)).(#body
+                                                (+= (#. par pw (#[ 1)) (#. expr pw (#[ 1))))
+                                        //writefln("l%s. %s#%s <= %s#%s (%s <=== %s)", ds.llimit, par.operator, par.type,
+                                        //        expr.operator, expr.type, par.pw[1], expr.pw[1]);
+                                        //writefln("%s", ds.level);
+                                        //writefln("l%s. %s#%s <= %s#%s (%s <=== %s)", ds.llimit, par.operator, par.type,
+                                        //        expr.operator, expr.type, par.pw[1], expr.pw[1]);
+                                        //writefln("%s", ds.level);)
+                                    (#while (#. par post)).(#body
+                                            (= par (#. par parent))
+                                            (+= (#. par pw (#[ 1)) (#. expr pw (#[ 1))))
                                     (= (*#unary (#. ds blocks)) (max (*#unary (#. ds blocks)) (#. ds level)))
                                     (#if
                                         (#. expr post).(#body
@@ -1268,32 +1313,65 @@
                             (< (#. ds llimit) 0).(#body
                                     (#if
                                         (#. expr post).(#body
+                                                //writefln("%s-%s:%s: %s", f, t, expr.app_args, rf);
+                                                //writefln("%s-%s:%s: %s", f, t, expr.app_args, rf);
                                                 (assert (is (#. expr parent post_operations (#[ (#. expr index))) expr))
                                                 (= (ep#var Expression) (#. expr parent))
                                                 (#while (#. ep post)).(#body
                                                         (assert (is (#. ep parent post_operations (#[ (#. ep index))) ep))
                                                         (= ep (#. ep parent)))
+                                                //writefln("%s/%s. %s. %s..%s", expr.operator, ep.operator, ep.parent.arguments.length, ep.index-expr.app_args+1, ep.index+1);
+                                                //writefln("%s/%s. %s. %s..%s", expr.operator, ep.operator, ep.parent.arguments.length, ep.index-expr.app_args+1, ep.index+1);
                                                 (assert (is (#. ep parent arguments (#[ (#. ep index))) ep))
                                                 (#if
                                                     (&& (== (#. ds mode) (#. Mode Circle)) (> (+ (- (#. ep index) (#. expr app_args)) 1) 0) (> (#. ep parent arguments length) (#. ep index))).(#body
                                                             (= (#. ds f) (#. ep parent arguments (#[ (+ (- (#. ep index) (#. expr app_args)) 1)) a1))
                                                             (= (#. ds t) (#. ep parent arguments (#[ (#. ep index)) a2))))
                                                 (#foreach . pre (#. ep parent arguments (#[ (+ (- (#. ep index) (#. expr app_args)) 1) .. (+ (#. ep index) 1)))).(#body
+                                                        //ds.r = max(ds.r, pre.r3);
                                                         (#if
                                                             (&& (== (#. expr type) "body") (|| (== (#. ep parent type) "if") (== (#. ep parent type) "switch"))).(#body
                                                                     (= (hue#var real) (/ (+ (- (* 1.0 (#. ep index)) (/ (#. expr app_args) 2.0)) 1.0) (+ (#. ep parent arguments length) 1)))
                                                                     (= (#. pre c) (#. Color (hsv hue 0.5 1.0))))))))
                                     (#if
                                         (== (#. ds mode) (#. Mode Block)).(#body
-                                                (= sumpw 0)))
+                                                (= sumpw 0))
+                                        //if (ds.level == 4)
+                                        //writefln("%s.%s %s/%s. %s", ds.block, ds.level, expr, expr.parent, expr.pw);
+                                        //if (ds.level == 4)
+                                        //writefln("%s.%s %s/%s. %s", ds.block, ds.level, expr, expr.parent, expr.pw);
+                                        //if (ds.level == 4)
+                                        //writefln("%s.%s %s/%s. %s", ds.block, ds.level, expr, expr.parent, expr.pw);)
                                     (assert (> (#. expr pw length) 0))
                                     (= (w#var real) (#. expr pw (#[ 1)))
                                     (assert (> w 0))
                                     (= (par#var auto) (#. expr parent))
                                     (= (parentw#var real) (#? (|| (is par null) (== (#. ds mode) (#. Mode Block))) w (#. par pw (#[ 1))))
+                                    (#while (&& par (#. par post) (#. par parent post))).(#body
+                                            (= par (#. par parent)))
                                     (#if
                                         (&& (!is par null) (#. par post) (!= (#. par type) "body")).(#body
-                                                (= parentw (- (#. par parent pw (#[ 1)) (#. par pw (#[ 1))))))
+                                                //if (expr !is expr.center)
+                                                //writefln("++ %s/%s. %s/%s", par, par.parent, par.pw, par.parent.pw);
+                                                //if (expr !is expr.center)
+                                                //writefln("++ %s/%s. %s/%s", par, par.parent, par.pw, par.parent.pw);
+                                                (= parentw (- (#. par parent pw (#[ 1)) (#. par pw (#[ 1))))
+                                                //else
+                                                //    parentw = w;
+                                                //else
+                                                //    parentw = w;)
+                                        /*if (expr is expr.center)
+                    parentw = (expr.r3)*2*PI;
+                if (par !is null && par.post && par is par.center)
+                    parentw = (par.r3)*2*PI;*/
+                                        /*if (expr is expr.center)
+                    parentw = (expr.r3)*2*PI;
+                if (par !is null && par.post && par is par.center)
+                    parentw = (par.r3)*2*PI;*/
+                                        /*if (expr is expr.center)
+                    parentw = (expr.r3)*2*PI;
+                if (par !is null && par.post && par is par.center)
+                    parentw = (par.r3)*2*PI;*/)
                                     (assert (> parentw 0))
                                     (#if
                                         (&& (!is par null) (!is expr (#. expr center))).(#body
@@ -1313,19 +1391,51 @@
                                                 (= to (#. ds t))))
                                     (#if
                                         (!#unary (#. expr post)).(#body
-                                                (+= sumpw w)))
-                                    (assert (> to fr))
+                                                (+= sumpw w))
+                                        /*if (ds.level == 4)
+                writefln("    %s => %s | %s => %s | %s | %s/%s/%s",
+                        a, b,
+                        to - fr,
+                        expr.pw[0]/(ds.r+15) * 180/PI,
+                        rw, w, sumpw, parentw);*/
+                                        //writefln("    %s-%s (%s/%s)", fr, to, sumpw, parentw);
+                                        /*if (ds.level == 4)
+                writefln("    %s => %s | %s => %s | %s | %s/%s/%s",
+                        a, b,
+                        to - fr,
+                        expr.pw[0]/(ds.r+15) * 180/PI,
+                        rw, w, sumpw, parentw);*/
+                                        //writefln("    %s-%s (%s/%s)", fr, to, sumpw, parentw);
+                                        /*if (ds.level == 4)
+                writefln("    %s => %s | %s => %s | %s | %s/%s/%s",
+                        a, b,
+                        to - fr,
+                        expr.pw[0]/(ds.r+15) * 180/PI,
+                        rw, w, sumpw, parentw);*/
+                                        //writefln("    %s-%s (%s/%s)", fr, to, sumpw, parentw);
+                                        //if (assign == 1 && ii == 0)
+                                        //    c = Color(1.0, 0.5, 0.5, 1.0);)
+                                    (assert (>= to fr))
                                     (assert (<= sumpw parentw))
                                     (= (c#var Color) (typeColor (#. expr type)))
                                     (#if
                                         (> (#. ds post_dir) 0).(#body
                                                 (= c (Color 1.0 1.0 0.8 1.0)))
+                                        // Yellow
                                         (< (#. ds post_dir) 0).(#body
-                                                (= c (Color 0.8 0.8 0.6 1.0))))
+                                                (= c (Color 0.8 0.8 0.6 1.0)))
+                                        // Dark Yellow
+                                        // Dark Yellow)
                                     (= (plus#var real) (#. ds plus))
                                     (#if
                                         (> (#. ds r) 90).(#body
-                                                (/= plus 2)))
+                                                (/= plus 2))
+                                        //writefln("lev %s %s#%s. %s-%s", ds.level, expr.operator, expr.type, expr.r1, expr.r2);
+                                        //writefln("lev %s %s#%s. %s-%s", ds.level, expr.operator, expr.type, expr.r1, expr.r2);
+                                        //if (fr.isNaN || to.isNaN)
+                                        //    writefln("%s. %s#%s %s (%s-%s) (%s)", expr.level, expr.operator, expr.type, expr.pw[1], expr.a1, expr.a2, parentw);
+                                        //if (fr.isNaN || to.isNaN)
+                                        //    writefln("%s. %s#%s %s (%s-%s) (%s)", expr.level, expr.operator, expr.type, expr.pw[1], expr.a1, expr.a2, parentw);)
                                     (= (#. expr r1) (#. ds r))
                                     (= (#. expr r2) (+ (#. ds r) 30))
                                     (= (#. expr d1) (#. ds d))
@@ -1348,7 +1458,8 @@
                                         #else.(#body
                                                 (= fr to)
                                                 (= to (#. ds t))
-                                                (= (#. ds2 post_dir) (-#unary 1))))
+                                                (= (#. ds2 post_dir) (-#unary 1)))
+                                        //writefln("%s#%s %s >= %s %s", expr.operator, expr.type, expr.level, expr.center.levels, expr.post);)
                                     (= (#. ds2 f) fr)
                                     (= (#. ds2 t) to)
                                     (#if
@@ -1366,7 +1477,9 @@
                                                     (!= (#. expr type) "body").(#body
                                                             (+= (#. ds r) 30)
                                                             (+= (#. ds d) plus)
-                                                            (= (#. ds plus) plus)))
+                                                            (= (#. ds plus) plus))
+                                                    //writefln("%s %s.%s %s#%s %X", ds.mode, expr.block, expr.level, expr.operator, expr.type, cast(void*)expr.center);
+                                                    //writefln("%s %s.%s %s#%s %X", ds.mode, expr.block, expr.level, expr.operator, expr.type, cast(void*)expr.center);)
                                                 (++#post (#. ds level))))
                                     (#if
                                         (== (#. ds2 mode) (#. Mode Circle)).(#body
@@ -1374,13 +1487,16 @@
                                                 (= (#. ret d) (max (#. ret d) (#. ds d) (#. ds2 d)))
                                                 (= (#. expr r3) (max (#. expr r3) (#. ds r) (#. ds2 r)))))
                                     (#if
-                                        (== (#. ds level) 0).(#body)))))
+                                        (== (#. ds level) 0).(#body
+                                                //writefln("%s#%s %s", expr.operator, expr.type, expr.mw);
+                                                //writefln("%s#%s %s", expr.operator, expr.type, expr.mw);)))))
                 (#return ret))
         (connectExpressions#function void (cr (Scoped ! Context #!) ref) (expression1 Expression) (expression2 Expression) (tx real).(#init (#. real nan)) (ty real).(#init (#. real nan))).(#body
                 (#if
                     (|| (is expression1 null) (is expression2 null)).(#body
-                            #return))
-                (#. cr save)
+                            #return)
+                    //writefln("%sx%s-%sx%s", cx1, cy1, cx2, cy2);)
+                (#. cr (save))
                 (= (cx1#var real) (#. expression1 x))
                 (= (cy1#var real) (#. expression1 y))
                 (= (cx2#var real) (#? (#. tx isNaN) (#. expression2 x) tx))
@@ -1408,8 +1524,8 @@
                                 #else.(#body
                                         (#. cr (lineTo cx1 cy2))))
                             (#. cr (lineTo cx2 (+ cy2 (#? (> cy1 cy2) (- (#. expression2 r3) 30) 0))))))
-                (#. cr stroke)
-                (#. cr restore))
+                (#. cr (stroke))
+                (#. cr (restore)))
         (inExpressions#function ([]#type Expression) (expr Expression)).(#body
                 (ret#var ([]#type Expression))
                 (#if
@@ -1436,7 +1552,7 @@
                             (#if
                                 (!#unary (#. expr post)).(#body
                                         (#return (inExpressions (#. expr parent arguments (#[ (- (#. expr index) 1)))))))))
-                (#return []))
+                (#return ([])))
         (inBody#function Expression (expr Expression)).(#body
                 (= (ret#var Expression) (#. expr parent))
                 (#while (!is ret null)).(#body
@@ -1528,12 +1644,34 @@
                                                 (= (#. expr hidden) true)
                                                 (hideRecursive (#. expr arguments))
                                                 (hideRecursive (#. expr post_operations))
-                                                #continue))))
+                                                #continue)))
+                            /*if (parentOf(expr, rotfun))
+                ds.hide = true;
+            else if (ds.hide && parentOfStruct(expr) !is parentOfStruct(rotfun))
+                continue;*/
+                            /*if (parentOf(expr, rotfun))
+                ds.hide = true;
+            else if (ds.hide && parentOfStruct(expr) !is parentOfStruct(rotfun))
+                continue;*/)
                         (#if
                             (!#unary (== (#. expr type) "body")).(#body
                                     (#if
                                         (== (#. ds mode) (#. Mode Block)).(#body
+                                                /*cr.moveTo(dx[ds.line]+ds.x+ds.r, dy+ds.y-25);
+                cr.lineTo(dx[ds.line]+ds.x+ds.r, dy+ds.y+25);
+                cr.moveTo(dx[ds.line]+ds.x+ds.r+30, dy+ds.y-25);
+                cr.lineTo(dx[ds.line]+ds.x+ds.r+30, dy+ds.y+25);
+                cr.stroke();*/
+                                                //writefln("%s. %s#%s r3=%s, levels=%s", expr.block, expr.operator, expr.type, expr.r3, expr.center.levels);
+                                                /*cr.moveTo(dx[ds.line]+ds.x+ds.r, dy+ds.y-25);
+                cr.lineTo(dx[ds.line]+ds.x+ds.r, dy+ds.y+25);
+                cr.moveTo(dx[ds.line]+ds.x+ds.r+30, dy+ds.y-25);
+                cr.lineTo(dx[ds.line]+ds.x+ds.r+30, dy+ds.y+25);
+                cr.stroke();*/
+                                                //writefln("%s. %s#%s r3=%s, levels=%s", expr.block, expr.operator, expr.type, expr.r3, expr.center.levels);
                                                 (+= (#. ds x) (+ (#. ds r) (#. expr r3) 30))
+                                                //writefln("%sx%s. (+%s+%s) %s#%s", ds.x, ds.y, ds.r, expr.r3, expr.operator, expr.type);
+                                                //writefln("%sx%s. (+%s+%s) %s#%s", ds.x, ds.y, ds.r, expr.r3, expr.operator, expr.type);
                                                 (= (#. ds r) 0)
                                                 (#if
                                                     (!#unary (#. ds force)).(#body
@@ -1575,7 +1713,7 @@
                         (= (#. expr hidden) (&& (|| (== (#. expr type) "body") (== (#. expr type) "root")) (!#unary (#. expr arguments empty))))
                         (#if
                             (&& (!#unary (|| (#. expr hidden) (&& (isNeedHide expr) (!#unary (#. expr arguments empty))))) (|| (> (#. ds sizes_invalid) 1) (is (#. selected center) (#. expr center)))).(#body
-                                    (#. cr save)
+                                    (#. cr (save))
                                     (invert#var bool)
                                     (#if
                                         (!#unary (#. ds force)).(#body
@@ -1588,9 +1726,9 @@
                                                 (#if
                                                     (is expr (#. frot_info fun)).(#body
                                                             (= invert true)))))
-                                    (= (text#var string) (~ (#? (#. expr post) "." "") (#? (#. expr operator empty) (#. expr type) (#. expr operator))))
+                                    (= (text#var string) (~ (#? (#. expr post) "." "") (#? (#. expr operator empty) (#. expr type) (#. expr operator)) (#? (&& (#. expr arguments empty) (!is (#. expr arguments) null)) "()" "")))
                                     (#if
-                                        (&& (== (#. expr type) "module") (!#unary (#. (getModule expr) saved))).(#body
+                                        (&& (== (#. expr bt) (#. BlockType File)) (== (#. expr type) "*")).(#body
                                                 (= text (~ text " *"))))
                                     (= (col#var Color) (Color 0.0 0.0 0.0 1.0))
                                     (= (p0#var long) 0)
@@ -1651,6 +1789,8 @@
                                                         (= parent (#. ex parent))
                                                         (#if
                                                             (&& (is ex selected) (< (- (#. expr a2) (#. expr a1)) 359)).(#body
+                                                                    //writefln("%s.%s %s#%s", ex.block, ex.level, ex.operator, ex.type);
+                                                                    //writefln("%s.%s %s#%s", ex.block, ex.level, ex.operator, ex.type);
                                                                     (= (#. ex arat) (#. ex center mw (#[ (#. ex level))))
                                                                     (= (#. ex brat) (pow 180.0 (- 1.0 (#. ex arat))))
                                                                     (~= foreground ex))))))
@@ -1668,7 +1808,9 @@
                                                                     (= rot (#. ri angle))
                                                                     #break))))
                                         #else.(#body
-                                                (= rot (#. frot_info angle))))
+                                                (= rot (#. frot_info angle)))
+                                        //writefln("DRAW lev %s %s#%s. %s-%s %s-%s %sx%s", expr.level, expr.operator, expr.type, expr.a1, expr.a2, expr.r1, expr.r2, expr.x, expr.y);
+                                        //writefln("DRAW lev %s %s#%s. %s-%s %s-%s %sx%s", expr.level, expr.operator, expr.type, expr.a1, expr.a2, expr.r1, expr.r2, expr.x, expr.y);)
                                     (assert (!#unary (#. expr r1 isNaN)))
                                     (assert (!#unary (#. expr r2 isNaN)))
                                     (assert (!#unary (#. expr x isNaN)))
@@ -1676,31 +1818,50 @@
                                     (assert (!#unary (#. expr a1 isNaN)))
                                     (assert (!#unary (#. expr a2 isNaN)))
                                     (assert (> (#. expr r2) (#. expr r1)))
-                                    (assert (> (#. expr a2) (#. expr a1)))
+                                    (assert (>= (#. expr a2) (#. expr a1)))
                                     (= (a1#var real) (#. expr a1))
                                     (= (a2#var real) (#. expr a2))
                                     (#if
                                         (&& invert (< (- a2 a1) 359)).(#body
+                                                //writefln("%s.%s %s#%s", expr.block, expr.level, expr.operator, expr.type);
+                                                //writefln("%s.%s %s#%s", expr.block, expr.level, expr.operator, expr.type);
                                                 (= (#. expr arat) (#. expr center mw (#[ (#. expr level))))
                                                 (= (#. expr brat) (pow 180.0 (- 1.0 (#. expr arat))))
-                                                (~= foreground expr)))
+                                                (~= foreground expr))
+                                        //if (ds.force)
+                                        //    writefln("%s %s-%s => %s-%s", expr, expr.a1, expr.a2, a1, a2);)
                                     (#foreach . exp oforeground).(#body
                                             (#if
                                                 (is (#. exp center) (#. expr center)).(#body
                                                         (= (mid#var real) (/ (+ (#. exp a1) (#. exp a2)) 2))
+                                                        //writefln("%s.%s %s#%s %s", expr.block, expr.level, expr.operator, expr.type, a2 - a1);
                                                         (#if
                                                             (|| (&& (> a1 (- mid 180)) (< a1 mid)) (> a1 (+ mid 180))).(#body
                                                                     (= a1 (- 180 (- mid a1)))
+                                                                    //writefln("-1. %s#%s a1=%s | %s", expr.operator, expr.type, a1, mid);
+                                                                    //writefln("-1. %s#%s a1=%s | %s", expr.operator, expr.type, a1, mid);
                                                                     (normAngle a1)
+                                                                    //writefln("-2. %s#%s a1=%s | %s | %s/%s", expr.operator, expr.type, a1, mid, fa1, ea1);
+                                                                    //writefln("-2. %s#%s a1=%s | %s | %s/%s", expr.operator, expr.type, a1, mid, fa1, ea1);
                                                                     (= a1 (* (#. exp brat) (pow a1 (#. exp arat))))
+                                                                    (#if
+                                                                        (|| (#. a1 isNaN) (> a1 3600)).(#body
+                                                                                (= a1 0)))
                                                                     (= a1 (- mid (- 180 a1)))
                                                                     (normAngle a1))
                                                             #else.(#body
                                                                     (= a1 (- 360 a1))
                                                                     (= mid (- 360 mid))
                                                                     (= a1 (- 180 (- mid a1)))
+                                                                    //writefln("1. %s#%s a1=%s | %s", expr.operator, expr.type, a1, mid);
+                                                                    //writefln("1. %s#%s a1=%s | %s", expr.operator, expr.type, a1, mid);
                                                                     (normAngle a1)
+                                                                    //writefln("2. %s#%s a1=%s | %s | %s/%s", expr.operator, expr.type, a1, mid, fa2, ea2);
+                                                                    //writefln("2. %s#%s a1=%s | %s | %s/%s", expr.operator, expr.type, a1, mid, fa2, ea2);
                                                                     (= a1 (* (#. exp brat) (pow a1 (#. exp arat))))
+                                                                    (#if
+                                                                        (|| (#. a1 isNaN) (> a1 3600)).(#body
+                                                                                (= a1 0)))
                                                                     (= a1 (- mid (- 180 a1)))
                                                                     (= a1 (- 360 a1))
                                                                     (normAngle a1)
@@ -1708,20 +1869,36 @@
                                                         (#if
                                                             (|| (&& (> a2 (- mid 180)) (< a2 mid)) (> a2 (+ mid 180))).(#body
                                                                     (= a2 (- 180 (- mid a2)))
+                                                                    //writefln("-1. %s#%s a2=%s | %s", expr.operator, expr.type, a2, mid);
+                                                                    //writefln("-1. %s#%s a2=%s | %s", expr.operator, expr.type, a2, mid);
                                                                     (normAngle a2)
+                                                                    //writefln("-2. %s#%s a2=%s | %s | %s/%s", expr.operator, expr.type, a2, mid, fa1, ea1);
+                                                                    //writefln("-2. %s#%s a2=%s | %s | %s/%s", expr.operator, expr.type, a2, mid, fa1, ea1);
                                                                     (= a2 (* (#. exp brat) (pow a2 (#. exp arat))))
+                                                                    (#if
+                                                                        (|| (#. a2 isNaN) (> a2 3600)).(#body
+                                                                                (= a2 0)))
                                                                     (= a2 (- mid (- 180 a2)))
                                                                     (normAngle a2))
                                                             #else.(#body
                                                                     (= a2 (- 360 a2))
                                                                     (= mid (- 360 mid))
                                                                     (= a2 (- 180 (- mid a2)))
+                                                                    //writefln("1. %s#%s a2=%s | %s | %s/%s", expr.operator, expr.type, a2, mid, fa2, ea2);
+                                                                    //writefln("1. %s#%s a2=%s | %s | %s/%s", expr.operator, expr.type, a2, mid, fa2, ea2);
                                                                     (normAngle a2)
+                                                                    //writefln("2. %s#%s a2=%s | %s | %s/%s", expr.operator, expr.type, a2, mid, fa2, ea2);
+                                                                    //writefln("2. %s#%s a2=%s | %s | %s/%s", expr.operator, expr.type, a2, mid, fa2, ea2);
                                                                     (= a2 (* (#. exp brat) (pow a2 (#. exp arat))))
+                                                                    (#if
+                                                                        (|| (#. a2 isNaN) (> a2 3600)).(#body
+                                                                                (= a2 0)))
                                                                     (= a2 (- mid (- 180 a2)))
                                                                     (= a2 (- 360 a2))
                                                                     (normAngle a2)
-                                                                    (= mid (- 360 mid))))
+                                                                    (= mid (- 360 mid)))
+                                                            //writefln("%s#%s %s-%s => %s-%s | %s", expr.operator, expr.type,
+                                                            //        expr.a1, expr.a2, a1, a2, mid);)
                                                         (#while (|| (< a2 a1) (&& (< (abs (- a1 a2)) 1) (> (- (#. expr a2) (#. expr a1)) 359)))).(#body
                                                                 (+= a2 360))
                                                         #break)))
@@ -1733,11 +1910,18 @@
                                                 (= (A2#var auto) a2)
                                                 (normAngle A1)
                                                 (normAngle A2)
+                                                /*if (!click_processed && clickR1 > R1 && clickR2 < R2)
+                        {
+                            writefln("%s#%s", expr.operator, expr.type);
+                            writefln("%s-%s, %s-%s", a1, a2, clickA1, clickA2);
+                        }*/
                                                 (#if
                                                     (&& (!#unary click_processed) (> clickA1 A1) (< clickA1 A2) (> clickA2 A1) (< clickA2 A2) (> clickR1 R1) (< clickR2 R2)).(#body
                                                             (= click_processed true)
                                                             (= selected expr)
-                                                            updateView))
+                                                            (updateView)
+                                                            //writefln("%s#%s", expr.operator, expr.type);
+                                                            //writefln("%s#%s", expr.operator, expr.type);))
                                                 (drawArc cr (- 360 a2) (- 360 a1) (#. expr r1) (#. expr r2) (#. expr d1) (#. expr d2) (#. expr x) (#. expr y) (#. expr c) invert lines)
                                                 (= (r#var real) (/ (+ (#. expr r1) (#. expr r2) (#. expr d1) (#. expr d2)) 4))
                                                 (= (dr1#var real) (- (#. expr r2) (#. expr r1)))
@@ -1752,7 +1936,7 @@
                                     (#if
                                         (&& (== (#. expr r1) 0) (!#unary (#. expr label empty))).(#body
                                                 (drawText cr (~ "@" (#. expr label)) (#. expr x) (+ (#. expr y) (#. expr r3) 15) (* 2 (#. expr r3)) col)))
-                                    (#. cr restore)))
+                                    (#. cr (restore))))
                         (= (ds2#var DrawState) ds)
                         (#if
                             (|| (== (#. expr type) "root") (== (#. expr type) "module") (== (#. expr type) "body")).(#body
@@ -1770,8 +1954,8 @@
         (getSymbols#function ([]#type Button) (expr Expression)).(#body
                 (#if
                     (is (#. expr parent) null).(#body
-                            (#return [])))
-                (= (ret#var ([]#type Button)) [])
+                            (#return ([]))))
+                (= (ret#var ([]#type Button)) ([]))
                 (#if
                     (== (#. expr parent type) "body").(#body
                             (#foreach . ex (#. expr parent arguments (#[ 0 .. (#. expr index)))).(#body
@@ -1817,8 +2001,9 @@
         (getFieldsType#function ([]#type Expression) (type string) (symbols ([]#type Button)) (fsel ([]#type Expression)) (parent Expression) (level int).(#init 1)).(#body
                 (ret#var ([]#type Expression))
                 (#if
-                    (> level 5).(#body
-                            (#return ret)))
+                    (&& (> level 2) (#. fsel empty)).(#body
+                            (#return ret))
+                    //writefln("%s ~ %s", type, ret);)
                 (#foreach . sym.(ref) symbols).(#body
                         (#if
                             (== type (#. sym text)).(#body
@@ -1851,13 +2036,17 @@
                                                 (= (#. expr arguments) (getFieldsType (#. sym text) symbols fsel expr)))
                                         #else.(#body
                                                 (= (#. expr arguments) (getFieldsType (#. sym type) symbols fsel expr)))))))
+                //writefln("%s", expr);
                 (#return expr))
         (drawCallback#function bool (cr (Scoped ! Context #!)) (widget Widget)).(#body
+                // This is where we draw on the window
                 (#if
                     (is m_timeout null).(#body
                             (#foreach . ri rot_info).(#body
                                     (#if
                                         (!= (#. ri target_angle) (#. ri angle)).(#body
+                                                //Create a new timeout that will ask the window to be drawn once every second.
+                                                //Create a new timeout that will ask the window to be drawn once every second.
                                                 (= m_timeout (#new (Timeout 100 (&#unary onSecondElapsed) false)))
                                                 #break))))
                     #else.(#body
@@ -1869,7 +2058,7 @@
                                                 #break)))
                             (#if
                                 (!#unary redraw_need).(#body
-                                        (#. m_timeout stop)
+                                        (#. m_timeout (stop))
                                         (= m_timeout null)))))
                 (size#var GtkAllocation)
                 (getAllocation size)
@@ -1878,6 +2067,7 @@
                 (= (sizesInvalid#var int) sizes_invalid)
                 (#if
                     (|| (!#unary (&& (== (#. rect x) 0) (< (#. rect width) (#. size width)))) (> (#. rect width) (/ (#. size width) 6))).(#body
+                            //writefln("Redraw View %sx%s size %sx%s", rect.x, rect.y, rect.width, rect.height);
                             (= (min_x#var real) (#. real max))
                             (= (min_y#var real) (#. real max))
                             (= (max_x#var real) (-#unary (#. real max)))
@@ -1886,7 +2076,14 @@
                             (= sizes_invalid 0)
                             (#if
                                 (&& (== (#. rect width) (#. size width)) (== (#. rect height) (#. size height))).(#body
-                                        (= sizesInvalid 2)))
+                                        (= sizesInvalid 2))
+                                /*if (w/size.width > h/size.height)
+            {
+                max_y += (w*size.height/size.width - h);
+                h = w*size.height/size.width;
+                sy2 = h;
+            }
+            else*/)
                             (w#var real)
                             (h#var real)
                             (= min_x sx1)
@@ -1901,15 +2098,15 @@
                             (= sx2 w)
                             (= clickRX (+ (/ (* (- clickX (/ (#. size width) 5.0)) w) (#. size width)) min_x))
                             (= clickRY (+ (/ (* clickY h) (#. size height)) min_y))
-                            (#. cr save)
+                            (#. cr (save))
                             (#. cr (scale (/ (#. size width) w) (/ (#. size height) h)))
                             (#. cr (translate (+ (-#unary min_x) (/ w 5.0)) (-#unary min_y)))
                             (#. cr (setLineWidth m_lineWidth))
                             (#. cr (rectangle 0 0 sx2 sy2))
-                            (#. cr clip)
+                            (#. cr (clip))
                             (= (c#var Color) (Color 0.9 0.9 0.9 1.0))
                             (#. cr (setSourceRgba (#. c r) (#. c g) (#. c b) (#. c a)))
-                            (#. cr paint)
+                            (#. cr (paint))
                             (= (black#var Color) (Color 0 0 0.0 1.0))
                             (#. cr (setSourceRgba (#. black r) (#. black g) (#. black b) (#. black a)))
                             (ds#var DrawState)
@@ -1920,11 +2117,13 @@
                             (= oforeground foreground)
                             (= foreground [])
                             (drawAll cr ([] root_expr) ds)
-                            (#. cr restore)
+                            (#. cr (restore))
                             (= (redraw_need#var bool) false)
                             (#foreach . ri.(ref) rot_info).(#body
                                     (#if
                                         (!= (#. ri target_angle) (#. ri angle)).(#body
+                                                //writefln("target %s rot %s", ri.target_angle, ri.angle);
+                                                //writefln("%s + %s", 0.8*target_angle, 0.2*rot_angle);
                                                 (= (adiff#var real) (- (#. ri angle) (#. ri target_angle)))
                                                 (#while (> adiff 180)).(#body
                                                         (-= (#. ri angle) 360)
@@ -1936,10 +2135,14 @@
                                                     (< (abs (- (#. ri target_angle) (#. ri angle))) 10).(#body
                                                             (= (#. ri angle) (#. ri target_angle)))
                                                     #else.(#body
-                                                            (= (#. ri angle) (+ (* 0.6 (#. ri target_angle)) (* 0.4 (#. ri angle))))))
+                                                            (= (#. ri angle) (+ (* 0.6 (#. ri target_angle)) (* 0.4 (#. ri angle)))))
+                                                    //writefln("=rot %s", ri.angle);
+                                                    //writefln("=rot %s", ri.angle);)
                                                 (= redraw_need true))))
                             (#if
                                 (!= (#. frot_info target_angle) (#. frot_info angle)).(#body
+                                        //writefln("target %s rot %s", frot_info.target_angle, frot_info.angle);
+                                        //writefln("%s + %s", 0.8*target_angle, 0.2*rot_angle);
                                         (= (adiff#var real) (- (#. frot_info angle) (#. frot_info target_angle)))
                                         (#while (> adiff 180)).(#body
                                                 (-= (#. frot_info angle) 360)
@@ -1951,7 +2154,9 @@
                                             (< (abs (- (#. frot_info target_angle) (#. frot_info angle))) 10).(#body
                                                     (= (#. frot_info angle) (#. frot_info target_angle)))
                                             #else.(#body
-                                                    (= (#. frot_info angle) (+ (* 0.6 (#. frot_info target_angle)) (* 0.4 (#. frot_info angle))))))
+                                                    (= (#. frot_info angle) (+ (* 0.6 (#. frot_info target_angle)) (* 0.4 (#. frot_info angle)))))
+                                            //writefln("=rot %s", frot_info.angle);
+                                            //writefln("=rot %s", frot_info.angle);)
                                         (= redraw_need true)))
                             (#if
                                 (< (#. selected x) 150).(#body
@@ -1969,59 +2174,61 @@
                                         (-= dy (- (#. selected y) (- sy2 300)))))
                             (#if
                                 redraw_need.(#body
-                                        redraw))))
+                                        (redraw)))))
                 (#if
                     (== (#. rect x) 0).(#body
-                            (#. cr save)
+                            //writefln("Redraw Navigation %sx%s size %sx%s", rect.x, rect.y, rect.width, rect.height);
+                            //writefln("Redraw Navigation %sx%s size %sx%s", rect.x, rect.y, rect.width, rect.height);
+                            (#. cr (save))
                             (/= (#. size width) 5)
                             (= (w#var real) 200)
                             (= (h#var real) (/ (* w (#. size height)) (#. size width)))
                             (#. cr (scale (/ (#. size width) w) (/ (#. size height) h)))
                             (#. cr (setLineWidth m_lineWidth))
                             (#. cr (rectangle 0 0 w h))
-                            (#. cr clip)
+                            (#. cr (clip))
                             (= (c#var Color) (Color 0.9 0.9 1.0 1.0))
                             (#. cr (setSourceRgba (#. c r) (#. c g) (#. c b) (#. c a)))
-                            (#. cr paint)
+                            (#. cr (paint))
                             (= c (Color 0.5 0.5 1.0 1.0))
                             (#. cr (setSourceRgba (#. c r) (#. c g) (#. c b) (#. c a)))
                             (#. cr (moveTo 100 0))
                             (#. cr (lineTo 200 50))
                             (#. cr (lineTo 100 100))
                             (#. cr (lineTo 0 50))
-                            (#. cr closePath)
-                            (#. cr fill)
+                            (#. cr (closePath))
+                            (#. cr (fill))
                             (= c (Color 1.0 1.0 1.0 1.0))
                             (#. cr (setSourceRgba (#. c r) (#. c g) (#. c b) (#. c a)))
                             (#. cr (rectangle 50 25 100 50))
-                            (#. cr fill)
+                            (#. cr (fill))
                             (= c (Color 0.0 0.0 0.0 1.0))
                             (#. cr (setSourceRgba (#. c r) (#. c g) (#. c b) (#. c a)))
                             (#. cr (rectangle 50 25 50 25))
-                            (#. cr stroke)
+                            (#. cr (stroke))
                             (drawText cr "." 75 37.5 50 c)
                             (#. cr (rectangle 100 25 50 25))
-                            (#. cr stroke)
+                            (#. cr (stroke))
                             (drawText cr "+" 125 37.5 50 c)
                             (#. cr (rectangle 50 50 50 25))
-                            (#. cr stroke)
+                            (#. cr (stroke))
                             (drawText cr "," 75 62.5 50 c)
                             (#. cr (rectangle 100 50 25 25))
-                            (#. cr stroke)
+                            (#. cr (stroke))
                             (drawText cr "<" 112.5 62.5 25 c)
                             (#. cr (rectangle 125 50 25 25))
-                            (#. cr stroke)
+                            (#. cr (stroke))
                             (drawText cr ">" 137.5 62.5 25 c)
                             (= (y#var real) 125)
                             (= (x#var real) 5)
                             (= c (Color 1.0 1.0 1.0 1.0))
                             (#. cr (setSourceRgba (#. c r) (#. c g) (#. c b) (#. c a)))
                             (#. cr (rectangle x y 190 20))
-                            (#. cr fill)
+                            (#. cr (fill))
                             (= c (Color 0.0 0.0 0.0 1.0))
                             (#. cr (setSourceRgba (#. c r) (#. c g) (#. c b) (#. c a)))
                             (#. cr (rectangle x y 190 20))
-                            (#. cr stroke)
+                            (#. cr (stroke))
                             (drawText cr (#. selected text) (+ x (/ 190 2)) (+ y 10) 180 c)
                             (= x 5)
                             (+= y 35)
@@ -2052,7 +2259,7 @@
                                         (= symbols (getSymbols sel))))
                             (~= buttons symbols)
                             (#. cr (rectangle 0 y w (- h y)))
-                            (#. cr clip)
+                            (#. cr (clip))
                             (#. cr (translate 0 scrollY))
                             (#foreach . but buttons).(#body
                                     (#if
@@ -2068,14 +2275,14 @@
                                     (= c (#. but c))
                                     (#. cr (setSourceRgba (#. c r) (#. c g) (#. c b) (#. c a)))
                                     (#. cr (rectangle x y (+ wi 5) 20))
-                                    (#. cr fill)
+                                    (#. cr (fill))
                                     (= c (Color 0.0 0.0 0.0 1.0))
                                     (#. cr (setSourceRgba (#. c r) (#. c g) (#. c b) (#. c a)))
                                     (#. cr (rectangle x y (+ wi 5) 20))
-                                    (#. cr stroke)
+                                    (#. cr (stroke))
                                     (drawText cr (#. but text) (+ x (/ (+ wi 5) 2)) (+ y 10) (+ wi 5) c)
                                     (+= x (+ wi 10)))
-                            (#. cr restore)
+                            (#. cr (restore))
                             (#if
                                 (|| (> sizesInvalid 0) (!is selected oselected)).(#body
                                         (= fields (getFields (#. sel operator) symbols fsel))
@@ -2093,28 +2300,36 @@
                                         (= (#. frot_info fun) expr)))
                             (#if
                                 (!#unary (#. fields arguments empty)).(#body
-                                        (#. cr save)
+                                        (#. cr (save))
                                         (#. cr (translate 0 (- (#. size height) (#. size width))))
                                         (#. cr (scale (/ (#. size width) w) (/ (#. size height) h)))
                                         (#. cr (scale (/ 2.0 3) (/ 2.0 3)))
                                         (#. cr (setLineWidth m_lineWidth))
                                         (#. cr (rectangle 0 0 300 300))
-                                        (#. cr clip)
+                                        (#. cr (clip))
                                         (= c (Color 0.9 0.9 1.0 1.0))
                                         (#. cr (setSourceRgba (#. c r) (#. c g) (#. c b) (#. c a)))
-                                        (#. cr paint)
+                                        (#. cr (paint))
                                         (= c (Color 0.0 0.0 0.0 1.0))
                                         (#. cr (setSourceRgba (#. c r) (#. c g) (#. c b) (#. c a)))
                                         (#. cr (rectangle 0 0 300 300))
-                                        (#. cr stroke)
+                                        (#. cr (stroke))
                                         (= (ds#var auto) (#. DrawState init))
                                         (= (#. ds force) true)
                                         (= (#. ds sizes_invalid) 2)
                                         (drawAll cr ([] fields) ds)
-                                        (#. cr restore)))))
+                                        (#. cr (restore)))))
+                    /*if (selected.parent !is null)
+        writefln("%s#%s %s %s", selected.parent.operator, selected.parent.type,
+                selected.parent.r3, (selected.parent.x2-selected.parent.x1)/(2*PI));
+                */
+                    /*if (selected.parent !is null)
+        writefln("%s#%s %s %s", selected.parent.operator, selected.parent.type,
+                selected.parent.r3, (selected.parent.x2-selected.parent.x1)/(2*PI));
+                */)
                 (#return true))
         (onSecondElapsed#function bool).(#body
-                redraw
+                (redraw)
                 (#return true))
         (m_radius double).(0.40#init)
         (m_lineWidth double).(1.0#init)
@@ -2127,3 +2342,4 @@
         (rlines ([]#type real))
         (sizes_invalid int).(1#init)
         (m_timeout Timeout)))
+

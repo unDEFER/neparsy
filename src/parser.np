@@ -8,20 +8,33 @@
     (#import expression)
     (Parser#class
         (lexer Lexer)
+        (cexpr Expression)
         (getLexem#function void).(#body
                 (#if
                     backed.(#body
                             (= backed false)
                             #return))
                 (#do (|| (== lexer (#. LexemType Blank)) (== lexer (#. LexemType Comment)))).(#body
-                        lexer.(getLexem)))
+                        lexer.(getLexem)
+                        (lexer#if
+                            (#. LexemType Comment).(#body
+                                    (= (com#var Expression) (#new Expression))
+                                    (= (#. com bt) (#. BlockType Comment))
+                                    (= (#. com operator) (#. lexer lexem))
+                                    (~= (#. cexpr arguments) com)))))
         (parse#function Expression).(#body
+                (= (file#var Expression) (#new Expression))
+                (= (#. file bt) (#. BlockType File))
+                (= cexpr file)
                 (= (ret#var Expression) (#new Expression))
                 getLexem@Init
                 (lexer#if
                     "module".(#body
                             (= (#. ret type) "module")
                             (= (#. ret operator) getModuleName)
+                            (= (#. ret label) "D")
+                            (~= (#. file arguments) ret)
+                            (= cexpr ret)
                             (#goto Init))
                     "import".(#body
                             (~= (#. ret arguments) getImport)
@@ -43,7 +56,7 @@
                     #else.(#body
                             (writefln (#" Unexpected %s) lexer)
                             (assert 0)))
-                (#return ret))
+                (#return file))
         (getModuleName#function string).(#body
                 getLexem
                 (lexer#if
@@ -405,8 +418,11 @@
         (getBody#function Expression).(#body
                 (= (ret#var Expression) (#new Expression))
                 (= (#. ret type) "body")
+                (= (oexpr#var Expression) cexpr)
+                (= cexpr ret)
                 (=@Init (s#var Expression[]) getStatement)
                 (~= (#. ret arguments) s)
+                (= cexpr oexpr)
                 (#return ret))
         (getCaseBody#function Expression).(#body
                 (= (ret#var Expression) (#new Expression))
@@ -431,6 +447,7 @@
                             (= (expr#var Expression) (#new Expression))
                             (= (#. expr type) "if")
                             (~= (#. expr post_operations) post)
+                            (= cexpr expr)
                             getLexem@Init
                             (lexer#if
                                 "(".(#body
@@ -705,6 +722,8 @@
                     "{".(#body
                             (= (a Expression) (#new Expression))
                             (= (#. a type) "{")
+                            (= (oexpr#var Expression) cexpr)
+                            (= cexpr a)
                             (=@Body (b Expression[]) getStatement)
                             (#if
                                 (!is b null).(#body
@@ -713,6 +732,7 @@
                             getLexem
                             (lexer#if
                                 "}".(#body
+                                        (= cexpr oexpr)
                                         (#return (#. a arguments)))
                                 #else.(#body
                                         (writefln (#" } Expected not %s) lexer)
@@ -1144,8 +1164,13 @@
                                         (= (arg Expression) (#new Expression))
                                         (= (#. arg operator) name)
                                         (#. ed (addChild arg))))
-                            (#goto Operator)) (.
-                    (#. LexemType String)
+                            (#goto Operator))
+                    (#. LexemType String).(#body
+                            (= (arg Expression) (#new Expression))
+                            (= (#. arg operator) (#. lexer lexem))
+                            (= (#. arg bt) (#. BlockType String))
+                            (#. ed (addChild arg))
+                            getLexem) (.
                     (#. LexemType Number)
                     (#. LexemType Float)
                     (#. LexemType Character)

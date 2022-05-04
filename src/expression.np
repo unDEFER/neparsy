@@ -1,4 +1,7 @@
-(expression#module
+/**
+ * expression.d
+ */
+(expression#module@D
     (#import std.stdio)
     (#import std.math)
     (#import std.datetime)
@@ -10,7 +13,21 @@
     (#import (std.range repeat))
     (#import std.array)
     (#import std.string)
+    (#import std.file)
     (#import iface)
+    (BlockBE#struct
+        (begin string)
+        (end string)
+        (escape string)
+        (nested bool))
+    (BlockType#enum Code.(0#init) String Comment File)
+    (ParserState#struct
+        (strings ([]#type BlockBE)).([]#init)
+        (comments ([]#type BlockBE)).([]#init)
+        (brackets BlockBE).(BlockBE#init "(" ")" "\\" true)
+        (sharp string).("#")
+        (at string).("@")
+        (dot string).("."))
     (Expression#class (.
         x.(0#init)
         y.(0#init)).(real) (.
@@ -35,6 +52,7 @@
         (operator string)
         (type string)
         (label string)
+        (bt BlockType)
         (app_args long)
         (arguments ([]#type Expression))
         (post_operations ([]#type Expression))
@@ -51,287 +69,260 @@
         (a#function real).(#body
                 (#return (#. c a)))
         (this#function #constructor).(#body)
-        (this#function #constructor (line ([]#type char))).(#body
-                (= (app_args#var long) 1)
+        (getEscape#function dchar.(static) (c dchar)).(#body
+                c.(#switch
+                        'n'.(#body
+                                (#return '\\n'))
+                        'r'.(#body
+                                (#return '\\r'))
+                        't'.(#body
+                                (#return '\\t'))
+                        #default.(#body
+                                (#return c))))
+        (readEscaped#function string.(static) (line string) (escChar string)).(#body
+                (= (res#var string) "")
+                (escape#var bool)
+                (#while (!#unary (#. line empty))).(#body
+                        (#if
+                            escape.(#body
+                                    (= escape false)
+                                    (= (c#var dchar) (#. line (decodeFront)))
+                                    (~= res (getEscape c)))
+                            (#. line (startsWith escChar)).(#body
+                                    (= escape true)
+                                    (= line (#. line (#[ (#. escChar length) .. $))))
+                            #else.(#body
+                                    (~= res (#. line (decodeFront))))))
+                (#return res))
+        (getBlock#function string (line ([]#type char) ref) (be BlockBE)).(#body
+                (= (sline#var ([]#type char)) line)
+                (assert (#. line (startsWith (#. be begin))))
+                (= line (#. line (#[ (#. be begin length) .. $)))
+                (escape#var bool)
+                (nest#var int)
+                (#while (!#unary (#. line empty))).(#body
+                        (#if
+                            escape.(#body
+                                    (= escape false)
+                                    (#. line (decodeFront)))
+                            (&& (!#unary (#. be escape empty)) (#. line (startsWith (#. be escape)))).(#body
+                                    (= escape true)
+                                    (= line (#. line (#[ (#. be escape length) .. $))))
+                            (&& (#. be nested) (#. line (startsWith (#. be begin)))).(#body
+                                    (++#post nest)
+                                    (= line (#. line (#[ (#. be begin length) .. $))))
+                            (#. line (startsWith (#. be end))).(#body
+                                    (= line (#. line (#[ (#. be end length) .. $)))
+                                    (#if
+                                        (== nest 0).(#body
+                                                (#return (#. sline (#[ 0 .. (- (#. line ptr) (#. sline ptr))) idup))))
+                                    (--#post nest))
+                            #else.(#body
+                                    (#. line (decodeFront)))))
+                (#return (#. sline (#[ 0 .. (- (#. line ptr) (#. sline ptr))) idup)))
+        (getBE#function BlockBE).(#body
+                (= (be#var BlockBE) (BlockBE operator))
+                (#foreach . arg arguments).(#body
+                        (#. arg type).(#switch
+                                "end".(#body
+                                        (= (#. be end) (#. arg operator))
+                                        #break)
+                                "escape".(#body
+                                        (= (#. be escape) (#. arg operator))
+                                        #break)
+                                "nested".(#body
+                                        (= (#. be nested) true)
+                                        #break)
+                                #default.(#body
+                                        #break)))
+                (#return be))
+        (this#function #constructor (line ([]#type char) ref) (ps ParserState).(#init (#. ParserState init)) (parent Expression).(#init null)).(#body
                 (#if
-                    (&& (== (#. line (#[ 0)) '(') (== (#. line (#[ (- $ 1))) ')')).(#body
-                            (= line (#. line (#[ 1 .. (- $ 1))))
-                            (= (operator#var auto) line)
-                            (type#var ([]#type char))
-                            (label#var ([]#type char))
-                            (= (sp#var auto) (#. line (find " ")))
-                            (#if
-                                (!#unary (#. sp empty)).(#body
-                                        (= operator (#. line (#[ 0 .. (- (#. sp ptr) (#. line ptr)))))
-                                        (= (sh#var auto) (#. operator (findSplit "#")))
-                                        (#if
-                                            (!#unary (#. sh (#[ 1) empty)).(#body
-                                                    (= operator (#. sh (#[ 0)))
-                                                    (= type (#. sh (#[ 2)))))
-                                        (= sh (#. operator (findSplit "@")))
-                                        (#if
-                                            (!#unary (#. sh (#[ 1) empty)).(#body
-                                                    (= operator (#. sh (#[ 0)))
-                                                    (= label (#. sh (#[ 2))))
-                                            #else.(#body
-                                                    (= sh (#. type (findSplit "@")))
-                                                    (#if
-                                                        (!#unary (#. sh (#[ 1) empty)).(#body
-                                                                (= type (#. sh (#[ 0)))
-                                                                (= label (#. sh (#[ 2)))))))
-                                        (= line (#. sp (#[ 1 .. $)))
-                                        (#do (> (#. line length) 0)).(#body
+                    (is parent null).(#body
+                            (= bt (#. BlockType File))
+                            (#while (!#unary (#. line empty))).(#body
+                                    (= (ne#var auto) (#new (Expression line ps this)))
+                                    (= (#. ne parent) this)
+                                    (= (#. ne index) (#. arguments length))
+                                    (~= arguments ne))
+                            #return))
+                (#if
+                    (#. ps comments empty).(#body
+                            (= (sline#var ([]#type char)) line)
+                            (#while (!#unary (#. line empty))).(#body
+                                    (#if
+                                        (#. line (startsWith (#. ps brackets begin))).(#body
                                                 (#if
-                                                    (== (#. line (#[ 0)) '(').(#body
-                                                            (= (brackets#var int) 0)
-                                                            (= (str#var bool) false)
-                                                            (= (chr#var bool) false)
-                                                            (= (slash#var bool) false)
-                                                            (= (sharp#var bool) false)
-                                                            (#foreach i c line).(#body
-                                                                    (#if
-                                                                        sharp.(#body
-                                                                                (= sharp false))
-                                                                        str.(#body
-                                                                                (#if
-                                                                                    slash.(#body
-                                                                                            (= slash false))
-                                                                                    (== c '\\').(#body
-                                                                                            (= slash true))
-                                                                                    (== c '\"').(#body
-                                                                                            (= str false))))
-                                                                        chr.(#body
-                                                                                (#if
-                                                                                    slash.(#body
-                                                                                            (= slash false))
-                                                                                    (== c '\\').(#body
-                                                                                            (= slash true))
-                                                                                    (== c '\'').(#body
-                                                                                            (= chr false))))
-                                                                        (== c '\"').(#body
-                                                                                (= str true))
-                                                                        (== c '\'').(#body
-                                                                                (= chr true))
-                                                                        (== c '#').(#body
-                                                                                (= sharp true))
-                                                                        (== c '(').(#body
-                                                                                (++#post brackets))
-                                                                        (== c ')').(#body
-                                                                                (--#post brackets)
-                                                                                (#if
-                                                                                    (== brackets 0).(#body
-                                                                                            (= (ne#var Expression) (#new (Expression (#. line (#[ 0 .. (+ i 1))))))
-                                                                                            (= (#. ne parent) this)
-                                                                                            (#if
-                                                                                                (== (#. ne operator) ".").(#body
-                                                                                                        (#foreach k ne2 (#. ne arguments)).(#body
-                                                                                                                (= (#. ne2 parent) this)
-                                                                                                                (= (#. ne2 index) (+ (#. this arguments length) k)))
-                                                                                                        (~= (#. this arguments) (#. ne arguments))
-                                                                                                        (= app_args (#. ne arguments length))
-                                                                                                        (~= (#. this post_operations) (#. ne post_operations)))
-                                                                                                #else.(#body
-                                                                                                        (= (#. ne index) (#. this arguments length))
-                                                                                                        (~= (#. this arguments) ne)
-                                                                                                        (= app_args 1)))
-                                                                                            (#if
-                                                                                                (&& (> (#. line length) (+ i 1)) (== (#. line (#[ (+ i 1))) ' ')).(#body
-                                                                                                        (= line (#. line (#[ (+ i 2) .. $))))
-                                                                                                (&& (> (#. line length) (+ i 1)) (== (#. line (#[ (+ i 1))) '.')).(#body
-                                                                                                        (= line (#. line (#[ (+ i 1) .. $))))
-                                                                                                #else.(#body
-                                                                                                        (= line (#. line (#[ 0 .. 0)))))
-                                                                                            #break)))))
-                                                            (assert (== brackets 0)))
-                                                    (== (#. line (#[ 0)) '.').(#body
-                                                            (= line (#. line (#[ 1 .. $)))
-                                                            (#if
-                                                                (&& (!#unary (#. line empty)) (== (#. line (#[ 0)) '.')).(#body
-                                                                        (= (ne#var Expression) (#new Expression))
-                                                                        (= (#. ne parent) this)
-                                                                        (= (#. ne index) (#. this arguments length))
-                                                                        (= (#. ne operator) "..")
-                                                                        (~= (#. this arguments) ne)
-                                                                        (= app_args 1)
-                                                                        (#if
-                                                                            (&& (> (#. line length) 1) (== (#. line (#[ 1)) ' ')).(#body
-                                                                                    (= line (#. line (#[ 2 .. $))))
-                                                                            #else.(#body
-                                                                                    (= line (#. line (#[ 1 .. $))))))
-                                                                (&& (!#unary (#. line empty)) (== (#. line (#[ 0)) '(')).(#body
-                                                                        (= (brackets#var int) 0)
-                                                                        (= (str#var bool) false)
-                                                                        (= (chr#var bool) false)
-                                                                        (= (slash#var bool) false)
-                                                                        (= (sharp#var bool) false)
-                                                                        (#foreach i c line).(#body
-                                                                                (#if
-                                                                                    sharp.(#body
-                                                                                            (= sharp false))
-                                                                                    str.(#body
-                                                                                            (#if
-                                                                                                slash.(#body
-                                                                                                        (= slash false))
-                                                                                                (== c '\\').(#body
-                                                                                                        (= slash true))
-                                                                                                (== c '\"').(#body
-                                                                                                        (= str false))))
-                                                                                    chr.(#body
-                                                                                            (#if
-                                                                                                slash.(#body
-                                                                                                        (= slash false))
-                                                                                                (== c '\\').(#body
-                                                                                                        (= slash true))
-                                                                                                (== c '\'').(#body
-                                                                                                        (= chr false))))
-                                                                                    (== c '\"').(#body
-                                                                                            (= str true))
-                                                                                    (== c '\'').(#body
-                                                                                            (= chr true))
-                                                                                    (== c '#').(#body
-                                                                                            (= sharp true))
-                                                                                    (== c '(').(#body
-                                                                                            (++#post brackets))
-                                                                                    (== c ')').(#body
-                                                                                            (--#post brackets)
-                                                                                            (#if
-                                                                                                (== brackets 0).(#body
-                                                                                                        (= (ne#var Expression) (#new (Expression (#. line (#[ 0 .. (+ i 1))))))
-                                                                                                        (= (#. ne parent) (#. this arguments (#[ (- $ 1))))
-                                                                                                        (= (#. ne post) true)
-                                                                                                        (= (#. ne index) (#. this arguments (#[ (- $ 1)) post_operations length))
-                                                                                                        (~= (#. this arguments (#[ (- $ 1)) post_operations) ne)
-                                                                                                        (= (#. ne app_args) app_args)
-                                                                                                        (#if
-                                                                                                            (&& (> (#. line length) (+ i 1)) (== (#. line (#[ (+ i 1))) ' ')).(#body
-                                                                                                                    (= line (#. line (#[ (+ i 2) .. $))))
-                                                                                                            (&& (> (#. line length) (+ i 1)) (== (#. line (#[ (+ i 1))) '.')).(#body
-                                                                                                                    (= line (#. line (#[ (+ i 1) .. $))))
-                                                                                                            #else.(#body
-                                                                                                                    (= line (#. line (#[ 0 .. 0)))))
-                                                                                                        #break)))))
-                                                                        (assert (== brackets 0)))
-                                                                (|| (#. line empty) (== (#. line (#[ 0)) ' ')).(#body
-                                                                        (= (ne#var Expression) (#new Expression))
-                                                                        (= (#. ne parent) this)
-                                                                        (= (#. ne index) (#. this arguments length))
-                                                                        (~= (#. this arguments) ne)
-                                                                        (= app_args 1)
-                                                                        (#if
-                                                                            (!#unary (#. line empty)).(#body
-                                                                                    (= line (#. line (#[ 1 .. $))))))))
-                                                    (== (#. line (#[ 0)) '"').(#body
-                                                            (= (escape#var bool) true)
-                                                            (#foreach i c line).(#body
-                                                                    (#if
-                                                                        (&& (== c '"') (!#unary escape)).(#body
-                                                                                (= (ne#var Expression) (#new Expression))
-                                                                                (= (#. ne parent) this)
-                                                                                (= (#. ne index) (#. this arguments length))
-                                                                                (= (#. ne operator) (#. line (#[ 0 .. (+ i 1)) idup))
-                                                                                (~= (#. this arguments) ne)
-                                                                                (= app_args 1)
-                                                                                (= line (#. line (#[ (+ i 1) .. $)))
-                                                                                (#if
-                                                                                    (&& (!#unary (#. line empty)) (== (#. line (#[ 0)) '#')).(#body
-                                                                                            (= sp (#. line (findAmong " .")))
-                                                                                            (= (#. this type) (#. line (#[ 1 .. (- (#. sp ptr) (#. line ptr))) idup))
-                                                                                            (= line sp)))
-                                                                                (#if
-                                                                                    (&& (!#unary (#. line empty)) (== (#. line (#[ 0)) ' ')).(#body
-                                                                                            (= line (#. line (#[ 1 .. $)))))
-                                                                                #break))
-                                                                    (#if
-                                                                        (&& (== c '\\') (!#unary escape)).(#body
-                                                                                (= escape true))
-                                                                        #else.(#body
-                                                                                (= escape false)))))
+                                                    (!is line sline).(#body
+                                                            (= operator (#. sline (#[ 0 .. (- (#. line ptr) (#. sline ptr))) idup))
+                                                            (= bt (#. BlockType Comment))
+                                                            #return))
+                                                (Init#var goto))
+                                        #else.(#body
+                                                (#while (&& (!#unary (#. line empty)) (!#unary (#. line (startsWith "\n"))))).(#body
+                                                        (#. line (decodeFront)))
+                                                (#if
+                                                    (!#unary (#. line empty)).(#body
+                                                            (#. line (decodeFront))))))))
+                    #else.(#body
+                            (#: Init)
+                            (#while (&& (!#unary (#. line empty)) (|| (== (#. line (#[ 0)) '\ ') (== (#. line (#[ 0)) '\\n')))).(#body
+                                    (= line (#. line (#[ 1 .. $))))
+                            (#foreach . be (#. ps comments)).(#body
+                                    (#if
+                                        (#. line (startsWith (#. be begin))).(#body
+                                                (= operator (getBlock line be))
+                                                (= bt (#. BlockType Comment))
+                                                #return)))))
+                (in_brackets#var bool)
+                (= (dot_bracket#var string) (~ (#. ps dot) (#. ps brackets begin)))
+                (= (brackets#var BlockBE) (#. ps brackets))
+                (#foreach . be (#. ps strings)).(#body
+                        (#if
+                            (#. line (startsWith (#. be begin))).(#body
+                                    (= operator (getBlock line be))
+                                    (= bt (#. BlockType String))
+                                    (#if
+                                        (#. line (startsWith (#. ps sharp))).(#body
+                                                (= line (#. line (#[ (#. ps sharp length) .. $)))
+                                                (Sharp#var goto))
+                                        (#. line (startsWith (#. ps at))).(#body
+                                                (= line (#. line (#[ (#. ps at length) .. $)))
+                                                (At#var goto))
+                                        #else.(#body
+                                                (Post#var goto))))))
+                (#if
+                    (#. line (startsWith (#. ps brackets begin))).(#body
+                            (= line (#. line (#[ (#. ps brackets begin length) .. $)))
+                            (= in_brackets true)))
+                (#while (!#unary (#. line empty))).(#body
+                        (#if
+                            (#. line (startsWith (#. ps brackets begin))).(#body
+                                    (Arguments#var goto))
+                            (#. line (startsWith (#. ps brackets escape))).(#body
+                                    (= line (#. line (#[ (#. ps brackets escape length) .. $)))
+                                    (= (c#var dchar) (#. line (decodeFront)))
+                                    (~= operator (getEscape c)))
+                            (|| (== (#. line (#[ 0)) '\ ') (== (#. line (#[ 0)) '\\n')).(#body
+                                    (= line (#. line (#[ 1 .. $)))
+                                    (Arguments#var goto))
+                            (#. line (startsWith (#. ps brackets end))).(#body
+                                    (#if
+                                        in_brackets.(#body
+                                                (= line (#. line (#[ (#. ps brackets end length) .. $)))
+                                                (Post#var goto)))
+                                    (End#var goto))
+                            (&& (!#unary in_brackets) (#. line (startsWith dot_bracket))).(#body
+                                    (Post#var goto))
+                            (#. line (startsWith (#. ps sharp))).(#body
+                                    (= line (#. line (#[ (#. ps sharp length) .. $)))
+                                    (Sharp#var goto))
+                            (#. line (startsWith (#. ps at))).(#body
+                                    (= line (#. line (#[ (#. ps at length) .. $)))
+                                    (At#var goto))
+                            #else.(#body
+                                    (~= operator (#. line (decodeFront))))))
+                (#: Sharp)
+                (#while (!#unary (#. line empty))).(#body
+                        (#if
+                            (#. line (startsWith (#. ps brackets begin))).(#body
+                                    (Arguments#var goto))
+                            (#. line (startsWith (#. ps brackets escape))).(#body
+                                    (= line (#. line (#[ (#. ps brackets escape length) .. $)))
+                                    (= (c#var dchar) (#. line (decodeFront)))
+                                    (~= type (getEscape c)))
+                            (|| (== (#. line (#[ 0)) '\ ') (== (#. line (#[ 0)) '\\n')).(#body
+                                    (= line (#. line (#[ 1 .. $)))
+                                    (Arguments#var goto))
+                            (#. line (startsWith (#. ps brackets end))).(#body
+                                    (#if
+                                        in_brackets.(#body
+                                                (= line (#. line (#[ (#. ps brackets end length) .. $)))
+                                                (Post#var goto)))
+                                    (End#var goto))
+                            (&& (!#unary in_brackets) (#. line (startsWith dot_bracket))).(#body
+                                    (Post#var goto))
+                            (#. line (startsWith (#. ps at))).(#body
+                                    (= line (#. line (#[ (#. ps at length) .. $)))
+                                    (At#var goto))
+                            #else.(#body
+                                    (~= type (#. line (decodeFront))))))
+                (#: At)
+                (#while (!#unary (#. line empty))).(#body
+                        (#if
+                            (#. line (startsWith (#. ps brackets end))).(#body
+                                    (#if
+                                        in_brackets.(#body
+                                                (= line (#. line (#[ (#. ps brackets end length) .. $)))
+                                                (Post#var goto)))
+                                    (End#var goto))
+                            (#. line (startsWith (#. ps brackets escape))).(#body
+                                    (= line (#. line (#[ (#. ps brackets escape length) .. $)))
+                                    (= (c#var dchar) (#. line (decodeFront)))
+                                    (~= label (getEscape c)))
+                            (#. line (startsWith (#. ps brackets begin))).(#body
+                                    (Arguments#var goto))
+                            (|| (== (#. line (#[ 0)) '\ ') (== (#. line (#[ 0)) '\\n')).(#body
+                                    (= line (#. line (#[ 1 .. $)))
+                                    (Arguments#var goto))
+                            (&& (!#unary in_brackets) (#. line (startsWith dot_bracket))).(#body
+                                    (Post#var goto))
+                            #else.(#body
+                                    (~= label (#. line (decodeFront))))))
+                (#: Arguments)
+                (#if
+                    (== type "module").(#body
+                            label.(#switch (.
+                                    "D"
+                                    "Lexer").(#body
+                                            (= (#. ps comments) ([] (BlockBE "\\" "\n") (BlockBE "/*" "*/") (BlockBE "/+" "+/" null true)))
+                                            (= (#. ps strings) ([] (BlockBE "\"" "\"" "\\")))
+                                            #break)
+                                    #default.(#body
+                                            #break))))
+                (#if
+                    in_brackets.(#body
+                            (= arguments [])
+                            (#while (!#unary (#. line empty))).(#body
+                                    (#if
+                                        (#. line (startsWith (#. ps brackets end))).(#body
+                                                (= line (#. line (#[ (#. ps brackets end length) .. $)))
+                                                #break)
+                                        (|| (== (#. line (#[ 0)) '\ ') (== (#. line (#[ 0)) '\\n')).(#body
+                                                (= line (#. line (#[ 1 .. $))))
+                                        #else.(#body
+                                                (= (ne#var auto) (#new (Expression line ps this)))
+                                                (#if
+                                                    (&& (== (#. ne operator) (#. ps dot)) (!#unary (#. ne arguments empty))).(#body
+                                                            (#foreach . arg (#. ne arguments)).(#body
+                                                                    (= (#. arg parent) this)
+                                                                    (+= (#. arg index) (#. arguments length)))
+                                                            (~= arguments (#. ne arguments))
+                                                            (#foreach . arg (#. ne post_operations)).(#body
+                                                                    (= (#. arg parent) (#. arguments (#[ (- $ 1))))
+                                                                    (+= (#. arg index) (#. arguments (#[ (- $ 1)) post_operations length))
+                                                                    (= (#. arg app_args) (#. ne arguments length)))
+                                                            (~= (#. arguments (#[ (- $ 1)) post_operations) (#. ne post_operations)))
                                                     #else.(#body
-                                                            (= (ch#var auto) (#. line (findAmong " .")))
-                                                            (#while (&& (!#unary (#. ch empty)) (== (#. ch (#[ 0)) '.') (!= (#. ch (#[ 1)) '('))).(#body
-                                                                    (= ch (#. ch (#[ 1 .. $) (findAmong " ."))))
-                                                            (#if
-                                                                (&& (!#unary (#. ch empty)) (== (#. ch (#[ 0)) '.')).(#body
-                                                                        (= (ne#var Expression) (#new Expression))
-                                                                        (= (#. ne parent) this)
-                                                                        (= (#. ne index) (#. this arguments length))
-                                                                        (= (#. ne operator) (#. line (#[ 0 .. (- (#. ch ptr) (#. line ptr))) idup))
-                                                                        (= (ssh#var auto) (#. ne operator (findSplit "#")))
-                                                                        (#if
-                                                                            (!#unary (#. ssh (#[ 1) empty)).(#body
-                                                                                    (= (#. ne operator) (#. ssh (#[ 0)))
-                                                                                    (= (#. ne type) (#. ssh (#[ 2)))))
-                                                                        (~= (#. this arguments) ne)
-                                                                        (= app_args 1)
-                                                                        (= line ch))
-                                                                (&& (!#unary (#. ch empty)) (== (#. ch (#[ 0)) ' ')).(#body
-                                                                        (= (ne#var Expression) (#new Expression))
-                                                                        (= (#. ne parent) this)
-                                                                        (= (#. ne index) (#. this arguments length))
-                                                                        (= (#. ne operator) (#. line (#[ 0 .. (- (#. ch ptr) (#. line ptr))) idup))
-                                                                        (= (ssh#var auto) (#. ne operator (findSplit "#")))
-                                                                        (#if
-                                                                            (!#unary (#. ssh (#[ 1) empty)).(#body
-                                                                                    (= (#. ne operator) (#. ssh (#[ 0)))
-                                                                                    (= (#. ne type) (#. ssh (#[ 2)))))
-                                                                        (= ssh (#. ne operator (findSplit "@")))
-                                                                        (#if
-                                                                            (!#unary (#. ssh (#[ 1) empty)).(#body
-                                                                                    (= (#. ne operator) (#. ssh (#[ 0)))
-                                                                                    (= (#. ne label) (#. ssh (#[ 2))))
-                                                                            #else.(#body
-                                                                                    (= ssh (#. ne type (findSplit "@")))
-                                                                                    (#if
-                                                                                        (!#unary (#. ssh (#[ 1) empty)).(#body
-                                                                                                (= (#. ne type) (#. ssh (#[ 0)))
-                                                                                                (= (#. ne label) (#. ssh (#[ 2)))))))
-                                                                        (~= (#. this arguments) ne)
-                                                                        (= app_args 1)
-                                                                        (= line (#. ch (#[ 1 .. $))))
-                                                                #else.(#body
-                                                                        (= (ne#var Expression) (#new Expression))
-                                                                        (= (#. ne parent) this)
-                                                                        (= (#. ne index) (#. this arguments length))
-                                                                        (= (#. ne operator) (#. line idup))
-                                                                        (= (ssh#var auto) (#. ne operator (findSplit "#")))
-                                                                        (#if
-                                                                            (!#unary (#. ssh (#[ 1) empty)).(#body
-                                                                                    (= (#. ne operator) (#. ssh (#[ 0)))
-                                                                                    (= (#. ne type) (#. ssh (#[ 2)))))
-                                                                        (= ssh (#. ne operator (findSplit "@")))
-                                                                        (#if
-                                                                            (!#unary (#. ssh (#[ 1) empty)).(#body
-                                                                                    (= (#. ne operator) (#. ssh (#[ 0)))
-                                                                                    (= (#. ne label) (#. ssh (#[ 2))))
-                                                                            #else.(#body
-                                                                                    (= ssh (#. ne type (findSplit "@")))
-                                                                                    (#if
-                                                                                        (!#unary (#. ssh (#[ 1) empty)).(#body
-                                                                                                (= (#. ne type) (#. ssh (#[ 0)))
-                                                                                                (= (#. ne label) (#. ssh (#[ 2)))))))
-                                                                        (~= (#. this arguments) ne)
-                                                                        (= app_args 1)
-                                                                        (= line (#. line (#[ 0 .. 0)))))))))
-                                #else.(#body
-                                        (= (sh#var auto) (#. operator (findSplit "#")))
-                                        (#if
-                                            (!#unary (#. sh (#[ 1) empty)).(#body
-                                                    (= operator (#. sh (#[ 0)))
-                                                    (= type (#. sh (#[ 2)))))
-                                        (= sh (#. operator (findSplit "@")))
-                                        (#if
-                                            (!#unary (#. sh (#[ 1) empty)).(#body
-                                                    (= operator (#. sh (#[ 0)))
-                                                    (= label (#. sh (#[ 2))))
-                                            #else.(#body
-                                                    (= sh (#. type (findSplit "@")))
-                                                    (#if
-                                                        (!#unary (#. sh (#[ 1) empty)).(#body
-                                                                (= type (#. sh (#[ 0)))
-                                                                (= label (#. sh (#[ 2)))))))))
-                            (= (#. this operator) (#. operator idup))
-                            (= (#. this type) (#. type idup))
-                            (= (#. this label) (#. label idup)))))
+                                                            (= (#. ne parent) this)
+                                                            (= (#. ne index) (#. arguments length))
+                                                            (~= arguments ne))))))))
+                (#: Post)
+                (#if
+                    (#. line (startsWith dot_bracket)).(#body
+                            (= line (#. line (#[ (#. ps dot length) .. $)))
+                            (= (ne#var auto) (#new (Expression line ps this)))
+                            (= (#. ne parent) this)
+                            (= (#. ne post) true)
+                            (= (#. ne app_args) 1)
+                            (~= post_operations ne)))
+                (#: End)
+                (#while (&& (!#unary (#. line empty)) (|| (== (#. line (#[ 0)) '\ ') (== (#. line (#[ 0)) '\\n')))).(#body
+                        (= line (#. line (#[ 1 .. $)))))
+        (this#function #constructor (line string)).(#body
+                (= (l#var ([]#type char)) (#. line dup))
+                (this l)
+                (assert (#. l empty)))
         (addChild#function void (c Expression)).(#body
                 (= (#. c parent) this)
                 (= (#. c index) (#. arguments length))
@@ -359,11 +350,50 @@
                         (#. arg (fixParents this ind)))
                 (#foreach ind arg post_operations).(#body
                         (#. arg (fixParents this ind true))))
-        (save#function string (tab int).(#init 0) (cbr ([]#type long)).(#init null) (force_brackets bool).(#init false)).(#body
-                (= (savestr#var string) (~ (#. this operator) (#? (#. this type empty) "" (~ "#" (#. this type))) (#? (#. this label empty) "" (~ "@" (#. this label)))))
+        (escape#function string.(static) (str string) (be BlockBE) (space bool).(#init true)).(#body
                 (#if
-                    (#. savestr empty).(#body
-                            (= savestr ".")))
+                    (#. be escape empty).(#body
+                            (#return str)))
+                (res#var string)
+                (#while (!#unary (#. str empty))).(#body
+                        (#if
+                            (|| (#. str (startsWith (#. be begin))) (#. str (startsWith (#. be end))) (#. str (startsWith (#. be escape))) (&& space (#. str (startsWith " ")))).(#body
+                                    (~= res (#. be escape))
+                                    (~= res (#. str (decodeFront))))
+                            (#. str (startsWith "\n")).(#body
+                                    (~= res (#. be escape))
+                                    (~= res "n")
+                                    (#. str (decodeFront)))
+                            (#. str (startsWith "\r")).(#body
+                                    (~= res (#. be escape))
+                                    (~= res "r")
+                                    (#. str (decodeFront)))
+                            (#. str (startsWith "\t")).(#body
+                                    (~= res (#. be escape))
+                                    (~= res "t")
+                                    (#. str (decodeFront)))
+                            #else.(#body
+                                    (~= res (#. str (decodeFront))))))
+                (#return res))
+        (save#function string).(#body
+                (ps#var ParserState)
+                (#return (save ps)))
+        (save#function string (ps ParserState ref) (tab int).(#init 0) (cbr ([]#type long)).(#init null) (force_brackets bool).(#init false)).(#body
+                (= (op#var string) operator)
+                (savestr#var string)
+                (#if
+                    (== bt (#. BlockType File)).(#body)
+                    (== bt (#. BlockType Comment)).(#body
+                            (#return op))
+                    (== bt (#. BlockType String)).(#body
+                            (~= savestr op))
+                    #else.(#body
+                            (= (bbe#var auto) (#. ps brackets))
+                            (= op (escape op bbe))
+                            (~= savestr (~ op (#? (#. this type empty) "" (~ (#. ps sharp) (escape type bbe))) (#? (#. this label empty) "" (~ (#. ps at) (escape label bbe)))))))
+                (#if
+                    (&& (#. savestr empty) (!= bt (#. BlockType File))).(#body
+                            (= savestr (#. ps dot))))
                 (#if
                     (!#unary (#. this arguments empty)).(#body (.
                             a#var
@@ -380,7 +410,7 @@
                                     (#foreach . m a).(#body
                                             (#if
                                                 (== m i).(#body
-                                                        (~= savestr " (."))))
+                                                        (~= savestr (~ " " (#. ps brackets begin) (#. ps dot))))))
                                     (br#var ([]#type long))
                                     (#foreach j m b).(#body
                                             (#if
@@ -388,26 +418,30 @@
                                                         (~= br (#. c (#[ j))))))
                                     (#if
                                         (|| (== (#. this type) "body") (== (#. this type) "module") (== (#. this type) "class") (== (#. this type) "struct") (== (#. this type) "if") (== (#. this type) "switch")).(#body
-                                                (~= savestr (~ "\n" (#. ' ' (repeat (* (+ tab 1) 4)) array) (#. arg (save (+ tab 1) br)))))
+                                                (~= savestr (~ "\n" (#. '\ ' (repeat (* (+ tab 1) 4)) array) (#. arg (save ps (+ tab 1) br false)))))
+                                        (!= bt (#. BlockType File)).(#body
+                                                (~= savestr (~ " " (#. arg (save ps (+ tab 1) br false)))))
                                         #else.(#body
-                                                (~= savestr (~ " " (#. arg (save (+ tab 1) br)))))))
-                            (= savestr (~ "(" savestr ")")))
-                    force_brackets.(#body
-                            (= savestr (~ "(" savestr ")"))))
+                                                (~= savestr (~ (#. arg (save ps 0 br false)) "\n")))))
+                            (#if
+                                (!= bt (#. BlockType File)).(#body
+                                        (= savestr (~ (#. ps brackets begin) savestr (#. ps brackets end))))))
+                    (|| force_brackets (!is arguments null)).(#body
+                            (= savestr (~ (#. ps brackets begin) savestr (#. ps brackets end)))))
                 (= (cj#var long) 0)
                 (#foreach j arg (#. this post_operations)).(#body
                         (#if
                             (&& (< cj (#. cbr length)) (== (#. cbr (#[ cj)) j)).(#body
-                                    (~= savestr ')')
+                                    (~= savestr (#. ps brackets end))
                                     (++#post cj)))
-                        (~= savestr (~ "." (#. arg (save (+ tab 1) null true)))))
+                        (~= savestr (~ (#. ps dot) (#. arg (save ps (+ tab 1) null true)))))
                 (#return savestr))
         (saveD#function string (tab int).(#init 0) (post ([]#type Expression)).(#init null) (ptype string).(#init null) (inner string).(#init null)).(#body
                 (savestr#var string)
                 (= (tabstr#var string) "")
                 (#if
                     (> tab 0).(#body
-                            (= tabstr (#. ' ' (repeat (* tab 4)) array))))
+                            (= tabstr (#. '\ ' (repeat (* tab 4)) array))))
                 (= (handled#var bool) true)
                 ptype.(#switch (.
                         "struct"
@@ -430,6 +464,7 @@
                                     (&& (!is parent null) (!#unary post) (> (#. parent arguments length) index)).(#body
                                             (#foreach i arg (#. parent arguments (#[ index .. $))).(#body
                                                     (#foreach i2 arg2 (#. arg post_operations)).(#body
+                                                            //writefln("%s -- %s (%s == %s)", this, arg2.app_args, arg.index - arg2.app_args + 1, this.index);
                                                             (#if
                                                                 (== (+ (- (#. arg index) (#. arg2 app_args)) 1) (#. this index)).(#body
                                                                         (#if
@@ -484,7 +519,12 @@
                                                     (= savestr (~ (#. arg (saveD tab null (#. this type))) " " savestr)))))
                                 #break)
                         #default.(#body
-                                (= handled false)
+                                (#if
+                                    (== bt (#. BlockType File)).(#body
+                                            (#foreach i arg (#. this arguments)).(#body
+                                                    (~= savestr (#. arg (saveD tab null (#. this type))))))
+                                    #else.(#body
+                                            (= handled false)))
                                 #break))
                 (#if
                     (!#unary handled).(#body
@@ -668,6 +708,7 @@
                                                 (&& (!is parent null) (!#unary post) (> (#. parent arguments length) index)).(#body
                                                         (#foreach i arg (#. parent arguments (#[ index .. $))).(#body
                                                                 (#foreach i2 arg2 (#. arg post_operations)).(#body
+                                                                        //writefln("%s -- %s (%s == %s)", this, arg2.app_args, arg.index - arg2.app_args + 1, this.index);
                                                                         (#if
                                                                             (== (+ (- (#. arg index) (#. arg2 app_args)) 1) (#. this index)).(#body
                                                                                     (#if
@@ -758,7 +799,7 @@
                                                 (&& (!= ptype "if") (>= tab 0) (#. this post_operations empty)).(#body
                                                         (= savestr (~ tabstr savestr ";\n"))))
                                             #break)
-                                    "\"".(#body
+                                    "\\"".(#body
                                             (~= savestr (~ "\"" (#. this arguments (#[ 0) (saveD (-#unary 1) null "op"))))
                                             (= (sep#var string) " ")
                                             (#foreach i arg (#. this arguments (#[ 1 .. $))).(#body
@@ -985,7 +1026,9 @@
                                                                                     #else.(#body
                                                                                             (~= savestr ", ")))
                                                                                 (~= savestr (#. arg (saveD (-#unary 1) null (#. this type)))))
-                                                                        (~= savestr ")")))
+                                                                        (~= savestr ")"))
+                                                                (!is arguments null).(#body
+                                                                        (~= savestr "()")))
                                                             (#if
                                                                 (&& (== ptype "if") (!#unary (#. this post_operations empty))).(#body
                                                                         (~= savestr ")\n"))
@@ -1058,49 +1101,49 @@
         (toLexer#function void (code Expression) (main bool)).(#body
                 (#if
                     (== operator "save").(#body
-                            (= (ne#var Expression) (#new (Expression (~ "(=" (#? (!#unary (#. label empty)) (~ "@" label) "") (#. " back2 this)" dup)))))
+                            (= (ne#var Expression) (#new (Expression (~ "(=" (#? (!#unary (#. label empty)) (~ "@" label) "") " back2 this)"))))
                             (#. code (addChild ne)))
                     (== operator "back").(#body
-                            (= (ne#var Expression) (#new (Expression (~ "(=" (#? (!#unary (#. label empty)) (~ "@" label) "") (#. " this back2)" dup)))))
+                            (= (ne#var Expression) (#new (Expression (~ "(=" (#? (!#unary (#. label empty)) (~ "@" label) "") " this back2)"))))
                             (#. code (addChild ne)))
                     (== type "switch").(#body
-                            (= (ne#var Expression) (#new (Expression (~ "(=" (#? (!#unary (#. label empty)) (~ "@" label) "") (#. " back this)" dup)))))
+                            (= (ne#var Expression) (#new (Expression (~ "(=" (#? (!#unary (#. label empty)) (~ "@" label) "") " back this)"))))
                             (#. code (addChild ne))
-                            (= ne (#new (Expression (#. "(nextChr)" dup))))
+                            (= ne (#new (Expression "(nextChr)")))
                             (#. code (addChild ne))
-                            (= ne (#new (Expression (#. "(#if)" dup))))
+                            (= ne (#new (Expression "(#if)")))
                             (#. code (addChild ne))
                             (= code ne))
                     (== (#. parent type) "switch").(#body
                             (ne#var Expression)
                             (#if
                                 (#. operator (startsWith "is")).(#body
-                                        (= ne (#new (Expression (~ "(#module (#. chr " operator (#. ").(#body))" dup)))))
+                                        (= ne (#new (Expression (~ "(#module (#. chr " operator ").(#body))"))))
                                         (= ne (#. ne arguments (#[ 0))))
                                 (&& (== operator "!") (#. arguments (#[ 0) operator (startsWith "is"))).(#body
-                                        (= ne (#new (Expression (~ "(#module (! (#. chr " (#. arguments (#[ 0) operator) (#. ")).(#body))" dup)))))
+                                        (= ne (#new (Expression (~ "(#module (! (#. chr " (#. arguments (#[ 0) operator) ")).(#body))"))))
                                         (= ne (#. ne arguments (#[ 0))))
-                                (|| (&& (> (#. operator length) 2) (== (#. operator (#[ 0)) '\'') (== (#. operator (#[ (- $ 1))) '\'')) (== operator "EOF")).(#body
-                                        (= ne (#new (Expression (~ "(#module (== chr " operator (#. ").(#body))" dup)))))
+                                (|| (&& (> (#. operator length) 2) (== (#. operator (#[ 0)) '\\'') (== (#. operator (#[ (- $ 1))) '\\'')) (== operator "EOF")).(#body
+                                        (= ne (#new (Expression (~ "(#module (== chr " operator ").(#body))"))))
                                         (= ne (#. ne arguments (#[ 0))))
                                 (&& (> (#. operator length) 2) (== (#. operator (#[ 0)) '"') (== (#. operator (#[ (- $ 1))) '"')).(#body
-                                        (= ne (#new (Expression (~ "(#module (! (#. " operator (#. " (find chr) empty)).(#body))" dup)))))
+                                        (= ne (#new (Expression (~ "(#module (! (#. " operator " (find chr) empty)).(#body))"))))
                                         (= ne (#. ne arguments (#[ 0))))
                                 (== type "\"").(#body
-                                        (= ne (#new (Expression (#. "(#module (! (#. replace_this (find chr) empty)).(#body))" dup))))
+                                        (= ne (#new (Expression "(#module (! (#. replace_this (find chr) empty)).(#body))")))
                                         (= ne (#. ne arguments (#[ 0)))
                                         (= (dc#var auto) (#. this deepcopy))
                                         (#. ne arguments (#[ 0) arguments (#[ 0) (replace dc))
                                         (= (#. dc post_operations) null))
                                 (== type "default").(#body
-                                        (= ne (#new (Expression (#. "(#module (true).(#body (= this back)))" dup))))
+                                        (= ne (#new (Expression "(#module (true).(#body (= this back)))")))
                                         (= ne (#. ne arguments (#[ 0))))
                                 #else.(#body
                                         (writefln "%s#%s" operator type)
                                         (assert 0)))
                             (#if
                                 (&& (#. post_operations empty) (|| (#. code arguments empty) (!= (#. code arguments (#[ (- $ 1)) operator) "||") (!#unary (#. code arguments (#[ (- $ 1)) post_operations (#[ 0) arguments empty)))).(#body
-                                        (= (ne2#var Expression) (#new (Expression (#. "(#module (||).(#body))" dup))))
+                                        (= (ne2#var Expression) (#new (Expression "(#module (||).(#body))")))
                                         (= ne2 (#. ne2 arguments (#[ 0)))
                                         (= (#. ne post_operations) null)
                                         (#. ne2 (addChild ne))
@@ -1117,24 +1160,24 @@
                                         (= code (#. ne post_operations (#[ 0))))))
                     (== type "while").(#body
                             (ne#var Expression)
-                            (= (back#var Expression) (#new (Expression (#. "(= this back)" dup))))
+                            (= (back#var Expression) (#new (Expression "(= this back)")))
                             (#if
                                 (<= (#. arguments length) 1).(#body
                                         (#if
                                             (== (#. arguments (#[ 0) operator) "!").(#body
-                                                    (= ne (#new (Expression (#. (~ "(#module (#do" (#? (!#unary (#. label empty)) (~ "@" label) "") " !).(#body (= back this) nextChr))") dup))))
+                                                    (= ne (#new (Expression (~ "(#module (#do" (#? (!#unary (#. label empty)) (~ "@" label) "") " !).(#body (= back this) nextChr))"))))
                                                     (= ne (#. ne arguments (#[ 0)))
                                                     (#. code (addChild ne))
                                                     (#. code (addChild back))
                                                     (= code (#. ne arguments (#[ 0))))
                                             #else.(#body
-                                                    (= ne (#new (Expression (#. "(#module (#do).(#body (= back this) nextChr))" dup))))
+                                                    (= ne (#new (Expression "(#module (#do).(#body (= back this) nextChr))")))
                                                     (= ne (#. ne arguments (#[ 0)))
                                                     (#. code (addChild ne))
                                                     (#. code (addChild back))
                                                     (= code ne))))
                                 #else.(#body
-                                        (= ne (#new (Expression (#. "(#module (#do ||).(#body (= back this) nextChr))" dup))))
+                                        (= ne (#new (Expression "(#module (#do ||).(#body (= back this) nextChr))")))
                                         (= ne (#. ne arguments (#[ 0)))
                                         (#. code (addChild ne))
                                         (#. code (addChild back))
@@ -1143,13 +1186,13 @@
                             (ne#var Expression)
                             (#if
                                 (#. operator (startsWith "is")).(#body
-                                        (= ne (#new (Expression (~ "(#. chr " operator (#. ")" dup))))))
-                                (|| (&& (> (#. operator length) 2) (== (#. operator (#[ 0)) '\'') (== (#. operator (#[ (- $ 1))) '\'')) (== operator "EOF")).(#body
-                                        (= ne (#new (Expression (~ "(== chr " operator (#. ")" dup))))))
+                                        (= ne (#new (Expression (~ "(#. chr " operator ")")))))
+                                (|| (&& (> (#. operator length) 2) (== (#. operator (#[ 0)) '\\'') (== (#. operator (#[ (- $ 1))) '\\'')) (== operator "EOF")).(#body
+                                        (= ne (#new (Expression (~ "(== chr " operator ")")))))
                                 (&& (> (#. operator length) 2) (== (#. operator (#[ 0)) '"') (== (#. operator (#[ (- $ 1))) '"')).(#body
-                                        (= ne (#new (Expression (~ "(! (#. " operator (#. " (find chr) empty))" dup))))))
+                                        (= ne (#new (Expression (~ "(! (#. " operator " (find chr) empty))")))))
                                 (== type "\"").(#body
-                                        (= ne (#new (Expression (#. "(! (#. replace_this (find chr) empty))" dup))))
+                                        (= ne (#new (Expression "(! (#. replace_this (find chr) empty))")))
                                         (= (dc#var auto) (#. this deepcopy))
                                         (#. ne arguments (#[ 0) arguments (#[ 0) (replace dc))
                                         (= (#. dc post_operations) null))
@@ -1158,15 +1201,15 @@
                                         (assert 0)))
                             (#. code (addChild ne)))
                     (== (#. parent type) "goto").(#body
-                            (= (ne#var Expression) (#new (Expression (~ "(#goto " operator (#. ")" dup)))))
+                            (= (ne#var Expression) (#new (Expression (~ "(#goto " operator ")"))))
                             (#. code (addChild ne)))
                     (== (#. parent type) "return").(#body
                             (ne#var Expression)
                             (#if
                                 main.(#body
-                                        (= ne (#new (Expression (~ "(= type (#. LexemType " operator (#. "))" dup)))))
+                                        (= ne (#new (Expression (~ "(= type (#. LexemType " operator "))"))))
                                         (#. code (addChild ne))))
-                            (= ne (#new (Expression (#. "(#return)" dup))))
+                            (= ne (#new (Expression "(#return)")))
                             (#. code (addChild ne))))
                 (#foreach . arg arguments).(#body
                         (#. arg (toLexer code main)))
@@ -1180,7 +1223,7 @@
                     (== type "function").(#body
                             (#if
                                 (== operator "Start").(#body
-                                        (= (main#var Expression) (#new Expression))
+                                        (= (main#var Expression) (#new (Expression)))
                                         (#foreach . arg post_operations).(#body
                                                 (#. arg (toLexer main true)))
                                         (#if
@@ -1203,11 +1246,13 @@
                 code#var
                 lexemTypes#var
                 lexer#var).(Expression)
-                (= (ret#var Expression) (#new (Expression (readFile "lexer_templ.np"))))
+                (= (text#var string) (readText "lexer_templ.np"))
+                (= (ret#var Expression) (#new (Expression text)))
                 (#. ret (findBlocks code lexemTypes lexer))
                 (assert (!is lexemTypes null))
                 (assert (!is code null))
-                (= (#. ret operator) "lexer_synth")
+                (= (#. ret operator) "lexer_synth.np")
+                (= (#. ret arguments (#[ 0) operator) "lexer_synth")
                 (= (lTypes#var ([]#type bool string)) (#. (#. bool (#[ string)) init))
                 (toLexer code lexer lTypes)
                 (#foreach ltype _ lTypes).(#body
@@ -1218,18 +1263,18 @@
         (readFile#function ([]#type char).(static) (filename string)).(#body
                 (= (file#var auto) (File filename))
                 (mod#var ([]#type char))
-                (#foreach . line (#. file byLine)).(#body
+                (#foreach . line (#. file (byLine))).(#body
                         (= line (strip line))
                         (#if
-                            (&& (!#unary (#. mod empty)) (!= (#. mod (#[ (- $ 1))) ' ')).(#body
-                                    (~= mod ' ')))
+                            (&& (!#unary (#. mod empty)) (!= (#. mod (#[ (- $ 1))) '\ ')).(#body
+                                    (~= mod '\ ')))
                         (#if
                             (== line ".").(#body
                                     (= line (#. ". " dup))))
                         (~= mod line))
                 (#return mod))
         (deepcopy#function Expression).(#body
-                (= (copy#var Expression) (#new Expression))
+                (= (copy#var Expression) (#new (Expression)))
                 (= (#. copy operator) operator)
                 (= (#. copy type) type)
                 (= (#. copy label) label)
@@ -1241,6 +1286,7 @@
                 (= (#. copy hidden) hidden)
                 (= (#. copy level) level)
                 (= (#. copy levels) levels)
+                (= (#. copy bt) bt)
                 (= (#. copy x) x)
                 (= (#. copy y) y)
                 (= (#. copy r1) r1)
@@ -1249,14 +1295,14 @@
                 (= (#. copy a1) a1)
                 (= (#. copy a2) a2)
                 (#foreach . arg arguments).(#body
-                        (~= (#. copy arguments) (#. arg deepcopy))
+                        (~= (#. copy arguments) (#. arg (deepcopy)))
                         (= (#. copy arguments (#[ (- $ 1)) parent) copy))
                 (#foreach . arg post_operations).(#body
-                        (~= (#. copy post_operations) (#. arg deepcopy))
+                        (~= (#. copy post_operations) (#. arg (deepcopy)))
                         (= (#. copy post_operations (#[ (- $ 1)) parent) copy))
                 (#return copy))
         (movecopy#function Expression).(#body
-                (= (copy#var auto) deepcopy)
+                (= (copy#var auto) (deepcopy))
                 (++#post (#. copy index))
                 (#if
                     (!#unary post).(#body
@@ -1270,3 +1316,4 @@
                 (#return copy))
         (toString#function string.(override)).(#body
                 (#return (~ operator (#? (!#unary (#. type empty)) (~ "#" type) "") (#? (!#unary (#. label empty)) (~ "@" label) ""))))))
+
