@@ -148,7 +148,7 @@ class Parser
                     {
                         Expression rename = new Expression;
                         rename.operator = lexer.lexem;
-                        name.post_operations ~= rename;
+                        name.postop = rename;
                         getLexem;
                         if (lexer == ",")
                         {
@@ -372,7 +372,7 @@ class Parser
                     Expression init = new Expression;
                     init.operator = lexer.lexem;
                     init.type = "init";
-                    val.post_operations ~= init;
+                    val.postop = init;
                     getLexem;
                     {}
                 }
@@ -428,7 +428,7 @@ class Parser
         {
             type.type = ":";
             type.arguments = pp;
-            type.post_operations = null;
+            type.postop = null;
             return [type];
         }
         else if (lexer == "this")
@@ -449,7 +449,7 @@ class Parser
         if (lexer == LexemType.Identifier)
         {
             ret.operator = lexer.lexem;
-            type.post_operations ~= pp;
+            type.addPosts(pp);
             ret.arguments ~= type;
             getLexem;
         }
@@ -523,7 +523,7 @@ class Parser
             if (lexer == "{")
             {
                 back;
-                ret.post_operations ~= [getBody];
+                ret.postop = getBody;
             }
             else if (lexer == ";")
             {
@@ -541,7 +541,7 @@ class Parser
             Expression expr = new Expression;
             expr.arguments ~= ret;
             ret = expr;
-            ret.post_operations ~= type;
+            ret.postop = type;
             Var2:
             getLexem;
             if (lexer == LexemType.Identifier)
@@ -565,13 +565,13 @@ class Parser
             {
                 Expression init = getExpression;
                 init.type = "init";
-                expr.arguments[($ - 1)].post_operations ~= init;
+                expr.arguments[($ - 1)].postop = init;
                 goto Comma;
             }
             else if (lexer == ";")
             {
-                type.app_args = ret.arguments.length;
-                ret.arguments[($ - 1)].post_operations ~= type;
+                type.index = (ret.arguments.length);
+                ret.arguments[($ - 1)].postop = type;
                 return ret.arguments;
             }
             else
@@ -584,7 +584,7 @@ class Parser
         {
             Expression init = getExpression;
             init.type = "init";
-            ret.post_operations ~= init;
+            ret.postop = init;
             goto Eq;
         }
         else if (lexer == ";")
@@ -640,7 +640,7 @@ class Parser
         {
             Expression expr = new Expression;
             expr.type = "if";
-            expr.post_operations ~= post;
+            expr.addPosts(post);
             cexpr = expr;
             Init:
             getLexem;
@@ -656,7 +656,7 @@ class Parser
                     writefln("Expected . not %s", lexer);
                     assert(0);
                 }
-                cond.post_operations = [getBody];
+                cond.postop = getBody;
                 expr.arguments ~= cond;
                 back = lexer;
                 getLexem;
@@ -673,7 +673,7 @@ class Parser
                         lexer = back;
                         Expression els = new Expression;
                         els.type = "else";
-                        els.post_operations = [getBody];
+                        els.postop = getBody;
                         expr.arguments ~= els;
                     }
                 }
@@ -693,7 +693,7 @@ class Parser
         {
             Expression expr = new Expression;
             expr.type = "switch";
-            expr.post_operations ~= post;
+            expr.addPosts(post);
             getLexem;
             if (lexer == "(")
             {
@@ -707,7 +707,7 @@ class Parser
                     writefln("Expected . not %s", lexer);
                     assert(0);
                 }
-                var.post_operations ~= expr;
+                var.postop = expr;
                 getLexem;
                 if (lexer == "{")
                 {
@@ -742,8 +742,8 @@ class Parser
                 {
                     lexer = back;
                     Expression bod = getCaseBody;
-                    bod.app_args = (expr.arguments.length - ind);
-                    expr.arguments[($ - 1)].post_operations ~= bod;
+                    bod.index = (ind - expr.arguments.length);
+                    expr.arguments[($ - 1)].postop = bod;
                     goto Case;
                 }
                 if (lexer == ":")
@@ -766,7 +766,7 @@ class Parser
         {
             Expression expr = new Expression;
             expr.type = "for";
-            expr.post_operations ~= post;
+            expr.addPosts(post);
             getLexem;
             if (lexer == "(")
             {
@@ -802,7 +802,7 @@ class Parser
                     writefln("Expected . not %s", lexer);
                     assert(0);
                 }
-                expr.post_operations = [getBody];
+                expr.postop = getBody;
                 expr.arguments = [iexpr, cexpr, pexpr];
                 return [expr];
             }
@@ -816,7 +816,7 @@ class Parser
         {
             Expression expr = new Expression;
             expr.type = "foreach";
-            expr.post_operations ~= post;
+            expr.addPosts(post);
             getLexem;
             if (lexer == "(")
             {
@@ -878,7 +878,7 @@ class Parser
                     writefln("Expected ; not %s", lexer);
                     assert(0);
                 }
-                bvar.post_operations ~= p1;
+                bvar.addPosts(p1);
                 Expression cexpr = getExpression;
                 if (lexer == ")")
                 {
@@ -889,7 +889,7 @@ class Parser
                     writefln("Expected . not %s", lexer);
                     assert(0);
                 }
-                expr.post_operations = [getBody];
+                expr.postop = getBody;
                 expr.arguments = [avar, bvar, cexpr];
                 return [expr];
             }
@@ -903,7 +903,7 @@ class Parser
         {
             Expression expr = new Expression;
             expr.type = "while";
-            expr.post_operations ~= post;
+            expr.addPosts(post);
             getLexem;
             if (lexer == "(")
             {
@@ -917,7 +917,7 @@ class Parser
                     writefln("Expected . not %s", lexer);
                     assert(0);
                 }
-                expr.post_operations = [getBody];
+                expr.postop = getBody;
                 expr.arguments = [cexpr];
                 return [expr];
             }
@@ -931,8 +931,8 @@ class Parser
         {
             Expression expr = new Expression;
             expr.type = "do";
-            expr.post_operations ~= post;
-            expr.post_operations = [getBody];
+            expr.addPosts(post);
+            expr.addPosts([getBody]);
             getLexem;
             if (lexer == "while")
             {
@@ -1164,7 +1164,7 @@ class Parser
                     expr.arguments = null;
                     Expression multi = new Expression;
                     multi.arguments ~= expr;
-                    multi.post_operations ~= type;
+                    multi.postop = type;
                     Var:
                     getLexem;
                     if (lexer == LexemType.Identifier)
@@ -1180,8 +1180,8 @@ class Parser
                         }
                         else if (lexer == ";")
                         {
-                            type.app_args = multi.arguments.length;
-                            var.post_operations ~= type;
+                            type.index = (multi.arguments.length);
+                            var.postop = type;
                             return multi.arguments;
                         }
                         else if (lexer == "=")
@@ -1268,7 +1268,7 @@ class Parser
                     if (lexer == "{")
                     {
                         lexer = back;
-                        expr.post_operations ~= [getBody];
+                        expr.postop = getBody;
                         return [expr];
                     }
                     else if (lexer == ";")
@@ -1512,7 +1512,7 @@ class Parser
                 Expression init = getExpression;
                 iarg.type = "init";
                 iarg.addChild(init);
-                arg.post_operations ~= iarg;
+                arg.postop = iarg;
                 if (lexer == ")")
                 {
                     {}

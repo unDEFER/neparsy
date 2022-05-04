@@ -64,13 +64,11 @@ class Expression
     string type;
     string label;
     BlockType bt;
-    long app_args;
     Expression[] arguments;
-    Expression[] post_operations;
+    Expression postop;
     Expression parent;
     long index;
     long focus_index;
-    bool post;
 
     real r() { return c.r; }
     real g() { return c.g; }
@@ -445,14 +443,13 @@ class Expression
 
                         arguments ~= ne.arguments;
 
-                        foreach(arg; ne.post_operations)
+                        if (ne.postop !is null)
                         {
-                            arg.parent = arguments[$-1];
-                            arg.index += arguments[$-1].post_operations.length;
-                            arg.app_args = ne.arguments.length;
+                            ne.postop.parent = arguments[$-1];
+                            ne.postop.index = -ne.arguments.length;
                         }
 
-                        arguments[$-1].post_operations ~= ne.post_operations;
+                        arguments[$-1].postop = ne.postop;
                     }
                     else
                     {
@@ -470,9 +467,8 @@ class Expression
             line = line[ps.dot.length .. $];
             auto ne = new Expression(line, ps, this);
             ne.parent = this;
-            ne.post = true;
-            ne.app_args = 1;
-            post_operations ~= ne;
+            ne.index = -1;
+            postop = ne;
         }
 
         End:
@@ -507,6 +503,19 @@ class Expression
         arguments ~= cc;
     }
 
+    void addPosts(Expression[] cc)
+    {
+        Expression pp = this;
+        while (pp.postop !is null) pp = pp.postop;
+        foreach(i, c; cc)
+        {
+            pp.postop = c;
+            c.parent = pp;
+            c.index = -1;
+            pp = c;
+        }
+    }
+
     Expression popChild()
     {
         if (arguments.empty) return null;
@@ -515,21 +524,20 @@ class Expression
         return ret;
     }
 
-    void fixParents(Expression p = null, long i = 0, bool ps = false)
+    void fixParents(Expression p = null, long i = 0)
     {
         parent = p;
-        index = i;
-        post = ps;
-        if (ps && app_args == 0) app_args = 1;
+        if (index >= -1)
+            index = i;
 
         foreach (ind, arg; arguments)
         {
             arg.fixParents(this, ind);
         }
 
-        foreach (ind, arg; post_operations)
+        if (postop !is null)
         {
-            arg.fixParents(this, ind, true);
+            postop.fixParents(this, -1);
         }
     }
 
@@ -609,13 +617,13 @@ class Expression
             long[] a, b, c;
             foreach(i, arg; this.arguments)
             {
-                foreach(j, arg2; arg.post_operations)
+                if (arg.postop !is null)
                 {
-                    if (arg2.app_args > 1)
+                    if (arg.postop.index < -1)
                     {
-                        a ~= i-arg2.app_args+1;
+                        a ~= i+arg.postop.index+1;
                         b ~= i;
-                        c ~= j;
+                        c ~= 0;
                     }
                 }
             }
@@ -655,15 +663,15 @@ class Expression
 
         long cj = 0;
 
-        foreach(j, arg; this.post_operations)
+        if (postop !is null)
         {
-            if (cj < cbr.length && cbr[cj] == j)
+            if (cj < cbr.length && cbr[cj] == 0)
             {
                 savestr ~= ps.brackets.end;
                 cj++;
             }
 
-            savestr ~= ps.dot ~ arg.save(ps, tab+1, null, true);
+            savestr ~= ps.dot ~ postop.save(ps, tab+1, null, true);
         }
 
         return savestr;
@@ -702,30 +710,30 @@ class Expression
                 }
 
                 string poststr = "";
-                if (parent !is null && !post && parent.arguments.length > index)
+                if (parent !is null && index >= 0 && parent.arguments.length > index)
                 {
                     foreach(i, arg; parent.arguments[index..$])
                     {
-                        foreach(i2, arg2; arg.post_operations)
+                        if (arg.postop !is null)
                         {
                             //writefln("%s -- %s (%s == %s)", this, arg2.app_args, arg.index - arg2.app_args + 1, this.index);
-                            if (arg.index - arg2.app_args + 1 == this.index)
+                            if (arg.index + arg.postop.index + 1 == this.index)
                             {
-                                if (arg2.operator == "[]")
+                                if (arg.postop.operator == "[]")
                                 {
-                                    savestr =  savestr ~ arg2.saveD(tab);
+                                    savestr =  savestr ~ arg.postop.saveD(tab);
 
                                     foreach(i3, arg3; parent.arguments[index+1..arg.index+1])
                                     {
                                         poststr ~= ", " ~ arg3.saveD(-1, null, "ctype");
                                     }
                                 }
-                                else if (arg2.type == "init")
+                                else if (arg.postop.type == "init")
                                 {
                                 }
                                 else
                                 {
-                                    savestr = arg2.saveD(-1) ~ " " ~ savestr;
+                                    savestr = arg.postop.saveD(-1) ~ " " ~ savestr;
 
                                     foreach(i3, arg3; parent.arguments[index+1..arg.index+1])
                                     {
@@ -733,15 +741,15 @@ class Expression
                                     }
                                 }
                             }
-                            else if (ptype != "ctype" && this.index <= arg.index && this.index > arg.index - arg2.app_args + 1)
+                            else if (ptype != "ctype" && this.index <= arg.index && this.index > arg.index + arg.postop.index + 1)
                                 return "";
                         }
                     }
                 }
                 else
-                foreach(i, arg; post ~ this.post_operations)
+                foreach(arg; post ~ (postop is null ? [] : [postop]))
                 {
-                    if (arg.app_args == 1)
+                    if (arg.index == -1)
                     {
                         if (arg.operator == "[]")
                         {
@@ -759,9 +767,9 @@ class Expression
 
                 savestr ~= this.operator;
 
-                foreach(i, arg; post ~ this.post_operations)
+                foreach(arg; post ~ (postop is null ? [] : [postop]))
                 {
-                    if (arg.app_args == 1)
+                    if (arg.index == -1)
                     {
                         if (arg.type == "init")
                         {
@@ -780,7 +788,7 @@ class Expression
 
             case "enum":
                 savestr ~= tabstr ~ this.operator;
-                foreach(i, arg; post ~ this.post_operations)
+                foreach(i, arg; post ~ (postop is null ? [] : [postop]))
                 {
                     savestr =  savestr ~ arg.saveD(tab);
                 }
@@ -795,9 +803,9 @@ class Expression
                     if (!this.arguments.empty)
                         savestr = this.arguments[0].saveD(-1) ~ " " ~ savestr;
 
-                    foreach(i, arg; this.post_operations)
+                    if (postop !is null)
                     {
-                        savestr = arg.saveD(tab, null, this.type) ~ " " ~ savestr;
+                        savestr = postop.saveD(tab, null, this.type) ~ " " ~ savestr;
                     }
                 }
                 break;
@@ -835,9 +843,9 @@ class Expression
                         {
                             if (i > 0) savestr ~= ", ";
                             savestr ~= arg.operator;
-                            if (!arg.post_operations.empty)
+                            if (arg.postop !is null)
                             {
-                                savestr ~= " = " ~ arg.post_operations[0].operator;
+                                savestr ~= " = " ~ arg.postop.operator;
                             }
                         }
                     }
@@ -907,13 +915,13 @@ class Expression
                     long[] a, b, c;
                     foreach(i, arg; this.arguments)
                     {
-                        foreach(j, arg2; arg.post_operations)
+                        if (arg.postop !is null)
                         {
-                            if (arg2.app_args > 1)
+                            if (arg.postop.index < -1)
                             {
-                                a ~= i-arg2.app_args+1;
+                                a ~= i+arg.postop.index+1;
                                 b ~= i;
-                                c ~= j;
+                                c ~= 0;
                             }
                         }
                     }
@@ -925,7 +933,7 @@ class Expression
                         foreach(j, f; a)
                         {
                             if (i >= f && i < b[j])
-                                e ~= this.arguments[b[j]].post_operations[c[j]];
+                                e ~= this.arguments[b[j]].postop;
                         }
 
                         return e;
@@ -940,13 +948,10 @@ class Expression
                             savestr ~= ", " ~ arg.saveD(-1, getPost(i+2), this.type);
                         }
                     }
-                    if (!this.post_operations.empty)
+                    if (postop !is null)
                     {
                         savestr ~= ")\n";
-                        foreach(i, arg; this.post_operations)
-                        {
-                            savestr ~= arg.saveD(tab, null, this.type);
-                        }
+                        savestr ~= postop.saveD(tab, null, this.type);
                     }
                     else if (tab >= 0)
                     {
@@ -992,26 +997,26 @@ class Expression
                     savestr ~= " (" ~ this.arguments[0].saveD(-1, null, this.type);
                     savestr ~= "; " ~ this.arguments[1].saveD(-1, null, this.type);
                     savestr ~= "; " ~ this.arguments[2].saveD(-1, null, this.type) ~ ")\n";
-                    foreach(i, arg; this.post_operations)
+                    if (postop !is null)
                     {
-                        savestr ~= arg.saveD(tab);
+                        savestr ~= postop.saveD(tab);
                     }
                     break;
 
                 case "while":
                     savestr ~= tabstr ~ this.type;
                     savestr ~= " (" ~ this.arguments[0].saveD(-1, null, this.type) ~ ")\n";
-                    foreach(i, arg; this.post_operations)
+                    if (postop !is null)
                     {
-                        savestr ~= arg.saveD(tab);
+                        savestr ~= postop.saveD(tab);
                     }
                     break;
 
                 case "do":
                     savestr ~= tabstr ~ this.type ~ "\n";
-                    foreach(i, arg; this.post_operations)
+                    if (postop !is null)
                     {
-                        savestr ~= arg.saveD(tab);
+                        savestr ~= postop.saveD(tab);
                     }
                     savestr ~= tabstr ~ "while (" ~ this.arguments[0].saveD(-1, null, this.type) ~ ");\n";
                     break;
@@ -1022,15 +1027,15 @@ class Expression
                         savestr ~= this.arguments[0].saveD(-1, null, this.type) ~ ", ";
                     savestr ~= this.arguments[1].saveD(-1, null, this.type) ~ "; ";
                     savestr ~= this.arguments[2].saveD(-1, null, this.type) ~ ")\n";
-                    foreach(i, arg; this.post_operations)
+                    if (postop !is null)
                     {
-                        savestr ~= arg.saveD(tab, null, this.type);
+                        savestr ~= postop.saveD(tab, null, this.type);
                     }
                     break;
 
                 case "if":
                     savestr ~= tabstr ~ "if (" ~ (!operator.empty ? operator~" == " : "") ~ this.arguments[0].saveD(tab, null, this.type);
-                    bool or_need = arguments[0].post_operations.empty;
+                    bool or_need = arguments[0].postop is null;
                     foreach(i, arg; this.arguments[1..$])
                     {
                         if (arg.type == "else")
@@ -1041,12 +1046,12 @@ class Expression
                         else if (or_need)
                         {
                             savestr ~= tabstr ~ " || " ~ (!operator.empty ? operator~" == " : "") ~ arg.saveD(tab, null, this.type);
-                            or_need = arg.post_operations.empty;
+                            or_need = arg.postop is null;
                         }
                         else
                         {
                             savestr ~= tabstr ~ "else if (" ~ (!operator.empty ? operator~" == " : "") ~ arg.saveD(tab, null, this.type);
-                            or_need = arg.post_operations.empty;
+                            or_need = arg.postop is null;
                         }
                     }
                     break;
@@ -1071,30 +1076,30 @@ class Expression
                     }
 
                     string poststr = "";
-                    if (parent !is null && !post && parent.arguments.length > index)
+                    if (parent !is null && index >= 0 && parent.arguments.length > index)
                     {
                         foreach(i, arg; parent.arguments[index..$])
                         {
-                            foreach(i2, arg2; arg.post_operations)
+                            if (arg.postop !is null)
                             {
                                 //writefln("%s -- %s (%s == %s)", this, arg2.app_args, arg.index - arg2.app_args + 1, this.index);
-                                if (arg.index - arg2.app_args + 1 == this.index)
+                                if (arg.index + arg.postop.index + 1 == this.index)
                                 {
-                                    if (arg2.operator == "[]")
+                                    if (arg.postop.operator == "[]")
                                     {
-                                        savestr =  savestr ~ arg2.saveD(tab);
+                                        savestr =  savestr ~ arg.postop.saveD(tab);
 
                                         foreach(i3, arg3; parent.arguments[index+1..arg.index+1])
                                         {
                                             poststr ~= ", " ~ arg3.saveD(-1, null, "ctype");
                                         }
                                     }
-                                    else if (arg2.type == "init")
+                                    else if (arg.postop.type == "init")
                                     {
                                     }
                                     else
                                     {
-                                        savestr = arg2.saveD(-1) ~ " " ~ savestr;
+                                        savestr = arg.postop.saveD(-1) ~ " " ~ savestr;
 
                                         foreach(i3, arg3; parent.arguments[index+1..arg.index+1])
                                         {
@@ -1102,35 +1107,35 @@ class Expression
                                         }
                                     }
                                 }
-                                else if (ptype != "ctype" && this.index <= arg.index && this.index > arg.index - arg2.app_args + 1)
+                                else if (ptype != "ctype" && this.index <= arg.index && this.index > arg.index + arg.postop.index + 1)
                                     return "";
                             }
                         }
                     }
                     else
-                    foreach(i, arg; this.post_operations)
+                    if (postop !is null)
                     {
-                        if (arg.app_args == 1)
+                        if (postop.index == -1)
                         {
-                            if (arg.operator == "[]")
+                            if (postop.operator == "[]")
                             {
-                                savestr =  savestr ~ arg.saveD(tab);
+                                savestr =  savestr ~ postop.saveD(tab);
                             }
-                            else if (arg.type == "init")
+                            else if (postop.type == "init")
                             {
                             }
                             else
                             {
-                                savestr = arg.saveD(-1) ~ " " ~ savestr;
+                                savestr = postop.saveD(-1) ~ " " ~ savestr;
                             }
                         }
                     }
 
                     savestr ~= " " ~ this.operator;
 
-                    foreach(i, arg; post ~ this.post_operations)
+                    foreach(i, arg; post ~ (postop is null ? [] : [postop]))
                     {
-                        if (arg.app_args == 1)
+                        if (arg.index == -1)
                         {
                             if (arg.type == "init")
                             {
@@ -1149,9 +1154,9 @@ class Expression
 
                 case "default":
                     savestr ~= ":\n";
-                    foreach(i, arg; this.post_operations)
+                    if (postop !is null)
                     {
-                        savestr ~= arg.saveD(tab, null, "op");
+                        savestr ~= postop.saveD(tab, null, "op");
                     }
                     break;
 
@@ -1171,7 +1176,7 @@ class Expression
                         }
                     }
 
-                    if (ptype == "if" && !this.post_operations.empty)
+                    if (ptype == "if" && postop !is null)
                     {
                         savestr ~= ")\n";
                     }
@@ -1180,15 +1185,15 @@ class Expression
                         savestr ~= ":\n";
                     }
 
-                    foreach(i, arg; this.post_operations)
+                    if (postop !is null)
                     {
-                        if (arg.type == "switch")
-                            savestr = arg.saveD(tab, null, "op", savestr);
+                        if (postop.type == "switch")
+                            savestr = postop.saveD(tab, null, "op", savestr);
                         else
-                            savestr ~= arg.saveD(tab, null, "op");
+                            savestr ~= postop.saveD(tab, null, "op");
                     }
 
-                    if (ptype != "if" && ptype != "case" && tab >= 0 && this.post_operations.empty)
+                    if (ptype != "if" && ptype != "case" && tab >= 0 && postop is null)
                     {
                         savestr = tabstr ~ savestr ~ ";\n";
                     }
@@ -1208,17 +1213,17 @@ class Expression
                     }
                     savestr ~= "]";
 
-                    if (ptype == "if" && !this.post_operations.empty)
+                    if (ptype == "if" && postop !is null)
                     {
                         savestr ~= ")\n";
                     }
 
-                    foreach(i, arg; this.post_operations)
+                    if (postop !is null)
                     {
-                        savestr ~= arg.saveD(tab, null, "op");
+                        savestr ~= postop.saveD(tab, null, "op");
                     }
 
-                    if (ptype != "if" && tab >= 0 && this.post_operations.empty)
+                    if (ptype != "if" && tab >= 0 && postop is null)
                     {
                         savestr = tabstr ~ savestr ~ ";\n";
                     }
@@ -1233,17 +1238,17 @@ class Expression
                     }
                     savestr ~= "\"";
 
-                    if (ptype == "if" && !this.post_operations.empty)
+                    if (ptype == "if" && postop !is null)
                     {
                         savestr ~= ")\n";
                     }
 
-                    foreach(i, arg; this.post_operations)
+                    if (postop !is null)
                     {
-                        savestr ~= arg.saveD(tab, null, "op");
+                        savestr ~= postop.saveD(tab, null, "op");
                     }
 
-                    if (ptype != "if" && tab >= 0 && this.post_operations.empty)
+                    if (ptype != "if" && tab >= 0 && postop is null)
                     {
                         savestr = tabstr ~ savestr ~ ";\n";
                     }
@@ -1260,9 +1265,9 @@ class Expression
                         }
                     }
 
-                    foreach(i, arg; this.post_operations)
+                    if (postop !is null)
                     {
-                        savestr ~= (arg.operator != "[]"?".":"") ~ arg.saveD(-1, null, this.type);
+                        savestr ~= (postop.operator != "[]"?".":"") ~ postop.saveD(-1, null, this.type);
                     }
 
                     if (tab >= 0)
@@ -1283,7 +1288,7 @@ class Expression
                         savestr ~= "))";
                     }
 
-                    if (ptype == "if" && !this.post_operations.empty)
+                    if (ptype == "if" && postop !is null)
                     {
                         savestr ~= ")\n";
                     }
@@ -1293,20 +1298,20 @@ class Expression
                     }
 
                     bool body_;
-                    foreach(i, arg; this.post_operations)
+                    if (postop !is null)
                     {
-                        if (arg.type == "body")
+                        if (postop.type == "body")
                         {
-                            savestr ~= arg.saveD(tab, null, this.type);
+                            savestr ~= postop.saveD(tab, null, this.type);
                             body_ = true;
                         }
-                        else if (arg.type == "switch")
+                        else if (postop.type == "switch")
                         {
-                            savestr = arg.saveD(tab, null, "postop", savestr);
+                            savestr = postop.saveD(tab, null, "postop", savestr);
                             body_ = true;
                         }
                         else
-                            savestr ~= (arg.operator != "[]"?".":"") ~ arg.saveD(-1, null, this.type);
+                            savestr ~= (postop.operator != "[]"?".":"") ~ postop.saveD(-1, null, this.type);
                     }
 
                     if (ptype != "if" && ptype != "case" && tab >= 0 && !body_)
@@ -1374,25 +1379,25 @@ class Expression
                                     savestr ~= this.operator;
                             }
 
-                            if (!(tab >= 0 && this.post_operations.empty) && ptype == "op")
+                            if (!(tab >= 0 && postop is null) && ptype == "op")
                             {
                                 savestr = "(" ~ savestr ~ ")";
                             }
 
-                            if (ptype == "if" && !this.post_operations.empty)
+                            if (ptype == "if" && postop !is null)
                             {
                                 savestr ~= ")\n";
                             }
 
-                            foreach(i, arg; this.post_operations)
+                            if (postop !is null)
                             {
-                                if (arg.type == "switch")
-                                    savestr = arg.saveD(tab, null, "postop", savestr);
+                                if (postop.type == "switch")
+                                    savestr = postop.saveD(tab, null, "postop", savestr);
                                 else
-                                    savestr ~= arg.saveD(tab, null, "postop");
+                                    savestr ~= postop.saveD(tab, null, "postop");
                             }
 
-                            if (ptype != "if" && tab >= 0 && this.post_operations.empty)
+                            if (ptype != "if" && tab >= 0 && postop is null)
                             {
                                 savestr = tabstr ~ savestr ~ ";\n";
                             }
@@ -1409,7 +1414,7 @@ class Expression
                                 savestr = operator ~ arguments[0].saveD(-1, null, "op");
                             }
 
-                            if (ptype != "if" && tab >= 0 && this.post_operations.empty)
+                            if (ptype != "if" && tab >= 0 && postop is null)
                             {
                                 savestr = tabstr ~ savestr ~ ";\n";
                             }
@@ -1420,25 +1425,25 @@ class Expression
                             if (!arguments.empty)
                                 savestr ~= " " ~ this.arguments[0].saveD(-1, null, "op");
 
-                            if (!(tab >= 0 && this.post_operations.empty) && ptype == "op")
+                            if (!(tab >= 0 && postop is null) && ptype == "op")
                             {
                                 savestr = "(" ~ savestr ~ ")";
                             }
 
-                            if (ptype == "if" && !this.post_operations.empty)
+                            if (ptype == "if" && postop !is null)
                             {
                                 savestr ~= ")\n";
                             }
 
-                            foreach(i, arg; this.post_operations)
+                            if (postop !is null)
                             {
-                                if (arg.type == "switch")
-                                    savestr = arg.saveD(tab, null, "postop", savestr);
+                                if (postop.type == "switch")
+                                    savestr = postop.saveD(tab, null, "postop", savestr);
                                 else
-                                    savestr ~= arg.saveD(tab, null, "postop");
+                                    savestr ~= postop.saveD(tab, null, "postop");
                             }
 
-                            if (ptype != "if" && tab >= 0 && this.post_operations.empty)
+                            if (ptype != "if" && tab >= 0 && postop is null)
                             {
                                 savestr = tabstr ~ savestr ~ ";\n";
                             }
@@ -1470,14 +1475,14 @@ class Expression
                             if (type != "type")
                                 savestr = "[" ~ savestr ~ "]";
 
-                            foreach(i, arg; this.post_operations)
+                            if (postop !is null)
                             {
-                                if (arg.type == "switch")
-                                    savestr = arg.saveD(tab, null, "postop", savestr);
+                                if (postop.type == "switch")
+                                    savestr = postop.saveD(tab, null, "postop", savestr);
                                 else if (type == "type")
-                                    savestr = arg.saveD(tab, null, "op") ~ " " ~ savestr;
+                                    savestr = postop.saveD(tab, null, "op") ~ " " ~ savestr;
                                 else
-                                    savestr ~= arg.saveD(tab, null, "postop");
+                                    savestr ~= postop.saveD(tab, null, "postop");
                             }
 
                             break;
@@ -1486,17 +1491,17 @@ class Expression
                         case "true":
                             savestr ~= this.operator;
 
-                            if (ptype == "if" && !this.post_operations.empty)
+                            if (ptype == "if" && postop !is null)
                             {
                                 savestr ~= ")\n";
                             }
 
-                            foreach(i, arg; this.post_operations)
+                            if (postop !is null)
                             {
-                                if (arg.type == "switch")
-                                    savestr = arg.saveD(tab, null, "postop", savestr);
+                                if (postop.type == "switch")
+                                    savestr = postop.saveD(tab, null, "postop", savestr);
                                 else
-                                    savestr ~= arg.saveD(tab, null, "postop");
+                                    savestr ~= postop.saveD(tab, null, "postop");
                             }
                             break;
 
@@ -1541,7 +1546,7 @@ class Expression
                                 savestr ~= "()";
                             }
 
-                            if (ptype == "if" && !this.post_operations.empty)
+                            if (ptype == "if" && postop !is null)
                             {
                                 savestr ~= ")\n";
                             }
@@ -1551,24 +1556,24 @@ class Expression
                             }
 
                             bool body_;
-                            foreach(i, arg; this.post_operations)
+                            if (postop !is null)
                             {
-                                if (arg.type == "body")
+                                if (postop.type == "body")
                                 {
-                                    savestr ~= arg.saveD(tab, null, this.type);
+                                    savestr ~= postop.saveD(tab, null, this.type);
                                     body_ = true;
                                 }
-                                else if (arg.type == "switch")
+                                else if (postop.type == "switch")
                                 {
-                                    savestr = arg.saveD(tab, null, "postop", savestr);
+                                    savestr = postop.saveD(tab, null, "postop", savestr);
                                     body_ = true;
                                 }
                                 else if (ptype == "foreach")
                                 {
-                                    savestr = arg.saveD(-1, null, this.type) ~ " " ~ savestr;
+                                    savestr = postop.saveD(-1, null, this.type) ~ " " ~ savestr;
                                 }
                                 else
-                                    savestr ~= (arg.operator != "[]"?".":"") ~ arg.saveD(-1, null, this.type);
+                                    savestr ~= (postop.operator != "[]"?".":"") ~ postop.saveD(-1, null, this.type);
                             }
 
                             if (ptype != "if" && ptype != "case" && tab >= 0 && !body_)
@@ -1600,9 +1605,9 @@ class Expression
             arg.findBlocks(code, lexemTypes, lexer);
         }
 
-        foreach (arg; post_operations)
+        if (postop !is null)
         {
-            arg.findBlocks(code, lexemTypes, lexer);
+            postop.findBlocks(code, lexemTypes, lexer);
         }
     }
 
@@ -1610,7 +1615,6 @@ class Expression
     {
         ne.parent = this.parent;
         ne.index = this.index;
-        ne.post = this.post;
         ne.x = this.x;
         ne.y = this.y;
         ne.r1 = this.r1;
@@ -1618,13 +1622,13 @@ class Expression
         ne.center = this.center;
         if (this.parent !is null)
         {
-            if (!this.post)
+            if (index >= 0)
             {
                 this.parent.arguments[this.index] = ne;
             }
             else
             {
-                this.parent.post_operations[this.index] = ne;
+                this.parent.postop = ne;
             }
         }
     }
@@ -1699,7 +1703,7 @@ class Expression
                 ne = ne.arguments[0];
                 auto dc = this.deepcopy;
                 ne.arguments[0].arguments[0].replace(dc);
-                dc.post_operations = null;
+                dc.postop = null;
             }
             else if (type == "default")
             {
@@ -1712,29 +1716,29 @@ class Expression
                 assert(0);
             }
 
-            if (post_operations.empty && (code.arguments.empty || code.arguments[$-1].operator != "||" || !code.arguments[$-1].post_operations[0].arguments.empty))
+            if (postop is null && (code.arguments.empty || code.arguments[$-1].operator != "||" || !code.arguments[$-1].postop.arguments.empty))
             {
                 Expression ne2 = new Expression("(#module (||).(#body))");
                 ne2 = ne2.arguments[0];
 
-                ne.post_operations = null;
+                ne.postop = null;
                 ne2.addChild(ne);
                 code.addChild(ne2);
             }
-            else if (!code.arguments.empty && code.arguments[$-1].operator == "||" && code.arguments[$-1].post_operations[0].arguments.empty)
+            else if (!code.arguments.empty && code.arguments[$-1].operator == "||" && code.arguments[$-1].postop.arguments.empty)
             {
                 auto co = code.arguments[$-1];
-                ne.post_operations = null;
+                ne.postop = null;
                 co.addChild(ne);
-                if (!post_operations.empty)
+                if (postop !is null)
                 {
-                    code = co.post_operations[0];
+                    code = co.postop;
                 }
             }
             else
             {
                 code.addChild(ne);
-                code = ne.post_operations[0];
+                code = ne.postop;
             }
         }
         else if (type == "while")
@@ -1795,7 +1799,7 @@ class Expression
                 ne = new Expression("(! (#. replace_this (find chr) empty))");
                 auto dc = this.deepcopy;
                 ne.arguments[0].arguments[0].replace(dc);
-                dc.post_operations = null;
+                dc.postop = null;
             }
             else
             {
@@ -1829,9 +1833,9 @@ class Expression
             arg.toLexer(code, main);
         }
 
-        foreach (arg; post_operations)
+        if (postop !is null)
         {
-            arg.toLexer(code, main);
+            postop.toLexer(code, main);
         }
     }
 
@@ -1847,9 +1851,9 @@ class Expression
             if (operator == "Start")
             {
                 Expression main = new Expression();
-                foreach (arg; post_operations)
+                if (postop !is null)
                 {
-                    arg.toLexer(main, true);
+                    postop.toLexer(main, true);
                 }
 
                 if (!main.arguments.empty)
@@ -1866,9 +1870,9 @@ class Expression
             {
                 Expression func = new Expression(("(#module ("~operator~"#function void).(#body (back#var Lexer) (back2#var Lexer)))").dup);
                 func = func.arguments[0];
-                foreach (arg; post_operations)
+                if (postop !is null)
                 {
-                    arg.toLexer(func.post_operations[0], false);
+                    postop.toLexer(func.postop, false);
                 }
 
                 lexer.addChild(func);
@@ -1880,9 +1884,9 @@ class Expression
             arg.toLexer(code, lexer, lTypes);
         }
 
-        foreach (arg; post_operations)
+        if (postop !is null)
         {
-            arg.toLexer(code, lexer, lTypes);
+            postop.toLexer(code, lexer, lTypes);
         }
     }
 
@@ -1941,10 +1945,8 @@ class Expression
         copy.operator = operator;
         copy.type = type;
         copy.label = label;
-        copy.app_args = app_args;
         copy.parent = parent;
         copy.index = index;
-        copy.post = post;
         copy.center = center;
         copy.hidden = hidden;
         copy.level = level;
@@ -1965,10 +1967,10 @@ class Expression
             copy.arguments[$-1].parent = copy;
         }
 
-        foreach(arg; post_operations)
+        if (postop !is null)
         {
-            copy.post_operations ~= arg.deepcopy();
-            copy.post_operations[$-1].parent = copy;
+            copy.postop = postop.deepcopy();
+            copy.postop.parent = copy;
         }
 
         return copy;
@@ -1977,23 +1979,15 @@ class Expression
     Expression movecopy()
     {
         auto copy = deepcopy();
-        copy.index++;
 
-        if (!post)
+        if (index >= 0)
         {
+            copy.index++;
             foreach(arg; parent.arguments[index+1..$])
             {
                 arg.index++;
             }
             parent.arguments = parent.arguments[0..index+1] ~ copy ~ parent.arguments[index+1..$];
-        }
-        else
-        {
-            foreach(arg; parent.post_operations[index+1..$])
-            {
-                arg.index++;
-            }
-            parent.post_operations = parent.post_operations[0..index+1] ~ copy ~ parent.post_operations[index+1..$];
         }
 
         return copy;

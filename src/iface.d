@@ -242,7 +242,7 @@ public:
         if (root is null) root = root_expr;
         Expression ret = root;
 
-        foreach(arg; root.arguments ~ root.post_operations)
+        foreach(arg; root.arguments ~ (root.postop is null ? [] : [root.postop]))
         {
             //if (arg.hidden && arg.type != "body" && !isNeedHide(arg)) continue;
             arg = findCircPos(expr, posa, arg);
@@ -392,16 +392,14 @@ public:
     {
         if (root is null) root = expr;
         Expression ret = root;
-        if (root.post && root.index+1 < root.parent.post_operations.length)
-            ret = root.parent.post_operations[root.index+1];
-        else if (!root.arguments.empty) ret = root.arguments[root.focus_index];
-        else if (!root.post_operations.empty) ret = root.post_operations[0];
+        if (!root.arguments.empty) ret = root.arguments[root.focus_index];
+        else if (root.postop !is null) ret = root.postop;
         else
         {
             auto f = parentOfFun(root);
-            if (f !is null && !f.post_operations.empty)
+            if (f !is null && f.postop !is null)
             {
-                ret = f.post_operations[0];
+                ret = f.postop;
             }
         }
 
@@ -420,7 +418,7 @@ public:
 
         if (root.parent !is null)
         {
-            if (root.post)
+            if (root.index < 0)
             {
                if (dir > 0 && root.arguments.length > 0)
                    ret = root.arguments[0];
@@ -453,7 +451,7 @@ public:
         ri.fun = expr;
         rot_info ~= ri;
 
-        if (expr.parent !is null && !expr.post)
+        if (expr.parent !is null && expr.index >= 0)
             expr.parent.focus_index = expr.index;
 
         //writefln("Select %s (%s), fsel %s", selected, rot_info.length, fselected);
@@ -464,7 +462,7 @@ public:
     {
         auto sel = selected;
         if (sel.parent !is null && sel.parent.type == ".") sel = sel.parent;
-        else if (selected.parent !is null && !selected.post)
+        else if (selected.parent !is null && selected.index >= 0)
         {
             auto ne = new Expression();
             ne.type = ".";
@@ -475,12 +473,12 @@ public:
             ne.r1 = selected.r1;
             ne.r2 = selected.r2;
             ne.center = selected.center;
-            ne.post_operations = selected.post_operations;
-            selected.post_operations = null;
+            ne.postop = selected.postop;
+            selected.postop = null;
             
-            foreach(arg; ne.post_operations)
+            if (ne.postop !is null)
             {
-                arg.parent = ne;
+                ne.postop.parent = ne;
             }
 
             selected.parent.arguments[selected.index] = ne;
@@ -660,7 +658,7 @@ public:
         }
         end_edit();
 
-        if (selected.parent !is null && !selected.post)
+        if (selected.parent !is null && selected.index >= 0)
         {
             auto ne = new Expression();
             ne.parent = selected.parent;
@@ -693,7 +691,7 @@ public:
             return;
         }
 
-        if (selected.parent !is null && !selected.post)
+        if (selected.parent !is null && selected.index >= 0)
         {
             auto ne = new Expression();
             ne.parent = selected.parent;
@@ -703,12 +701,12 @@ public:
             ne.r1 = selected.r1;
             ne.r2 = selected.r2;
             ne.center = selected.center;
-            ne.post_operations = selected.post_operations;
-            selected.post_operations = null;
+            ne.postop = selected.postop;
+            selected.postop = null;
             
-            foreach(arg; ne.post_operations)
+            if (ne.postop !is null)
             {
-                arg.parent = ne;
+                ne.postop.parent = ne;
             }
 
             selected.parent.arguments[selected.index] = ne;
@@ -766,17 +764,15 @@ public:
     {
         if (selected is null) return;
 
-        if (!post_edit && selected.post_operations.empty)
+        if (!post_edit && selected.postop is null)
         {
             auto ne = new Expression();
             ne.parent = selected;
-            ne.index = selected.post_operations.length;
-            ne.post = true;
-            ne.app_args = 1;
+            ne.index = -1;
             ne.x = selected.x;
             ne.y = selected.y;
             ne.center = selected.center;
-            selected.post_operations ~= ne;
+            selected.postop = ne;
             selected = ne;
 
             if (ne.parent.type == "function" || ne.parent.type == "for" || ne.parent.type == "while" || ne.parent.type == "do" || ne.parent.type == "foreach" || ne.parent.parent.type == "if" || ne.parent.parent.type == "switch")
@@ -786,24 +782,24 @@ public:
                 selected = ne;
             }
         }
-        else if (!selected.post_operations.empty)
+        else if (selected.postop !is null)
         {
-            Expression pe = selected.post_operations[0];
-            if (selected.index >= pe.app_args)
-                pe.app_args++;
+            Expression pe = selected.postop;
+            if (selected.index >= -pe.index)
+                pe.index--;
         }
         else
         {
             Expression ep = selected.parent;
-            while (ep.post)
+            while (ep.index < 0)
             {
-                assert(ep.parent.post_operations[ep.index] is ep);
+                assert(ep.parent.postop is ep);
                 ep = ep.parent;
             }
             assert(ep.parent.arguments[ep.index] is ep);
 
-            if (ep.index >= selected.app_args)
-                selected.app_args++;
+            if (ep.index >= -selected.index)
+                selected.index--;
         }
 
         getFile(selected).type = "*";
@@ -817,29 +813,27 @@ public:
     {
         if (selected is null) return;
 
-        if (!post_edit && selected.post_operations.empty)
+        if (!post_edit && selected.postop is null)
         {
             auto ne = new Expression();
             ne.parent = selected;
-            ne.index = selected.post_operations.length;
-            ne.post = true;
-            ne.app_args = 1;
+            ne.index = -1;
             ne.x = selected.x;
             ne.y = selected.y;
             ne.center = selected.center;
-            selected.post_operations ~= ne;
+            selected.postop = ne;
             selected = ne;
         }
-        else if (!selected.post_operations.empty)
+        else if (selected.postop !is null)
         {
-            Expression pe = selected.post_operations[0];
-            if (pe.app_args > 1)
-                pe.app_args--;
+            Expression pe = selected.postop;
+            if (pe.index < -1)
+                pe.index++;
         }
         else
         {
-            if (selected.app_args > 1)
-                selected.app_args--;
+            if (selected.index < -1)
+                selected.index++;
         }
 
         getFile(selected).type = "*";
@@ -870,7 +864,7 @@ public:
         if (selected.parent !is null)
         {
             if (selected.parent.focus_index > 0) selected.parent.focus_index--;
-            if (!selected.post)
+            if (selected.index >= 0)
             {
                 foreach(arg; selected.parent.arguments[selected.index+1..$])
                 {
@@ -884,11 +878,7 @@ public:
             }
             else
             {
-                foreach(arg; selected.parent.post_operations[selected.index+1..$])
-                {
-                    arg.index--;
-                }
-                selected.parent.post_operations = selected.parent.post_operations[0..selected.index] ~ selected.parent.post_operations[selected.index+1..$];
+                selected.parent.postop = null;
                 selected = selected.parent;
             }
         }
@@ -904,7 +894,7 @@ public:
         if (selected is null) return;
 
         selected.arguments = null;
-        selected.post_operations = null;
+        selected.postop = null;
         selected.focus_index = 0;
 
         getFile(selected).type = "*";
@@ -928,7 +918,7 @@ public:
         if (selected is null || scopy is null) return;
 
         auto c = scopy.deepcopy;
-        if (!selected.post)
+        if (selected.index >= 0)
         {
             selected.parent.arguments[selected.index] = c;
             c.parent = selected.parent;
@@ -936,7 +926,7 @@ public:
         }
         else
         {
-            selected.parent.post_operations[selected.index] = c;
+            selected.parent.postop = c;
             c.parent = selected.parent;
             c.index = selected.index;
         }
@@ -954,18 +944,9 @@ public:
         if (selected is null) return;
         if (selected.index <= 0) return;
 
-        if (!selected.post)
-        {
-            selected.parent.arguments[selected.index-1].index++;
-            swap(selected.parent.arguments[selected.index], selected.parent.arguments[selected.index-1]);
-            selected.index--;
-        }
-        else
-        {
-            selected.parent.post_operations[selected.index-1].index++;
-            swap(selected.parent.post_operations[selected.index], selected.parent.post_operations[selected.index-1]);
-            selected.index--;
-        }
+        selected.parent.arguments[selected.index-1].index++;
+        swap(selected.parent.arguments[selected.index], selected.parent.arguments[selected.index-1]);
+        selected.index--;
 
         getFile(selected).type = "*";
         sizes_invalid = 2;
@@ -977,21 +958,12 @@ public:
     void moveright()
     {
         if (selected is null) return;
+        if (selected.index <= 0) return;
 
-        if (!selected.post)
-        {
-            if (selected.index >= selected.parent.arguments.length-1) return;
-            selected.parent.arguments[selected.index+1].index--;
-            swap(selected.parent.arguments[selected.index], selected.parent.arguments[selected.index+1]);
-            selected.index++;
-        }
-        else
-        {
-            if (selected.index >= selected.parent.post_operations.length-1) return;
-            selected.parent.post_operations[selected.index+1].index--;
-            swap(selected.parent.post_operations[selected.index], selected.parent.post_operations[selected.index+1]);
-            selected.index++;
-        }
+        if (selected.index >= selected.parent.arguments.length-1) return;
+        selected.parent.arguments[selected.index+1].index--;
+        swap(selected.parent.arguments[selected.index], selected.parent.arguments[selected.index+1]);
+        selected.index++;
 
         getFile(selected).type = "*";
         sizes_invalid = 2;
@@ -1262,7 +1234,7 @@ protected:
             }
             else
             {
-                string text = (expr.post ? "." : "") ~ (expr.operator.empty ? expr.type : expr.operator);
+                string text = (expr.index < 0 ? "." : "") ~ (expr.operator.empty ? expr.type : expr.operator);
                 if (text.empty) text = ".";
                 tw += arcTextWidth(text, radius);
             }
@@ -1543,7 +1515,7 @@ protected:
                 }
                 if (i == 0) expr.center.levels = 0;
 
-                string text = (expr.post ? "." : "") ~ (expr.operator.empty ? expr.type : expr.operator);
+                string text = (expr.index < 0 ? "." : "") ~ (expr.operator.empty ? expr.type : expr.operator);
                 if (text.empty) text = ".";
 
                 expr.pw = [ textWidth(text) + 5, 0.0 ];
@@ -1555,7 +1527,8 @@ protected:
                 ds2.post_dir = 0;
                 ds2 = getSize(cast(Expression[]) expr.arguments, ds2);
                 ds2.post_dir = 1;
-                ds2 = getSize(cast(Expression[]) expr.post_operations, ds2);
+                if (expr.postop !is null)
+                    ds2 = getSize(cast(Expression[]) [expr.postop], ds2);
 
                 if (expr.pw[1] < expr.pw[0])
                 {
@@ -1602,14 +1575,14 @@ protected:
             if (ds.llimit >= 0)
             {
                 //writefln("%s. %s#%s", ds.llimit, expr.operator, expr.type);
-                if (expr.parent !is null && (expr.parent.type == "root" || expr.parent.type == "module" || expr.parent.type == "body"))
+                if (expr.parent !is null && (expr.parent.type == "root" || expr.parent.type == "module" || expr.parent.bt == BlockType.File || expr.parent.type == "body"))
                     continue;
 
                 auto ds2 = ds;
-                if (expr.parent is null || !expr.parent.post || expr.parent.type == "body" || expr.parent.type == "module")
+                if (expr.parent is null || expr.parent.index >= 0 || expr.parent.type == "body" || expr.parent.type == "module" || expr.parent.bt == BlockType.File)
                     ds2.level++;
 
-                string text = (expr.post ? "." : "") ~ (expr.operator.empty ? expr.type : expr.operator);
+                string text = (expr.index < 0 ? "." : "") ~ (expr.operator.empty ? expr.type : expr.operator);
                 if (text.empty) text = ".";
 
                 expr.pw = [ textWidth(text) + 5, 0.0 ];
@@ -1617,7 +1590,8 @@ protected:
                 ds2.post_dir = 0;
                 ds2 = getSize(cast(Expression[]) expr.arguments, ds2);
                 ds2.post_dir = 1;
-                ds2 = getSize(cast(Expression[]) expr.post_operations, ds2);
+                if (expr.postop !is null)
+                    ds2 = getSize(cast(Expression[]) [expr.postop], ds2);
 
                 if (expr.pw[1] < expr.pw[0])
                 {
@@ -1625,8 +1599,8 @@ protected:
                 }
 
                 auto par = expr.parent;
-                if (!par.post) par.pw[1] += expr.pw[1];
-                while (par.post)
+                if (par.index >= 0) par.pw[1] += expr.pw[1];
+                while (par.index < 0)
                 {
                     par = par.parent;
                     par.pw[1] += expr.pw[1];
@@ -1637,38 +1611,38 @@ protected:
                 //writefln("%s", ds.level);
                 (*ds.blocks) = max((*ds.blocks), ds.level);
 
-                if (expr.post)
+                if (expr.index < 0)
                     ds.level++;
             }
             
             if (ds.llimit < 0)
             {
-                if (expr.post)
+                if (expr.index < 0)
                 {
-                    //writefln("%s-%s:%s: %s", f, t, expr.app_args, rf);
+                    //writefln("%s-%s:%s: %s", f, t, expr.index, rf);
 
-                    assert(expr.parent.post_operations[expr.index] is expr);
+                    assert(expr.parent.postop is expr);
                     Expression ep = expr.parent;
-                    while (ep.post)
+                    while (ep.index < 0)
                     {
-                        assert(ep.parent.post_operations[ep.index] is ep);
+                        assert(ep.parent.postop is ep);
                         ep = ep.parent;
                     }
-                    //writefln("%s/%s. %s. %s..%s", expr.operator, ep.operator, ep.parent.arguments.length, ep.index-expr.app_args+1, ep.index+1);
+                    //writefln("%s/%s. %s. %s..%s", expr.operator, ep.operator, ep.parent.arguments.length, ep.index+expr.index+1, ep.index+1);
                     assert(ep.parent.arguments[ep.index] is ep);
 
-                    if (ds.mode == Mode.Circle && ep.index-expr.app_args+1 > 0 && ep.parent.arguments.length > ep.index)
+                    if (ds.mode == Mode.Circle && ep.index+expr.index+1 > 0 && ep.parent.arguments.length > ep.index)
                     {
-                        ds.f = ep.parent.arguments[ep.index-expr.app_args+1].a1;
+                        ds.f = ep.parent.arguments[ep.index+expr.index+1].a1;
                         ds.t = ep.parent.arguments[ep.index].a2;
                     }
 
-                    foreach(pre; ep.parent.arguments[ep.index-expr.app_args+1..ep.index+1])
+                    foreach(pre; ep.parent.arguments[ep.index+expr.index+1..ep.index+1])
                     {
                         //ds.r = max(ds.r, pre.r3);
                         if (expr.type == "body" && (ep.parent.type == "if" || ep.parent.type == "switch"))
                         {
-                            real hue = (1.0*ep.index - expr.app_args/2.0 + 1.0)/(ep.parent.arguments.length+1);
+                            real hue = (1.0*ep.index + expr.index/2.0 + 1.0)/(ep.parent.arguments.length+1);
                             pre.c = Color.hsv(hue, 0.5, 1.0);
                         }
                     }
@@ -1686,8 +1660,8 @@ protected:
                 assert(w > 0);
                 auto par = expr.parent;
                 real parentw = par is null || ds.mode == Mode.Block ? w : par.pw[1];
-                while (par && par.post && par.parent.post) par = par.parent;
-                if (par !is null && par.post && par.type != "body")
+                while (par && par.index < 0 && par.parent.index < 0) par = par.parent;
+                if (par !is null && par.index < 0 && par.type != "body")
                 {
                     //if (expr !is expr.center)
                     //writefln("++ %s/%s. %s/%s", par, par.parent, par.pw, par.parent.pw);
@@ -1697,7 +1671,7 @@ protected:
                 }
                 /*if (expr is expr.center)
                     parentw = (expr.r3)*2*PI;
-                if (par !is null && par.post && par is par.center)
+                if (par !is null && par.index < 0 && par is par.center)
                     parentw = (par.r3)*2*PI;*/
 
                 assert(parentw > 0);
@@ -1714,10 +1688,10 @@ protected:
                 if (expr.center.mw.length < ds.level+1) expr.center.mw ~= 1.0;
                 expr.center.mw[ds.level] = max(expr.center.mw[ds.level], rw);
 
-                if ((!expr.post && expr.index == expressions.length-1 || expr.post && expr.arguments.length == 0) && ds.t > to)
+                if ((expr.index >= 0 && expr.index == expressions.length-1 || expr.index < 0 && expr.arguments.length == 0) && ds.t > to)
                     to = ds.t;
                 
-                if (!expr.post)
+                if (expr.index >= 0)
                     sumpw += w;
                 /*if (ds.level == 4)
                 writefln("    %s => %s | %s => %s | %s | %s/%s/%s",
@@ -1757,7 +1731,7 @@ protected:
                 expr.block = ds.block;
 
                 DrawState ds2 = ds;
-                if (!expr.post)
+                if (expr.index >= 0)
                 {
                     if (!isNeedHide(expr))
                     {
@@ -1778,8 +1752,8 @@ protected:
                 ds2.f = fr;
                 ds2.t = to;
 
-                //writefln("%s#%s %s >= %s %s", expr.operator, expr.type, expr.level, expr.center.levels, expr.post);
-                if (expr.type == "root" || expr.type == "module" || expr.type == "body")
+                //writefln("%s#%s %s >= %s %s", expr.operator, expr.type, expr.level, expr.center.levels, expr.index);
+                if (expr.type == "root" || expr.type == "module" || expr.bt == BlockType.File || expr.type == "body")
                 {
                     ds2.mode = Mode.Block;
                     ds2.post_dir = 0;
@@ -1789,9 +1763,10 @@ protected:
 
                 ds2 = getSize(cast(Expression[]) expr.arguments, ds2);
                 ds2.post_dir = 1;
-                ds2 = getSize(cast(Expression[]) expr.post_operations, ds2);
+                if (expr.postop !is null)
+                    ds2 = getSize(cast(Expression[]) [expr.postop], ds2);
 
-                if (expr.post)
+                if (expr.index < 0)
                 {
                     if (expr.type != "body")
                     {
@@ -1878,15 +1853,15 @@ protected:
         {
             foreach(arg; expr.arguments)
             {
-                assert(arg.post_operations[0].type == "body");
-                ret ~= inExpressions(arg.post_operations[0].arguments[$-1]);
+                assert(arg.postop.type == "body");
+                ret ~= inExpressions(arg.postop.arguments[$-1]);
             }
         }
         else if (expr.type == "for" || expr.type == "foreach" || expr.type == "while" || expr.type == "do")
         {
-            assert(expr.arguments[$-1].post_operations[0].type == "body");
+            assert(expr.arguments[$-1].postop.type == "body");
             ret ~= expr;
-            ret ~= inExpressions(expr.arguments[$-1].post_operations[0].arguments[$-1]);
+            ret ~= inExpressions(expr.arguments[$-1].postop.arguments[$-1]);
         }
         else ret = [expr];
 
@@ -1904,7 +1879,7 @@ protected:
         }
         else
         {
-            if (!expr.post)
+            if (expr.index >= 0)
             {
                 return inExpressions(expr.parent.arguments[expr.index - 1]);
             }
@@ -1918,7 +1893,7 @@ protected:
         Expression ret = expr.parent;
         while (ret !is null)
         {
-            if (ret.type == "body" || ret.type == "module") return ret;
+            if (ret.type == "body" || ret.type == "module" || ret.bt == BlockType.File) return ret;
             ret = ret.parent;
         }
         return null;
@@ -1929,15 +1904,15 @@ protected:
         Expression ret = expr;
         while (ret !is null)
         {
-            if (ret.type == "root" || ret.type == "module" || ret.type == "function" || ret.type == "for" || ret.type == "foreach" || ret.type == "while" || ret.type == "do" || ret.parent !is null && (ret.parent.type == "if" || ret.parent.type == "switch"))
+            if (ret.type == "root" || ret.type == "module" || ret.bt == BlockType.File || ret.type == "function" || ret.type == "for" || ret.type == "foreach" || ret.type == "while" || ret.type == "do" || ret.parent !is null && (ret.parent.type == "if" || ret.parent.type == "switch"))
             {
-                if (ret.parent !is null && !ret.post && (ret.post_operations.empty || ret.post_operations[0].type != "body"))
+                if (ret.parent !is null && ret.index >= 0 && (ret.postop is null || ret.postop.type != "body"))
                 {
                     foreach (arg; ret.parent.arguments[ret.index+1..$])
                     {
-                        if (!arg.post_operations.empty && arg.post_operations[0].type == "body")
+                        if (arg.postop !is null && arg.postop.type == "body")
                         {
-                            if (arg.index - arg.post_operations[0].app_args + 1 <= ret.index)
+                            if (arg.index + arg.postop.index + 1 <= ret.index)
                                 ret = arg;
                             break;
                         }
@@ -1956,7 +1931,7 @@ protected:
         Expression ret = expr.parent;
         while (ret !is null)
         {
-            if (ret.type == "body" || ret.type == "root" || ret.type == "module")
+            if (ret.type == "body" || ret.type == "root" || ret.type == "module" || ret.bt == BlockType.File)
             {
                 if (!body_was) body_was = true;
                 else return false;
@@ -1973,7 +1948,7 @@ protected:
 
     bool isNeedHide(Expression expr)
     {
-        return expr.level > 0 && !expr.post && (expr.type == "." || expr.type == "[" || expr.type == "\"" ||
+        return expr.level > 0 && expr.index >= 0 && (expr.type == "." || expr.type == "[" || expr.type == "\"" ||
                 (expr.operator.length > 0 && !"-+!&*".find(expr.operator).empty && expr.arguments.length == 1));
     }
 
@@ -1983,7 +1958,8 @@ protected:
         {
             expr.hidden = true;
             hideRecursive(expr.arguments);
-            hideRecursive(expr.post_operations);
+            if (expr.postop !is null)
+                hideRecursive([expr.postop]);
         }
     }
 
@@ -2033,7 +2009,8 @@ protected:
                 {
                     expr.hidden = true;
                     hideRecursive(expr.arguments);
-                    hideRecursive(expr.post_operations);
+                    if (expr.postop !is null)
+                        hideRecursive([expr.postop]);
                     continue;
                 }
             }
@@ -2066,6 +2043,7 @@ protected:
                         {
                             if (expr.parent.parent is parentOfFun(ri.fun))
                             {
+                                if (rlines.length < ds.line+1) rlines ~= 0.0;
                                 ds.y += 150 + max(rlines[ds.line], 50);
                                 ds.x = 0;
                                 ds.line++;
@@ -2077,12 +2055,13 @@ protected:
                             }
                         }
                     }
-                    else if (expr.parent !is null && expr.parent.type == "module" && expr.index == 0)
+                    else if (expr.parent !is null && (expr.parent.type == "module" || expr.parent.bt == BlockType.File) && expr.index == 0)
                     { 
                         foreach (ri; rot_info)
                         {
                             if (expr.parent is parentOfFun(ri.fun))
                             {
+                                if (rlines.length < ds.line+1) rlines ~= 0.0;
                                 ds.y += 150 + max(rlines[ds.line], 50);
                                 ds.x = 0;
                                 ds.line++;
@@ -2100,7 +2079,8 @@ protected:
                 {
                     expr.hidden = true;
                     hideRecursive(expr.arguments);
-                    hideRecursive(expr.post_operations);
+                    if (expr.postop !is null)
+                        hideRecursive([expr.postop]);
                     continue;
                 }
             }
@@ -2142,7 +2122,7 @@ protected:
                         }
                     }
 
-                    string text = (expr.post ? "." : "") ~ (expr.operator.empty ? expr.type : expr.operator) ~ (expr.arguments.empty && expr.arguments !is null ? "()" : "");
+                    string text = (expr.index < 0 ? "." : "") ~ (expr.operator.empty ? expr.type : expr.operator) ~ (expr.arguments.empty && expr.arguments !is null ? "()" : "");
                     if (expr.bt == BlockType.File && expr.type == "*")
                         text = text ~ " *";
 
@@ -2396,13 +2376,14 @@ protected:
 
             DrawState ds2 = ds;
 
-            if (expr.type == "root" || expr.type == "module" || expr.type == "body")
+            if (expr.type == "root" || expr.type == "module" || expr.bt == BlockType.File || expr.type == "body")
                 ds2.mode = Mode.Block;
             else
                 ds2.mode = Mode.Circle;
 
             ds2 = drawAll(cr, cast(Expression[]) expr.arguments, ds2);
-            ds2 = drawAll(cr, cast(Expression[]) expr.post_operations, ds2);
+            if (expr.postop !is null)
+                ds2 = drawAll(cr, cast(Expression[]) [expr.postop], ds2);
 
             if (ds2.hide)
                 ds.hide = ret.hide = true;
@@ -2434,13 +2415,13 @@ protected:
                 }
             }
         }
-        else if (expr.parent.type == "struct" || expr.parent.type == "class" || expr.parent.type == "root" || expr.parent.type == "module")
+        else if (expr.parent.type == "struct" || expr.parent.type == "class" || expr.parent.type == "root" || expr.parent.type == "module" || expr.parent.bt == BlockType.File)
         {
             foreach (ex; expr.parent.arguments)
             {
                 if (!ex.operator.empty && ex.arguments.length >= 1)
                 {
-                    if (ex.type == "struct" || ex.type == "class" || ex.type == "root" || ex.type == "module" || ex.type == "enum")
+                    if (ex.type == "struct" || ex.type == "class" || ex.type == "root" || ex.type == "module" || ex.bt == BlockType.File || ex.type == "enum")
                         ret ~= Button(ex.operator, typeColor(ex.type), ex.type, ex);
                     else
                         ret ~= Button(ex.operator, typeColor(ex.type), ex.arguments[0].operator, ex);
@@ -2456,7 +2437,7 @@ protected:
                             {
                                 if (!modarg.operator.empty && modarg.arguments.length >= 1)
                                 {
-                                    if (modarg.type == "struct" || modarg.type == "class" || modarg.type == "root" || modarg.type == "module" || modarg.type == "enum")
+                                    if (modarg.type == "struct" || modarg.type == "class" || modarg.type == "root" || modarg.type == "module" || modarg.bt == BlockType.File || modarg.type == "enum")
                                         ret ~= Button(modarg.operator, typeColor(modarg.type), modarg.type, modarg);
                                     else
                                         ret ~= Button(modarg.operator, typeColor(modarg.type), modarg.arguments[0].operator, modarg);
@@ -2814,7 +2795,7 @@ protected:
             y += 35;
 
             Button[] buttons;
-            if (selected.parent !is null && (selected.parent.type == "body" || selected.parent.type == "root" || selected.parent.type == "module" || selected.parent.type == "struct" || selected.parent.type == "class"))
+            if (selected.parent !is null && (selected.parent.type == "body" || selected.parent.type == "root" || selected.parent.type == "module" || selected.parent.bt == BlockType.File || selected.parent.type == "struct" || selected.parent.type == "class"))
             {
                 foreach (type; ["import", "class", "struct", "function", "enum", "var"])
                     buttons ~= [Button("#"~type, typeColor(type), null)];
