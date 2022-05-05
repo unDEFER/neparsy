@@ -1397,7 +1397,7 @@ class Expression
                     savestr ~= "{}";
                     if (tab >= 0)
                     {
-                        savestr = wrapWithSpaces(savestr ~ ";", tabstr);
+                        savestr = wrapWithSpaces(savestr, tabstr);
                     }
                     break;
 
