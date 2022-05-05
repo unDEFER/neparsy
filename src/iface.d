@@ -1050,6 +1050,13 @@ public:
         }
     }
 
+    void fixIndent()
+    {
+        auto efile = getFile(selected);
+        efile.fixIndent();
+        efile.type = "*";
+    }
+
     void toLexer()
     {
         auto mod = getModule(selected);

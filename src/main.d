@@ -99,6 +99,10 @@ class MyWindow : ApplicationWindow
             {
                 IFACE.saveD();
             }
+            else if (unicode == 'f')
+            {
+                IFACE.fixIndent();
+            }
             else if (unicode == 'c')
             {
                 //write('C', unicode);
