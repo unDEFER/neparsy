@@ -419,7 +419,8 @@ class Parser {
             {
                 getLexem;
                 
-                if (lexer == LexemType.Number) 
+                if (lexer == LexemType.Character
+                 || lexer == LexemType.Number) 
                 {
                     Expression init = new Expression;
                     init.operator = lexer.lexem;
@@ -610,7 +611,6 @@ class Parser {
         else if (lexer == ",") 
         {
             Expression expr = new Expression;
-            expr.arguments ~= ret.arguments;
             ret.arguments = null;
             expr.arguments ~= ret;
             ret = cexpr = expr;Var2: 

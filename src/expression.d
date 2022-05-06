@@ -324,8 +324,6 @@ class Expression
             }
             else if (line[0] == ' ' || line[0] == '\n')
             {
-                if (line[0] == '\n') nl2++;
-                line = line[1..$];
                 goto Arguments;
             }
             else if (line.startsWith(ps.brackets.end))
@@ -370,8 +368,6 @@ class Expression
             }
             else if (line[0] == ' ' || line[0] == '\n')
             {
-                if (line[0] == '\n') nl2++;
-                line = line[1..$];
                 goto Arguments;
             }
             else if (line.startsWith(ps.brackets.end))
@@ -420,8 +416,6 @@ class Expression
             }
             else if (line[0] == ' ' || line[0] == '\n')
             {
-                if (line[0] == '\n') nl2++;
-                line = line[1..$];
                 goto Arguments;
             }
             else if (!in_brackets && startsWithDotBracket(line, ps))
@@ -548,7 +542,7 @@ class Expression
         {
             pp.postop = c;
             c.parent = pp;
-            if (c.index == 0) c.index = -1;
+            if (c.index >= 0) c.index = -1;
             pp = c;
         }
     }
@@ -564,6 +558,7 @@ class Expression
     void fixParents(Expression p = null, long i = 0)
     {
         parent = p;
+        assert(i >= 0 && index >= 0 || i < 0 && index <= 0);
         if (index >= -1)
             index = i;
 
