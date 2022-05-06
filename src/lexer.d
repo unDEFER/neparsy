@@ -6,327 +6,351 @@ import std.uni;
 import std.file;
 import std.conv;
 import std.algorithm.searching;
-enum LexemType
-{
-    Identifier,
-    AssignOperator,
-    Comment,
-    String,
-    EndInput,
-    Punctuation,
-    Number,
-    Float,
-    CmpOperator,
-    Blank,
-    Operator,
-    Character,
-    LenOperator
-}
-enum 
-{
-    EOF
-}
-struct Lexer
-{
+enum LexemType {
+    Identifier, 
+    AssignOperator, 
+    Comment, 
+    String, 
+    EndInput, 
+    Punctuation, 
+    Number, 
+    Float, 
+    CmpOperator, 
+    Blank, 
+    Operator, 
+    Character, 
+    LenOperator}
+enum  {
+    EOF = '\u0004'}
+
+struct Lexer {
     string file;
     string lexem;
     LexemType type;
     int line = 1;
     int col;
     dchar chr;
+    int newlines;
+
+    bool isWhiteNL(dchar chr)
+    {
+        
+        if (chr == '\n') 
+        {
+            ++newlines;
+        }
+        return isWhite(chr);
+    }
+
+    int getNL()
+    {
+        int res = newlines;
+        newlines = 0;
+        return res;
+    }
+
     void getLexem()
     {
         lexem = file;
-        Lexer back;
-        Lexer back2;
+        Lexer  back;
+        Lexer  back2;
         back = this;
-        nextChr;
-        if (chr.isAlpha || (chr == '_'))
+        nextChr();
+        
+        if (isAlpha(chr) || (chr == '_')) 
         {
             do
             {
                 back = this;
                 nextChr;
-            }
-            while (chr.isAlphaNum || (chr == '_'));
+            }while (isAlphaNum(chr) || (chr == '_'));
             this = back;
             type = LexemType.Identifier;
             return;
         }
-        else if (chr.isNumber)
+        else if (isNumber(chr)) 
         {
             do
             {
                 back = this;
                 nextChr;
-            }
-            while (chr.isNumber);
+            }while (isNumber(chr));
             this = back;
             back2 = this;
             back = this;
-            nextChr;
-            if (chr == '.')
+            nextChr();
+            
+            if (chr == '.') 
             {
                 back = this;
-                nextChr;
-                if (chr == '.')
+                nextChr();
+                
+                if (chr == '.') 
                 {
                     this = back2;
                     type = LexemType.Number;
                     return;
                 }
-                else if (true)
+                else if (true) 
                 {
                     this = back;
                     do
                     {
                         back = this;
                         nextChr;
-                    }
-                    while (chr.isNumber);
+                    }while (isNumber(chr));
                     this = back;
                     type = LexemType.Float;
                     return;
                 }
             }
-            else if (true)
+            else if (true) 
             {
                 this = back;
                 type = LexemType.Number;
                 return;
             }
         }
-        else if (chr == '.')
+        else if (chr == '.') 
         {
             back = this;
-            nextChr;
-            if (chr == '.')
+            nextChr();
+            
+            if (chr == '.') 
             {
                 type = LexemType.Punctuation;
                 return;
             }
-            else if (chr.isNumber)
+            else if (isNumber(chr)) 
             {
                 do
                 {
                     back = this;
                     nextChr;
-                }
-                while (chr.isNumber);
+                }while (isNumber(chr));
                 this = back;
                 type = LexemType.Float;
                 return;
             }
-            else if (true)
+            else if (true) 
             {
                 this = back;
                 type = LexemType.Punctuation;
                 return;
             }
         }
-        else if (! ",;:[]{}()?".find(chr).empty)
+        else if (! ",;:[]{}()?".find(chr).empty) 
         {
             type = LexemType.Punctuation;
             return;
         }
-        else if (chr == '+')
+        else if (chr == '+') 
         {
             back = this;
-            nextChr;
-            if (chr == '+')
+            nextChr();
+            
+            if (chr == '+') 
             {
                 type = LexemType.Operator;
                 return;
             }
-            else if (chr == '=')
+            else if (chr == '=') 
             {
                 type = LexemType.AssignOperator;
                 return;
             }
-            else if (true)
+            else if (true) 
             {
                 this = back;
                 type = LexemType.Operator;
                 return;
             }
         }
-        else if (chr == '-')
+        else if (chr == '-') 
         {
             back = this;
-            nextChr;
-            if (chr == '-')
+            nextChr();
+            
+            if (chr == '-') 
             {
                 type = LexemType.Operator;
                 return;
             }
-            else if (chr == '=')
+            else if (chr == '=') 
             {
                 type = LexemType.AssignOperator;
                 return;
             }
-            else if (true)
+            else if (true) 
             {
                 this = back;
                 type = LexemType.Operator;
                 return;
             }
         }
-        else if (chr == '=')
+        else if (chr == '=') 
         {
             back = this;
-            nextChr;
-            if (chr == '=')
+            nextChr();
+            
+            if (chr == '=') 
             {
                 type = LexemType.CmpOperator;
                 return;
             }
-            else if (true)
+            else if (true) 
             {
                 this = back;
                 type = LexemType.AssignOperator;
                 return;
             }
         }
-        else if (chr == '*')
+        else if (chr == '*') 
         {
             back = this;
-            nextChr;
-            if (chr == '=')
+            nextChr();
+            
+            if (chr == '=') 
             {
                 type = LexemType.AssignOperator;
                 return;
             }
-            else if (true)
+            else if (true) 
             {
                 this = back;
                 type = LexemType.Operator;
                 return;
             }
         }
-        else if (chr == '/')
+        else if (chr == '/') 
         {
             back = this;
-            nextChr;
-            if (chr == '=')
+            nextChr();
+            
+            if (chr == '=') 
             {
                 type = LexemType.AssignOperator;
                 return;
             }
-            else if (chr == '/')
+            else if (chr == '/') 
             {
                 do
                 {
                     back = this;
                     nextChr;
-                }
-                while (! (chr == '\n'));
+                }while (! (chr == '\n'));
                 this = back;
                 type = LexemType.Comment;
                 return;
             }
-            else if (chr == '*')
-            {
-                Comment:
+            else if (chr == '*') 
+            {Comment: 
                 back = this;
-                nextChr;
-                if (chr == '*')
+                nextChr();
+                
+                if (chr == '*') 
                 {
                     back = this;
-                    nextChr;
-                    if (chr == '/')
+                    nextChr();
+                    
+                    if (chr == '/') 
                     {
                         type = LexemType.Comment;
                         return;
                     }
-                    else if (! chr.isNonCharacter)
+                    else if (! chr.isNonCharacter) 
                     {
                         goto Comment;
                     }
-                    else if (true)
+                    else if (true) 
                     {
                         this = back;
                     }
                 }
-                else if (! chr.isNonCharacter)
+                else if (! chr.isNonCharacter) 
                 {
                     goto Comment;
                 }
-                else if (true)
+                else if (true) 
                 {
                     this = back;
                 }
             }
-            else if (chr == '+')
+            else if (chr == '+') 
             {
                 type = LexemType.Comment;
                 return;
             }
-            else if (true)
+            else if (true) 
             {
                 this = back;
                 type = LexemType.Operator;
                 return;
             }
         }
-        else if (chr == '~')
+        else if (chr == '~') 
         {
             back = this;
-            nextChr;
-            if (chr == '=')
+            nextChr();
+            
+            if (chr == '=') 
             {
                 type = LexemType.AssignOperator;
                 return;
             }
-            else if (true)
+            else if (true) 
             {
                 this = back;
                 type = LexemType.Operator;
                 return;
             }
         }
-        else if (chr == '>')
+        else if (chr == '>') 
         {
             back2 = this;
             back = this;
-            nextChr;
-            if (chr == '=')
+            nextChr();
+            
+            if (chr == '=') 
             {
                 type = LexemType.CmpOperator;
                 return;
             }
-            else if (chr == '>')
+            else if (chr == '>') 
             {
                 back = this;
-                nextChr;
-                if (chr == '>')
+                nextChr();
+                
+                if (chr == '>') 
                 {
                     back = this;
-                    nextChr;
-                    if (chr == '=')
+                    nextChr();
+                    
+                    if (chr == '=') 
                     {
                         type = LexemType.CmpOperator;
                         return;
                     }
-                    else if (true)
+                    else if (true) 
                     {
                         this = back;
                         type = LexemType.Operator;
                         return;
                     }
                 }
-                else if (chr == '=')
+                else if (chr == '=') 
                 {
                     type = LexemType.CmpOperator;
                     return;
                 }
-                else if (true)
+                else if (true) 
                 {
                     this = back;
                     type = LexemType.Operator;
                     return;
                 }
             }
-            else if (true)
+            else if (true) 
             {
                 this = back;
                 this = back2;
@@ -334,215 +358,223 @@ struct Lexer
                 return;
             }
         }
-        else if (chr == '<')
+        else if (chr == '<') 
         {
             back = this;
-            nextChr;
-            if (chr == '=')
+            nextChr();
+            
+            if (chr == '=') 
             {
                 type = LexemType.CmpOperator;
                 return;
             }
-            else if (chr == '<')
+            else if (chr == '<') 
             {
                 back = this;
-                nextChr;
-                if (chr == '=')
+                nextChr();
+                
+                if (chr == '=') 
                 {
                     type = LexemType.Operator;
                     return;
                 }
-                else if (true)
+                else if (true) 
                 {
                     this = back;
                     type = LexemType.Operator;
                     return;
                 }
             }
-            else if (true)
+            else if (true) 
             {
                 this = back;
                 type = LexemType.CmpOperator;
                 return;
             }
         }
-        else if (chr == '&')
+        else if (chr == '&') 
         {
             back = this;
-            nextChr;
-            if (chr == '&')
+            nextChr();
+            
+            if (chr == '&') 
             {
                 type = LexemType.Operator;
                 return;
             }
-            else if (chr == '=')
+            else if (chr == '=') 
             {
                 type = LexemType.AssignOperator;
                 return;
             }
-            else if (true)
+            else if (true) 
             {
                 this = back;
                 type = LexemType.Operator;
                 return;
             }
         }
-        else if (chr == '|')
+        else if (chr == '|') 
         {
             back = this;
-            nextChr;
-            if (chr == '|')
+            nextChr();
+            
+            if (chr == '|') 
             {
                 type = LexemType.Operator;
                 return;
             }
-            else if (chr == '=')
+            else if (chr == '=') 
             {
                 type = LexemType.AssignOperator;
                 return;
             }
-            else if (true)
+            else if (true) 
             {
                 this = back;
                 type = LexemType.Operator;
                 return;
             }
         }
-        else if (chr == '^')
+        else if (chr == '^') 
         {
             back = this;
-            nextChr;
-            if (chr == '^')
+            nextChr();
+            
+            if (chr == '^') 
             {
                 type = LexemType.Operator;
                 return;
             }
-            else if (chr == '=')
+            else if (chr == '=') 
             {
                 type = LexemType.AssignOperator;
                 return;
             }
-            else if (true)
+            else if (true) 
             {
                 this = back;
                 type = LexemType.Operator;
                 return;
             }
         }
-        else if (chr == '%')
+        else if (chr == '%') 
         {
             back = this;
-            nextChr;
-            if (chr == '=')
+            nextChr();
+            
+            if (chr == '=') 
             {
                 type = LexemType.AssignOperator;
                 return;
             }
-            else if (true)
+            else if (true) 
             {
                 this = back;
                 type = LexemType.Operator;
                 return;
             }
         }
-        else if (chr == '!')
+        else if (chr == '!') 
         {
             back = this;
-            nextChr;
-            if (chr == '=')
+            nextChr();
+            
+            if (chr == '=') 
             {
                 type = LexemType.AssignOperator;
                 return;
             }
-            else if (true)
+            else if (true) 
             {
                 this = back;
                 type = LexemType.Operator;
                 return;
             }
         }
-        else if (chr == '$')
+        else if (chr == '$') 
         {
             type = LexemType.LenOperator;
             return;
         }
-        else if (chr == '"')
-        {
-            String:
+        else if (chr == '"') 
+        {String: 
             back = this;
-            nextChr;
-            if (chr == '\\')
+            nextChr();
+            
+            if (chr == '\\') 
             {
                 back = this;
-                nextChr;
-                if (! chr.isNonCharacter)
+                nextChr();
+                
+                if (! chr.isNonCharacter) 
                 {
                     goto String;
                 }
-                else if (true)
+                else if (true) 
                 {
                     this = back;
                 }
             }
-            else if (chr == '"')
+            else if (chr == '"') 
             {
                 type = LexemType.String;
                 return;
             }
-            else if (! chr.isNonCharacter)
+            else if (! chr.isNonCharacter) 
             {
                 goto String;
             }
-            else if (true)
+            else if (true) 
             {
                 this = back;
             }
         }
-        else if (chr == '\'')
-        {
-            Character:
+        else if (chr == '\'') 
+        {Character: 
             back = this;
-            nextChr;
-            if (chr == '\\')
+            nextChr();
+            
+            if (chr == '\\') 
             {
                 back = this;
-                nextChr;
-                if (! chr.isNonCharacter)
+                nextChr();
+                
+                if (! chr.isNonCharacter) 
                 {
                     goto Character;
                 }
-                else if (true)
+                else if (true) 
                 {
                     this = back;
                 }
             }
-            else if (chr == '\'')
+            else if (chr == '\'') 
             {
                 type = LexemType.Character;
                 return;
             }
-            else if (! chr.isNonCharacter)
+            else if (! chr.isNonCharacter) 
             {
                 goto Character;
             }
-            else if (true)
+            else if (true) 
             {
                 this = back;
             }
         }
-        else if (chr.isWhite)
+        else if (isWhiteNL(chr)) 
         {
             do
             {
                 back = this;
                 nextChr;
-            }
-            while (chr.isWhite);
+            }while (isWhiteNL(chr));
             this = back;
             type = LexemType.Blank;
             return;
         }
-        else if (chr == EOF)
+        else if (chr == EOF) 
         {
             type = LexemType.EndInput;
             return;
@@ -550,67 +582,76 @@ struct Lexer
         writefln("%s %s", lexem, chr);
         assert(0);
     }
+
     void nextChr()
     {
-        if (file.empty)
+        
+        if (file.empty) 
         {
             chr = EOF;
         }
-        else
+        else 
         {
             chr = decodeFront(file);
         }
-        if (chr == '\n')
+        
+        if (chr == '\n') 
         {
-            ++(line);
+            ++line;
             col = 0;
         }
-        else
+        else 
         {
-            ++(col);
+            ++col;
         }
         lexem = lexem.ptr[0..(file.ptr - lexem.ptr)];
     }
+
     bool opEquals(string o)
     {
         return lexem == o;
     }
+
     bool opEquals(LexemType o)
     {
         return type == o;
     }
+
     string toString()
     {
-        return type.text ~ " " ~ lexem ~ ":" ~ line.text ~ ":" ~ col.text;
+        return type.text ~ ". ." ~ lexem ~ ":" ~ line.text ~ ":" ~ col.text;
     }
+
     void CommentPlus()
     {
-        Lexer back;
-        Lexer back2;
-        Comment:
+        Lexer  back;
+        Lexer  back2;Comment: 
         back = this;
-        nextChr;
-        if (chr == '/')
+        nextChr();
+        
+        if (chr == '/') 
         {
             back = this;
-            nextChr;
-            if (chr == '+')
+            nextChr();
+            
+            if (chr == '+') 
             {
             }
-            else if (true)
+            else if (true) 
             {
                 this = back;
                 goto Comment;
             }
         }
-        else if (chr == '+')
+        else if (chr == '+') 
         {
             back = this;
-            nextChr;
-            if (chr == '/')
+            nextChr();
+            
+            if (chr == '/') 
             {
             }
-            else if (true)
+            else if (true) 
             {
                 this = back;
                 goto Comment;

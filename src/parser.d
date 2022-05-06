@@ -11,6 +11,11 @@ class Parser {
     Lexer lexer;
     Expression cexpr;
 
+    int getNL()
+    {
+        return lexer.getNL;
+    }
+
     void getLexem()
     {
         
@@ -28,6 +33,7 @@ class Parser {
                 Expression com = new Expression;
                 com.bt = BlockType.Comment;
                 com.operator = lexer.lexem;
+                com.nl1 = getNL;
                 cexpr.arguments ~= com;
             }
         }while ((lexer == LexemType.Blank) || (lexer == LexemType.Comment));
@@ -40,14 +46,16 @@ class Parser {
         cexpr = file;
         Expression ret = new Expression;Init: 
         getLexem;
-
+        
         if (lexer == "module") 
         {
             ret.type = "module";
+            ret.nl1 = getNL;
             ret.operator = getModuleName;
             ret.label = "D";
             file.arguments ~= ret;
             cexpr = ret;
+            ret.nl2 = getNL;
             goto Init;
         }
         else if (lexer == "import") 
@@ -90,12 +98,12 @@ class Parser {
     string getModuleName()
     {
         getLexem;
-
+        
         if (lexer == LexemType.Identifier) 
         {
             string ret = lexer.lexem;
             getLexem;
-
+            
             if (lexer == ";") 
             {
                 return ret;
@@ -117,9 +125,10 @@ class Parser {
     {
         Expression ret = new Expression;
         ret.type = "import";
+        ret.nl1 = getNL;
         string  modname;Init: 
         getLexem;
-
+        
         if (lexer == LexemType.Identifier) 
         {
             modname ~= lexer.lexem;
@@ -130,7 +139,7 @@ class Parser {
             assert(0);
         }
         getLexem;
-
+        
         if (lexer == ".") 
         {
             modname ~= ".";
@@ -142,25 +151,25 @@ class Parser {
             mod.operator = modname;
             ret.arguments ~= mod;Ident: 
             getLexem;
-
+            
             if (lexer == LexemType.Identifier) 
             {
                 Expression name = new Expression;
                 name.operator = lexer.lexem;
                 mod.arguments ~= name;
                 getLexem;
-
+                
                 if (lexer == "=") 
                 {
                     getLexem;
-
+                    
                     if (lexer == LexemType.Identifier) 
                     {
                         Expression rename = new Expression;
                         rename.operator = lexer.lexem;
                         name.postop = rename;
                         getLexem;
-
+                        
                         if (lexer == ",") 
                         {
                             goto Ident;
@@ -206,6 +215,7 @@ class Parser {
             Expression mod = new Expression;
             mod.operator = modname;
             ret.arguments ~= mod;
+            ret.nl2 = getNL;
             return ret;
         }
         else 
@@ -218,14 +228,17 @@ class Parser {
     Expression getStruct()
     {
         Expression ret = new Expression;
+        Expression oexpr = cexpr;
+        cexpr = ret;
         ret.type = "struct";
+        ret.nl1 = getNL;
         getLexem;
-
+        
         if (lexer == LexemType.Identifier) 
         {
             ret.operator = lexer.lexem;
             getLexem;
-{}
+            {}
         }
         
         if (lexer == "{") 
@@ -238,20 +251,25 @@ class Parser {
             assert(0);
         }
         ret.arguments = getDefinitions;
+        ret.nl2 = getNL;
+        cexpr = oexpr;
         return ret;
     }
 
     Expression getClass()
     {
         Expression ret = new Expression;
+        Expression oexpr = cexpr;
+        cexpr = ret;
         ret.type = "class";
+        ret.nl1 = getNL;
         getLexem;
-
+        
         if (lexer == LexemType.Identifier) 
         {
             ret.operator = lexer.lexem;
             getLexem;
-{}
+            {}
         }
         else 
         {
@@ -265,7 +283,7 @@ class Parser {
         else if (lexer == ":") 
         {
             getLexem;
-
+            
             if (lexer == LexemType.Identifier) 
             {
                 {}
@@ -280,11 +298,11 @@ class Parser {
             name.type = "superclass";
             ret.arguments ~= name;Interface: 
             getLexem;
-
+            
             if (lexer == ",") 
             {
                 getLexem;
-
+                
                 if (lexer == LexemType.Identifier) 
                 {
                     {}
@@ -315,37 +333,42 @@ class Parser {
             assert(0);
         }
         ret.arguments ~= getDefinitions;
+        ret.nl2 = getNL;
+        cexpr = oexpr;
         return ret;
     }
 
     Expression[] getDefinitions()
     {
-        Expression[]  ret;Init: 
+        Expression ret = new Expression;
+        Expression oexpr = cexpr;
+        cexpr = ret;Init: 
         getLexem;
-
+        
         if (lexer == "struct") 
         {
-            ret ~= getStruct;
+            ret.arguments ~= getStruct;
             goto Init;
         }
         else if (lexer == "class") 
         {
-            ret ~= getClass;
+            ret.arguments ~= getClass;
             goto Init;
         }
         else if (lexer == "enum") 
         {
-            ret ~= getEnum;
+            ret.arguments ~= getEnum;
             goto Init;
         }
         else if (lexer == LexemType.Identifier) 
         {
-            ret ~= getVar;
+            ret.arguments ~= getVar;
             goto Init;
         }
         else if (lexer == "}") 
         {
-            return ret;
+            cexpr = oexpr;
+            return ret.arguments;
         }
         else 
         {
@@ -357,14 +380,17 @@ class Parser {
     Expression getEnum()
     {
         Expression ret = new Expression;
+        Expression oexpr = cexpr;
+        cexpr = ret;
         ret.type = "enum";
+        ret.nl1 = getNL;
         getLexem;
-
+        
         if (lexer == LexemType.Identifier) 
         {
             ret.operator = lexer.lexem;
             getLexem;
-{}
+            {}
         }
         else 
         {
@@ -381,17 +407,18 @@ class Parser {
             assert(0);
         }Values: 
         getLexem;
-
+        
         if (lexer == LexemType.Identifier) 
         {
             Expression val = new Expression;
             val.operator = lexer.lexem;
+            val.nl1 = getNL;
             getLexem;
-
+            
             if (lexer == "=") 
             {
                 getLexem;
-
+                
                 if (lexer == LexemType.Number) 
                 {
                     Expression init = new Expression;
@@ -399,7 +426,7 @@ class Parser {
                     init.type = "init";
                     val.postop = init;
                     getLexem;
-{}
+                    {}
                 }
                 else 
                 {
@@ -434,12 +461,17 @@ class Parser {
             writefln("{ Expected not %s", lexer);
             assert(0);
         }
+        ret.nl2 = getNL;
+        cexpr = oexpr;
         return ret;
     }
 
     Expression[] getVar()
     {
         Expression ret = new Expression;
+        Expression oexpr = cexpr;
+        cexpr = ret;
+        ret.nl1 = getNL;
         Expression type = new Expression;
         Expression[]  pp;Init: 
         
@@ -454,13 +486,16 @@ class Parser {
             post.operator = lexer.lexem;
             pp ~= post;
             getLexem;
-goto Init;
+            goto Init;
         }
         else if (lexer == ":") 
         {
+            type.nl1 = ret.nl1;
+            type.arguments ~= ret.arguments;
             type.type = ":";
-            type.arguments = pp;
+            type.arguments ~= pp;
             type.postop = null;
+            cexpr = oexpr;
             return [type];
         }
         else if (lexer == "this") 
@@ -493,7 +528,7 @@ goto Init;
             nt.arguments ~= type;
             type = nt;
             getLexem;
-goto Var;
+            goto Var;
         }
         else if (lexer == "[") 
         {
@@ -503,11 +538,11 @@ goto Var;
             nt.arguments ~= type;
             type = nt;
             getLexem;
-
+            
             if (lexer == "]") 
             {
                 getLexem;
-goto Var;
+                goto Var;
             }
             else 
             {
@@ -532,7 +567,7 @@ goto Var;
                 type = ret;
                 ret = new Expression;
                 getLexem;
-
+                
                 if (lexer == LexemType.Identifier) 
                 {
                     ret.operator = lexer.lexem;
@@ -544,7 +579,7 @@ goto Var;
                     assert(0);
                 }
                 getLexem;
-
+                
                 if (lexer == ";") 
                 {
                     return [ret];
@@ -556,11 +591,11 @@ goto Var;
                 }
             }
             getLexem;
-
+            
             if (lexer == "{") 
             {
                 back;
-ret.postop = getBody;
+                ret.postop = getBody;
             }
             else if (lexer == ";") 
             {
@@ -574,12 +609,13 @@ ret.postop = getBody;
         }
         else if (lexer == ",") 
         {
-            ret.arguments = null;
             Expression expr = new Expression;
+            expr.arguments ~= ret.arguments;
+            ret.arguments = null;
             expr.arguments ~= ret;
-            ret = expr;Var2: 
+            ret = cexpr = expr;Var2: 
             getLexem;
-
+            
             if (lexer == LexemType.Identifier) 
             {
                 Expression var = new Expression;
@@ -591,8 +627,8 @@ ret.postop = getBody;
                 writefln("Identifier Expected not %s", lexer);
                 assert(0);
             }
-            getLexem;
-Comma: 
+            getLexem;Comma: 
+            
             if (lexer == ",") 
             {
                 goto Var2;
@@ -608,6 +644,7 @@ Comma:
             {
                 type.index = (-ret.arguments.length);
                 ret.arguments[($ - 1)].addPosts([type]);
+                cexpr = oexpr;
                 return ret.arguments;
             }
             else 
@@ -632,6 +669,8 @@ Comma:
             writefln("Expected or () or ; or , not %s", lexer);
             assert(0);
         }
+        ret.nl2 = getNL;
+        cexpr = oexpr;
         return [ret];
     }
 
@@ -639,11 +678,13 @@ Comma:
     {
         Expression ret = new Expression;
         ret.type = "body";
+        ret.nl1 = getNL;
         Expression oexpr = cexpr;
         cexpr = ret;Init: 
         Expression[] s = getStatement;
         ret.arguments ~= s;
         cexpr = oexpr;
+        ret.nl2 = getNL;
         return ret;
     }
 
@@ -664,9 +705,12 @@ Comma:
     Expression[] getStatement()
     {
         Expression[]  post;
+        Expression comments = new Expression;
+        Expression oexpr = cexpr;
+        Expression[] sargs = cexpr.arguments;
         Lexer back = lexer;Attr: 
         getLexem;
-
+        
         if (lexer == "static") 
         {
             Expression s = new Expression;
@@ -678,12 +722,15 @@ Comma:
         {
             Expression expr = new Expression;
             expr.type = "if";
-            expr.addPosts(post);
-            cexpr = expr;Init: 
+            expr.nl1 = getNL;
+            cexpr = comments;
+            expr.addPosts(post);Init: 
             getLexem;
-
+            
             if (lexer == "(") 
             {
+                expr.addChilds(comments.arguments);
+                comments.arguments = [];
                 Expression cond = getExpression;
                 
                 if (lexer == ")") 
@@ -697,20 +744,25 @@ Comma:
                 }
                 cond.postop = getBody;
                 expr.arguments ~= cond;
+                expr.addChilds(comments.arguments);
+                comments.arguments = [];
                 back = lexer;
                 getLexem;
-
+                
                 if (lexer == "else") 
                 {
+                    expr.addChilds(comments.arguments);
+                    comments.arguments = [];
                     back = lexer;
                     getLexem;
-
+                    
                     if (lexer == "if") 
                     {
                         goto Init;
                     }
                     else 
                     {
+                        comments.arguments = [];
                         lexer = back;
                         Expression els = new Expression;
                         els.type = "else";
@@ -728,17 +780,23 @@ Comma:
                 writefln("Expected not %s", lexer);
                 assert(0);
             }
+            expr.nl2 = getNL;
+            cexpr = oexpr;
             return [expr];
         }
         else if (lexer == "switch") 
         {
             Expression expr = new Expression;
             expr.type = "switch";
+            expr.nl1 = getNL;
+            cexpr = comments;
             expr.addPosts(post);
             getLexem;
-
+            
             if (lexer == "(") 
             {
+                expr.addChilds(comments.arguments);
+                comments.arguments = [];
                 Expression var = getExpression;
                 
                 if (lexer == ")") 
@@ -752,7 +810,7 @@ Comma:
                 }
                 var.postop = expr;
                 getLexem;
-
+                
                 if (lexer == "{") 
                 {
                     {}
@@ -765,13 +823,17 @@ Comma:
                 long ind = expr.arguments.length;Case2: 
                 back = lexer;
                 getLexem;
-
+                
                 if (lexer == "case") 
                 {
+                    expr.addChilds(comments.arguments);
+                    comments.arguments = [];
                     expr.arguments ~= getCaseVal;
                 }
                 else if (lexer == "default") 
                 {
+                    expr.addChilds(comments.arguments);
+                    comments.arguments = [];
                     Expression def = new Expression;
                     def.type = "default";
                     expr.arguments ~= def;
@@ -779,11 +841,16 @@ Comma:
                 }
                 else if (lexer == "}") 
                 {
+                    expr.addChilds(comments.arguments);
+                    comments.arguments = [];
+                    var.nl2 = getNL;
+                    cexpr = oexpr;
                     return [var];
                 }
                 else 
                 {
                     lexer = back;
+                    comments.arguments = [];
                     Expression bod = getCaseBody;
                     bod.index = (ind - expr.arguments.length);
                     expr.arguments[($ - 1)].postop = bod;
@@ -810,14 +877,15 @@ Comma:
         {
             Expression expr = new Expression;
             expr.type = "for";
+            expr.nl1 = getNL;
             expr.addPosts(post);
             getLexem;
-
+            
             if (lexer == "(") 
             {
                 Expression iexpr = getInnerStat;
                 getLexem;
-
+                
                 if (lexer == ";") 
                 {
                     {}
@@ -840,7 +908,7 @@ Comma:
                 }
                 Expression pexpr = getInnerStat;
                 getLexem;
-
+                
                 if (lexer == ")") 
                 {
                     {}
@@ -852,6 +920,7 @@ Comma:
                 }
                 expr.postop = getBody;
                 expr.arguments = [iexpr, cexpr, pexpr];
+                expr.nl2 = getNL;
                 return [expr];
             }
             else 
@@ -864,16 +933,17 @@ Comma:
         {
             Expression expr = new Expression;
             expr.type = "foreach";
+            expr.nl1 = getNL;
             expr.addPosts(post);
             getLexem;
-
+            
             if (lexer == "(") 
             {
                 Expression avar = new Expression;
                 Expression bvar = new Expression;
                 Expression[]  p1;Avar: 
                 getLexem;
-
+                
                 if (lexer == "ref") 
                 {
                     Expression aref = new Expression;
@@ -891,11 +961,11 @@ Comma:
                     assert(0);
                 }
                 getLexem;
-
+                
                 if (lexer == ",") 
                 {Bvar: 
                     getLexem;
-
+                    
                     if (lexer == "ref") 
                     {
                         Expression aref = new Expression;
@@ -943,6 +1013,7 @@ Comma:
                 }
                 expr.postop = getBody;
                 expr.arguments = [avar, bvar, cexpr];
+                expr.nl2 = getNL;
                 return [expr];
             }
             else 
@@ -955,9 +1026,10 @@ Comma:
         {
             Expression expr = new Expression;
             expr.type = "while";
+            expr.nl1 = getNL;
             expr.addPosts(post);
             getLexem;
-
+            
             if (lexer == "(") 
             {
                 Expression cexpr = getExpression;
@@ -973,6 +1045,7 @@ Comma:
                 }
                 expr.postop = getBody;
                 expr.arguments = [cexpr];
+                expr.nl2 = getNL;
                 return [expr];
             }
             else 
@@ -985,10 +1058,11 @@ Comma:
         {
             Expression expr = new Expression;
             expr.type = "do";
+            expr.nl1 = getNL;
             expr.addPosts(post);
             expr.addPosts([getBody]);
             getLexem;
-
+            
             if (lexer == "while") 
             {
                 getLexem;
@@ -1014,7 +1088,7 @@ Comma:
                 }
                 expr.arguments = [cexpr];
                 getLexem;
-
+                
                 if (lexer == ";") 
                 {
                     {}
@@ -1024,6 +1098,7 @@ Comma:
                     writefln("Expected ; not %s", lexer);
                     assert(0);
                 }
+                expr.nl2 = getNL;
                 return [expr];
             }
             else 
@@ -1037,14 +1112,15 @@ Comma:
         {
             Expression expr = new Expression;
             expr.type = lexer.lexem;
+            expr.nl1 = getNL;
             getLexem;
-
+            
             if (lexer == LexemType.Identifier) 
             {
                 Expression label = new Expression;
                 label.operator = lexer.lexem;
                 getLexem;
-
+                
                 if (lexer == ";") 
                 {
                     return [expr];
@@ -1057,6 +1133,7 @@ Comma:
             }
             else if (lexer == ";") 
             {
+                expr.nl2 = getNL;
                 return [expr];
             }
             else 
@@ -1069,6 +1146,7 @@ Comma:
         {
             Expression expr = new Expression;
             expr.type = "return";
+            expr.nl1 = getNL;
             Expression e = getExpression;
             
             if (e !is null) 
@@ -1078,6 +1156,7 @@ Comma:
             
             if (lexer == ";") 
             {
+                expr.nl2 = getNL;
                 return [expr];
             }
             else 
@@ -1098,7 +1177,6 @@ Comma:
         {
             Expression a = new Expression;
             a.type = "{";
-            Expression oexpr = cexpr;
             cexpr = a;Body: 
             Expression[] b = getStatement;
             
@@ -1108,7 +1186,7 @@ Comma:
                 goto Body;
             }
             getLexem;
-
+            
             if (lexer == "}") 
             {
                 cexpr = oexpr;
@@ -1124,6 +1202,7 @@ Comma:
          || lexer == "--"
          || lexer == "(") 
         {
+            cexpr.arguments = sargs;
             lexer = back;
             Expression ret = getExpression;
             
@@ -1142,6 +1221,7 @@ Comma:
          || lexer == "default"
          || lexer == "}") 
         {
+            cexpr.arguments = sargs;
             lexer = back;
             return null;
         }
@@ -1149,20 +1229,29 @@ Comma:
         {
             string name = lexer.lexem;
             Expression type = new Expression;
-            type.operator = name;Name: 
+            type.operator = name;
+            cexpr = comments;Name: 
             getLexem;
-
+            
             if (lexer == "."
              || lexer == "="
+             || lexer == "+="
+             || lexer == "-="
+             || lexer == "*="
+             || lexer == "/="
+             || lexer == "~="
              || lexer == "++"
              || lexer == "--"
              || lexer == "(") 
             {
+                oexpr.addChilds(comments.arguments);
+                comments.arguments = [];
                 lexer = back;
                 Expression expr = getExpression;
                 
                 if (lexer == ";") 
                 {
+                    cexpr = oexpr;
                     return [expr];
                 }
                 else 
@@ -1188,7 +1277,7 @@ Comma:
                 ar.arguments ~= type;
                 type = ar;
                 getLexem;
-
+                
                 if (lexer == "]") 
                 {
                     {}
@@ -1199,7 +1288,7 @@ Comma:
                     ty.operator = lexer.lexem;
                     ar.arguments ~= ty;
                     getLexem;
-
+                    
                     if (lexer == "]") 
                     {
                         {}
@@ -1207,22 +1296,28 @@ Comma:
                     else 
                     {
                         lexer = back;
+                        comments.arguments = [];
                         return [getExpression];
                     }
                 }
                 else 
                 {
                     lexer = back;
+                    comments.arguments = [];
                     return [getExpression];
                 }
                 goto Name;
             }
             else if (lexer == ";") 
             {
+                oexpr.addChilds(comments.arguments);
+                cexpr = oexpr;
                 return [type];
             }
             else if (lexer == ":") 
             {
+                oexpr.addChilds(comments.arguments);
+                cexpr = oexpr;
                 Expression label = new Expression;
                 label.type = ":";
                 label.addChild(type);
@@ -1233,9 +1328,10 @@ Comma:
                 Expression expr = new Expression;
                 expr.operator = lexer.lexem;
                 expr.type = "var";
+                expr.nl1 = getNL;
                 expr.arguments ~= type;
                 getLexem;
-
+                
                 if (lexer == ",") 
                 {
                     expr.arguments = null;
@@ -1243,7 +1339,7 @@ Comma:
                     multi.arguments ~= expr;
                     multi.postop = type;Var: 
                     getLexem;
-
+                    
                     if (lexer == LexemType.Identifier) 
                     {
                         Expression var = new Expression;
@@ -1251,7 +1347,7 @@ Comma:
                         var.type = "var";
                         multi.arguments ~= var;
                         getLexem;
-
+                        
                         if (lexer == ",") 
                         {
                             goto Var;
@@ -1260,6 +1356,7 @@ Comma:
                         {
                             type.index = (-multi.arguments.length);
                             var.postop = type;
+                            cexpr = oexpr;
                             return multi.arguments;
                         }
                         else if (lexer == "=") 
@@ -1293,17 +1390,23 @@ Comma:
                 }
                 else if (lexer == ";") 
                 {
+                    oexpr.addChilds(comments.arguments);
+                    cexpr = oexpr;
+                    expr.nl2 = getNL;
                     return [expr];
                 }
                 else if (lexer == "=") 
                 {
                     Expression assign = new Expression;
                     assign.operator = "=";
+                    assign.nl1 = getNL;
                     assign.arguments ~= expr;
                     assign.arguments ~= getExpression;
                     
                     if (lexer == ";") 
                     {
+                        oexpr.addChilds(comments.arguments);
+                        cexpr = oexpr;
                         return [assign];
                     }
                     else 
@@ -1323,7 +1426,7 @@ Comma:
                         type = expr;
                         expr = new Expression;
                         getLexem;
-
+                        
                         if (lexer == LexemType.Identifier) 
                         {
                             expr.operator = lexer.lexem;
@@ -1335,7 +1438,7 @@ Comma:
                             assert(0);
                         }
                         getLexem;
-
+                        
                         if (lexer == ";") 
                         {
                             return [expr];
@@ -1346,9 +1449,11 @@ Comma:
                             assert(0);
                         }
                     }
+                    oexpr.addChilds(comments.arguments);
+                    comments.arguments = [];
                     back = lexer;
                     getLexem;
-
+                    
                     if (lexer == "{") 
                     {
                         lexer = back;
@@ -1382,6 +1487,8 @@ Comma:
                 
                 if (lexer == ";") 
                 {
+                    oexpr.addChilds(comments.arguments);
+                    cexpr = oexpr;
                     return [expr];
                 }
                 else 
@@ -1406,19 +1513,19 @@ Comma:
     Expression getInnerStat()
     {
         getLexem;
-
+        
         if (lexer == LexemType.Identifier) 
         {
             string name = lexer.lexem;
             getLexem;
-
+            
             if (lexer == "(") 
             {
                 Expression expr = new Expression;
                 expr.operator = name;
                 expr.arguments = getCallArgs;
                 getLexem;
-
+                
                 if (lexer == ";") 
                 {
                     return expr;
@@ -1437,12 +1544,12 @@ Comma:
                 type.operator = name;
                 expr.arguments ~= type;
                 getLexem;
-
+                
                 if (lexer == ")"
                  || lexer == ";") 
                 {
                     back;
-return expr;
+                    return expr;
                 }
                 else if (lexer == "=") 
                 {
@@ -1455,7 +1562,7 @@ return expr;
                      || lexer == ";") 
                     {
                         back;
-return assign;
+                        return assign;
                     }
                     else 
                     {
@@ -1482,7 +1589,7 @@ return assign;
                  || lexer == ";") 
                 {
                     back;
-return expr;
+                    return expr;
                 }
                 else 
                 {
@@ -1499,9 +1606,9 @@ return expr;
         else 
         {
             back;
-Expression expr = getExpression;
+            Expression expr = getExpression;
             back;
-return expr;
+            return expr;
         }
     }
 
@@ -1510,7 +1617,7 @@ return expr;
         Expression[]  ret;
         Expression[]  post;Init: 
         getLexem;
-
+        
         if (lexer == ")") 
         {
             {}
@@ -1530,7 +1637,7 @@ return expr;
             Expression type = new Expression;
             type.operator = lexer.lexem;Name: 
             getLexem;
-
+            
             if (lexer == "*") 
             {
                 Expression ptr = new Expression;
@@ -1547,7 +1654,7 @@ return expr;
                 ar.arguments ~= type;
                 type = ar;Type: 
                 getLexem;
-
+                
                 if (lexer == "]") 
                 {
                     {}
@@ -1574,7 +1681,7 @@ return expr;
                 eq.type = lexer.lexem;
                 type.arguments ~= q;
                 getLexem;
-
+                
                 if (lexer == LexemType.Identifier) 
                 {
                     Expression a = new Expression;
@@ -1605,7 +1712,7 @@ return expr;
                 assert(0);
             }
             getLexem;
-
+            
             if (lexer == "=") 
             {
                 Expression iarg = new Expression;
@@ -1693,13 +1800,14 @@ return expr;
         Expression ret = new Expression;
         Expression ed = ret;Argument: 
         getLexem;
-
+        ret.nl1 += getNL;
+        
         if (lexer == "cast") 
         {
             Expression ct = new Expression;
             ct.type = lexer.lexem;
             getLexem;
-
+            
             if (lexer == "(") 
             {
                 {}
@@ -1743,7 +1851,7 @@ return expr;
         {
             string name = lexer.lexem;
             getLexem;
-
+            
             if (lexer == "(") 
             {
                 Expression funcall = new Expression;
@@ -1756,6 +1864,7 @@ return expr;
             {
                 Expression arg = new Expression;
                 arg.operator = name;
+                arg.nl1 = getNL;
                 ed.addChild(arg);
             }
             goto Operator;
@@ -1897,7 +2006,7 @@ return expr;
             if (op2 == "!") 
             {
                 getLexem;
-
+                
                 if (lexer == "is"
                  || lexer == "in") 
                 {
@@ -1968,6 +2077,8 @@ return expr;
                     }
                     else 
                     {
+                        expr.nl1 += ret.nl1;
+                        ret.nl1 = 0;
                         ret = expr;
                     }
                     expr.addChild(ed);
@@ -1988,6 +2099,7 @@ return expr;
             else 
             {
                 Expression expr = new Expression;
+                expr.nl1 = getNL;
                 
                 if (op2 == "?"
                  || op2 == ":"
@@ -1999,6 +2111,8 @@ return expr;
                 {
                     expr.operator = op2;
                 }
+                expr.nl1 += ret.nl1;
+                ret.nl1 = 0;
                 ret = expr;
                 expr.addChild(ed);
                 ed = expr;
@@ -2009,7 +2123,7 @@ return expr;
             {
                 ed.type = "post";
                 getLexem;
-goto Operator;
+                goto Operator;
             }
             goto Argument;
         }
@@ -2017,7 +2131,7 @@ goto Operator;
         {
             ed.arguments[($ - 1)].addChilds(getCallArgs);
             getLexem;
-goto Operator;
+            goto Operator;
         }
         else if (lexer == "[") 
         {
@@ -2088,6 +2202,8 @@ goto Operator;
                     }
                     else 
                     {
+                        expr.nl1 += ret.nl1;
+                        ret.nl1 = 0;
                         ret = expr;
                     }
                     expr.addChild(ed);
@@ -2095,7 +2211,7 @@ goto Operator;
                     ed = expr;
                 }
                 getLexem;
-goto Operator;
+                goto Operator;
             }
             else 
             {
@@ -2112,6 +2228,7 @@ goto Operator;
             
             if ((ret.operator is null) && (ret.type is null)) 
             {
+                ret.arguments[0].nl1 += ret.nl1;
                 ret = ret.arguments[0];
             }
             return ret;
@@ -2128,7 +2245,7 @@ goto Operator;
         Expression ret = new Expression;
         Expression ed = ret;Argument: 
         getLexem;
-
+        
         if (lexer == LexemType.String
          || lexer == LexemType.Number
          || lexer == LexemType.Character
@@ -2138,7 +2255,7 @@ goto Operator;
             arg.operator = lexer.lexem;
             ed.arguments ~= arg;
             getLexem;
-goto Operator;
+            goto Operator;
         }
         else 
         {

@@ -1065,6 +1065,8 @@ public:
         if (mod.label == "Lexer")
         {
             auto root = efile.toLexer();
+            root.fixIndent();
+            root.type = "*";
             root.parent = root_expr;
             root.index = root_expr.arguments.length;
             root_expr.arguments ~= root;

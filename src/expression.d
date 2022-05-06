@@ -200,22 +200,32 @@ class Expression
         return false;
     }
 
-    this(ref char[] line, ParserState ps = ParserState.init, Expression parent = null)
+    this(ref char[] line, ParserState ps = ParserState.init, Expression parent = null, bool nofile = false)
     {
         if (parent is null)
         {
-            bt = BlockType.File;
-            while (!line.empty)
+            if (!nofile)
             {
-                auto ne = new Expression(line, ps, this);
-                ne.parent = this;
-                ne.index = arguments.length;
-                arguments ~= ne;
+                bt = BlockType.File;
+                while (!line.empty)
+                {
+                    auto ne = new Expression(line, ps, this);
+                    ne.parent = this;
+                    ne.index = arguments.length;
+                    arguments ~= ne;
+                }
+                return;
             }
-            return;
+            else
+            {
+                ps.comments = [BlockBE("/*", "*/")];
+                ps.strings = [BlockBE("\"", "\"", "\\"), BlockBE("'", "'", "\\")];
+            }
         }
-
-        nl1 = parent.nl2;
+        else
+        {
+            nl1 = parent.nl2;
+        }
 
         if (ps.comments.empty)
         {
@@ -270,6 +280,15 @@ class Expression
         bool in_brackets;
         BlockBE brackets = ps.brackets;
 
+        if ( line.startsWith(ps.brackets.begin) )
+        {
+            line = line[ps.brackets.begin.length .. $];
+            in_brackets = true;
+            arguments = [null];
+            arguments.length = 0;
+            assert(arguments !is null);
+        }
+
         foreach(be; ps.strings)
         {
             if ( line.startsWith(be.begin) )
@@ -287,17 +306,8 @@ class Expression
                     line = line[ps.at.length .. $];
                     goto At;
                 }
-                else goto Post;
+                else goto Arguments;
             }
-        }
-
-        if ( line.startsWith(ps.brackets.begin) )
-        {
-            line = line[ps.brackets.begin.length .. $];
-            in_brackets = true;
-            arguments = [null];
-            arguments.length = 0;
-            assert(arguments !is null);
         }
 
         while (!line.empty)
@@ -429,8 +439,8 @@ class Expression
             {
                 case "D":
                 case "Lexer":
-                    ps.comments = [BlockBE("\\", "\n"), BlockBE("/*", "*/"), BlockBE("/+", "+/", null, true)];
-                    ps.strings = [BlockBE("\"", "\"", "\\")];
+                    ps.comments = [BlockBE("//", "\n"), BlockBE("/*", "*/"), BlockBE("/+", "+/", null, true)];
+                    ps.strings = [BlockBE("\"", "\"", "\\"), BlockBE("'", "'", "\\")];
                     break;
                 default:
                     break;
@@ -444,7 +454,7 @@ class Expression
                 if ( line.startsWith(ps.brackets.end) )
                 {
                     line = line[ps.brackets.end.length .. $];
-                    break;
+                    goto Post;
                 }
                 else if (line[0] == ' ' || line[0] == '\n')
                 {
@@ -483,6 +493,7 @@ class Expression
                     nl2 = 0;
                 }
             }
+            assert(0, "Not closed bracket");
         }
 
         Post:
@@ -504,10 +515,10 @@ class Expression
         if (eline.empty) line = eline;
     }
 
-    this(string line)
+    this(string line, bool nofile = false)
     {
         char[] l = line.dup;
-        this(l);
+        this(l, ParserState.init, null, nofile);
         assert(l.empty);
     }
 
@@ -567,14 +578,14 @@ class Expression
         }
     }
 
-    static string escape(string str, BlockBE be, bool space = true)
+    static string escape(string str, BlockBE be, bool space = true, bool dot = true)
     {
         if (be.escape.empty) return str;
 
         string res;
         while (!str.empty)
         {
-            if (str.startsWith(be.begin) || str.startsWith(be.end) || str.startsWith(be.escape) || space && str.startsWith(" "))
+            if (str.startsWith(be.begin) || str.startsWith(be.end) || str.startsWith(be.escape) || space && str.startsWith(" ") || dot && str.startsWith("."))
             {
                 res ~= be.escape;
                 res ~= str.decodeFront();
@@ -622,7 +633,7 @@ class Expression
         }
         else if (bt == BlockType.Comment)
         {
-            return op;
+            return (nl1 > 0 ? '\n'.repeat(nl1).array ~ ' '.repeat(tab*4).array : "").idup ~ op;
         }
         else if (bt == BlockType.String)
         {
@@ -702,6 +713,10 @@ class Expression
             savestr = ps.brackets.begin ~ savestr ~
                 (nl2 > 0 ? '\n'.repeat(nl2).array ~ ' '.repeat(tab*4).array : "").idup ~
                 ps.brackets.end;
+        }
+        else if (nl2 > 0)
+        {
+            savestr ~= ('\n'.repeat(nl2).array ~ ' '.repeat(tab*4).array).idup;
         }
 
         savestr = (nl1 > 0 ? '\n'.repeat(nl1).array ~ ' '.repeat(tab*4).array : "").idup ~ savestr;
@@ -854,11 +869,12 @@ class Expression
                 break;
 
             case "enum":
-                savestr ~= tabstr ~ this.operator;
+                savestr ~= beforeSpaces(tabstr) ~ this.operator;
                 foreach(i, arg; post ~ (postop is null ? [] : [postop]))
                 {
                     savestr =  savestr ~ arg.saveD(tab);
                 }
+                savestr ~= afterSpaces();
                 break;
 
             case "var":
@@ -922,10 +938,10 @@ class Expression
                     break;
 
                 case "enum":
-                    savestr ~= beforeSpaces(tabstr) ~ "enum "~this.operator~"\n"~tabstr~"{\n";
+                    savestr ~= beforeSpaces(tabstr) ~ "enum "~this.operator~" {";
                     foreach(i, arg; this.arguments)
                     {
-                        savestr ~= arg.saveD(tab+1, null, this.type) ~ ( i < this.arguments.length-1 ? ",\n" : "\n" );
+                        savestr ~= arg.saveD(tab+1, null, this.type) ~ ( i < this.arguments.length-1 ? ", " : "" );
                     }
                     savestr ~= tabstr ~ "}" ~ afterSpaces();
                     break;
@@ -1672,7 +1688,7 @@ class Expression
             nl1 = 1;
             nl2 = 1;
         }
-        else if (parent !is null && (parent.type == "body" || parent.type == "module" || parent.type == "class" || parent.type == "struct" || parent.type == "if" || parent.type == "switch" || parent.bt == BlockType.File))
+        else if (parent !is null && (parent.type == "body" || parent.type == "module" || parent.type == "class" || parent.type == "struct" || parent.type == "if" || parent.type == "switch" || parent.type == "enum" || parent.bt == BlockType.File))
         {
             if (type == "module")
             {
@@ -1776,64 +1792,60 @@ class Expression
 
     void toLexer(Expression code, bool main)
     {
+        assert(code !is null);
         if (operator == "save")
         {
-            Expression ne = new Expression("(="~(!label.empty?"@"~label:"")~" back2 this)");
+            Expression ne = new Expression("(="~(!label.empty?"@"~label:"")~" back2 this)", true);
             code.addChild(ne);
         }
         else if (operator == "back")
         {
-            Expression ne = new Expression("(="~(!label.empty?"@"~label:"")~" this back2)");
+            Expression ne = new Expression("(="~(!label.empty?"@"~label:"")~" this back2)", true);
             code.addChild(ne);
         }
         else if (type == "switch")
         {
-            Expression ne = new Expression("(="~(!label.empty?"@"~label:"")~" back this)");
+            Expression ne = new Expression("(="~(!label.empty?"@"~label:"")~" back this)", true);
             code.addChild(ne);
 
-            ne = new Expression("(nextChr)");
+            ne = new Expression("(nextChr)", true);
             code.addChild(ne);
 
-            ne = new Expression(("(#if)"));
+            ne = new Expression("(#if)", true);
             code.addChild(ne);
             
             code = ne;
+            assert(code !is null);
         } 
         else if (parent.type == "switch")
         {
             Expression ne;
             if (operator.startsWith("is"))
             {
-                ne = new Expression("(#module (#. chr "~operator~").(#body))");
-                ne = ne.arguments[0];
+                ne = new Expression("("~operator~" chr).(#body)", true);
             }
             else if (operator == "!" && arguments[0].operator.startsWith("is"))
             {
-                ne = new Expression("(#module (! (#. chr "~arguments[0].operator~")).(#body))");
-                ne = ne.arguments[0];
+                ne = new Expression("(! (#. chr "~arguments[0].operator~")).(#body)", true);
             }
             else if (operator.length > 2 && operator[0] == '\'' && operator[$-1] == '\'' || operator == "EOF")
             {
-                ne = new Expression("(#module (== chr "~operator~").(#body))");
-                ne = ne.arguments[0];
+                ne = new Expression("(== chr "~operator~").(#body)", true);
             }
             else if (operator.length > 2 && operator[0] == '"' && operator[$-1] == '"')
             {
-                ne = new Expression("(#module (! (#. "~operator~" (find chr) empty)).(#body))");
-                ne = ne.arguments[0];
+                ne = new Expression("(! (#. "~operator~" (find chr) empty)).(#body)", true);
             }
             else if (type == "\"")
             {
-                ne = new Expression("(#module (! (#. replace_this (find chr) empty)).(#body))");
-                ne = ne.arguments[0];
+                ne = new Expression("(! (#. replace_this (find chr) empty)).(#body)", true);
                 auto dc = this.deepcopy;
                 ne.arguments[0].arguments[0].replace(dc);
                 dc.postop = null;
             }
             else if (type == "default")
             {
-                ne = new Expression("(#module (true).(#body (= this back)))");
-                ne = ne.arguments[0];
+                ne = new Expression("(true).(#body (= this back))", true);
             }
             else
             {
@@ -1843,8 +1855,7 @@ class Expression
 
             if (postop is null && (code.arguments.empty || code.arguments[$-1].operator != "||" || !code.arguments[$-1].postop.arguments.empty))
             {
-                Expression ne2 = new Expression("(#module (||).(#body))");
-                ne2 = ne2.arguments[0];
+                Expression ne2 = new Expression("(||).(#body)", true);
 
                 ne.postop = null;
                 ne2.addChild(ne);
@@ -1858,26 +1869,27 @@ class Expression
                 if (postop !is null)
                 {
                     code = co.postop;
+                    assert(code !is null);
                 }
             }
             else
             {
                 code.addChild(ne);
                 code = ne.postop;
+                assert(code !is null);
             }
         }
         else if (type == "while")
         {
             Expression ne;
 
-            Expression back = new Expression("(= this back)");
+            Expression back = new Expression("(= this back)", true);
 
             if (arguments.length <= 1)
             {
                 if (arguments[0].operator == "!")
                 {
-                    ne = new Expression(("(#module (#do"~(!label.empty?"@"~label:"")~" !).(#body (= back this) nextChr))"));
-                    ne = ne.arguments[0];
+                    ne = new Expression("(#do"~(!label.empty?"@"~label:"")~" !).(#body (= back this) nextChr)", true);
                     code.addChild(ne);
                     code.addChild(back);
                     
@@ -1885,8 +1897,7 @@ class Expression
                 }
                 else
                 {
-                    ne = new Expression(("(#module (#do).(#body (= back this) nextChr))"));
-                    ne = ne.arguments[0];
+                    ne = new Expression("(#do).(#body (= back this) nextChr)", true);
                     code.addChild(ne);
                     code.addChild(back);
                     
@@ -1895,8 +1906,7 @@ class Expression
             }
             else
             {
-                ne = new Expression(("(#module (#do ||).(#body (= back this) nextChr))"));
-                ne = ne.arguments[0];
+                ne = new Expression("(#do ||).(#body (= back this) nextChr)", true);
                 code.addChild(ne);
                 code.addChild(back);
                 
@@ -1909,19 +1919,19 @@ class Expression
             Expression ne;
             if (operator.startsWith("is"))
             {
-                ne = new Expression("(#. chr "~operator~")");
+                ne = new Expression("("~operator~" chr)", true);
             }
             else if (operator.length > 2 && operator[0] == '\'' && operator[$-1] == '\'' || operator == "EOF")
             {
-                ne = new Expression("(== chr "~operator~")");
+                ne = new Expression("(== chr "~operator~")", true);
             }
             else if (operator.length > 2 && operator[0] == '"' && operator[$-1] == '"')
             {
-                ne = new Expression("(! (#. "~operator~" (find chr) empty))");
+                ne = new Expression("(! (#. "~operator~" (find chr) empty))", true);
             }
             else if (type == "\"")
             {
-                ne = new Expression("(! (#. replace_this (find chr) empty))");
+                ne = new Expression("(! (#. replace_this (find chr) empty))", true);
                 auto dc = this.deepcopy;
                 ne.arguments[0].arguments[0].replace(dc);
                 dc.postop = null;
@@ -1936,7 +1946,7 @@ class Expression
         }
         else if (parent.type == "goto")
         {
-            Expression ne = new Expression("(#goto "~operator~")");
+            Expression ne = new Expression("(#goto "~operator~")", true);
             code.addChild(ne);
         }
         else if (parent.type == "return")
@@ -1945,12 +1955,17 @@ class Expression
             
             if (main)
             {
-                ne = new Expression("(= type (#. LexemType "~operator~"))");
+                ne = new Expression("(= type (#. LexemType "~operator~"))", true);
                 code.addChild(ne);
             }
 
-            ne = new Expression("(#return)");
+            ne = new Expression("(#return)", true);
             code.addChild(ne);
+        }
+        else if (operator == "--" || operator == "++")
+        {
+            code.addChild(this);
+            return;
         }
 
         foreach (arg; arguments)
@@ -1993,8 +2008,7 @@ class Expression
             }
             else
             {
-                Expression func = new Expression(("(#module ("~operator~"#function void).(#body (back#var Lexer) (back2#var Lexer)))").dup);
-                func = func.arguments[0];
+                Expression func = new Expression("("~operator~"#function void).(#body (back#var Lexer) (back2#var Lexer))", true);
                 if (postop !is null)
                 {
                     postop.toLexer(func.postop, false);
