@@ -1,1352 +1,2134 @@
 /**
  * expression.d
  */
+
 (expression#module@D
-    (#import std.stdio)
-    (#import std.math)
-    (#import std.datetime)
-    (#import std.algorithm.searching)
-    (#import std.algorithm.mutation)
-    (#import std.range.primitives)
-    (#import std.utf)
-    (#import std.algorithm)
-    (#import (std.range repeat))
-    (#import std.array)
-    (#import std.string)
-    (#import std.file)
+
+    (#import std\.stdio)
+    (#import std\.math)
+    (#import std\.datetime)
+    (#import std\.algorithm\.searching)
+    (#import std\.algorithm\.mutation)
+    (#import std\.range\.primitives)
+    (#import std\.utf)
+    (#import std\.algorithm)
+    (#import (std\.range repeat))
+    (#import std\.array)
+    (#import std\.string)
+    (#import std\.file)
+
     (#import iface)
+
     (BlockBE#struct
+
         (begin string)
         (end string)
         (escape string)
-        (nested bool))
-    (BlockType#enum Code.(0#init) String Comment File)
+        (nested bool)
+    )
+
+    (BlockType#enum
+
+        Code.(0#init)
+        String
+        Comment
+        File
+    )
+
     (ParserState#struct
+
         (strings ([]#type BlockBE)).([]#init)
         (comments ([]#type BlockBE)).([]#init)
         (brackets BlockBE).(BlockBE#init "(" ")" "\\" true)
         (sharp string).("#")
         (at string).("@")
-        (dot string).("."))
+        (dot string).(".")
+    )
+
     (Expression#class (.
-        x.(0#init)
-        y.(0#init)).(real) (.
-        r1
-        r2
-        r3).(real) (.
-        d1
-        d2).(real) (.
-        a1
-        a2).(real)
+
+        x.(0#init) y.(0#init)).(real) (.
+        r1 r2 r3).(real) (.
+        d1 d2).(real) (.
+        a1 a2).(real)
         (arat real)
         (brat real) (.
-        pw
-        mw).([]#type real)
+        pw mw).([]#type real)
         (c Color)
         (line int) (.
-        block
-        level
-        levels).(int)
+        block level levels).(int)
         (center Expression)
         (hidden bool)
+
         (operator string)
         (type string)
-        (label string)
+        (label string) (.
+        nl1 nl2).(int)
         (bt BlockType)
         (arguments ([]#type Expression))
         (postop Expression)
         (parent Expression)
         (index long)
         (focus_index long)
-        (r#function real).(#body
-                (#return (#. c r)))
-        (g#function real).(#body
-                (#return (#. c g)))
-        (b#function real).(#body
-                (#return (#. c b)))
-        (a#function real).(#body
-                (#return (#. c a)))
-        (this#function #constructor).(#body)
-        (getEscape#function dchar.(static) (c dchar)).(#body
-                c.(#switch
-                        'n'.(#body
-                                (#return '\\n'))
-                        'r'.(#body
-                                (#return '\\r'))
-                        't'.(#body
-                                (#return '\\t'))
-                        #default.(#body
-                                (#return c))))
-        (readEscaped#function string.(static) (line string) (escChar string)).(#body
-                (= (res#var string) "")
-                (escape#var bool)
-                (#while (!#unary (#. line empty))).(#body
-                        (#if
-                            escape.(#body
-                                    (= escape false)
-                                    (= (c#var dchar) (#. line (decodeFront)))
-                                    (~= res (getEscape c)))
-                            (#. line (startsWith escChar)).(#body
-                                    (= escape true)
-                                    (= line (#. line (#[ (#. escChar length) .. $))))
-                            #else.(#body
-                                    (~= res (#. line (decodeFront))))))
-                (#return res))
-        (getBlock#function string (line ([]#type char) ref) (be BlockBE)).(#body
-                (= (sline#var ([]#type char)) line)
-                (assert (#. line (startsWith (#. be begin))))
-                (= line (#. line (#[ (#. be begin length) .. $)))
-                (escape#var bool)
-                (nest#var int)
-                (#while (!#unary (#. line empty))).(#body
-                        (#if
-                            escape.(#body
-                                    (= escape false)
-                                    (#. line (decodeFront)))
-                            (&& (!#unary (#. be escape empty)) (#. line (startsWith (#. be escape)))).(#body
-                                    (= escape true)
-                                    (= line (#. line (#[ (#. be escape length) .. $))))
-                            (&& (#. be nested) (#. line (startsWith (#. be begin)))).(#body
-                                    (++#post nest)
-                                    (= line (#. line (#[ (#. be begin length) .. $))))
-                            (#. line (startsWith (#. be end))).(#body
-                                    (= line (#. line (#[ (#. be end length) .. $)))
-                                    (#if
-                                        (== nest 0).(#body
-                                                (#return (#. sline (#[ 0 .. (- (#. line ptr) (#. sline ptr))) idup))))
-                                    (--#post nest))
-                            #else.(#body
-                                    (#. line (decodeFront)))))
-                (#return (#. sline (#[ 0 .. (- (#. line ptr) (#. sline ptr))) idup)))
-        (getBE#function BlockBE).(#body
-                (= (be#var BlockBE) (BlockBE operator))
-                (#foreach . arg arguments).(#body
-                        (#. arg type).(#switch
-                                "end".(#body
-                                        (= (#. be end) (#. arg operator))
-                                        #break)
-                                "escape".(#body
-                                        (= (#. be escape) (#. arg operator))
-                                        #break)
-                                "nested".(#body
-                                        (= (#. be nested) true)
-                                        #break)
-                                #default.(#body
-                                        #break)))
-                (#return be))
-        (this#function #constructor (line ([]#type char) ref) (ps ParserState).(#init (#. ParserState init)) (parent Expression).(#init null)).(#body
-                (#if
-                    (is parent null).(#body
-                            (= bt (#. BlockType File))
-                            (#while (!#unary (#. line empty))).(#body
-                                    (= (ne#var auto) (#new (Expression line ps this)))
-                                    (= (#. ne parent) this)
-                                    (= (#. ne index) (#. arguments length))
-                                    (~= arguments ne))
-                            #return))
-                (#if
-                    (#. ps comments empty).(#body
-                            (= (sline#var ([]#type char)) line)
-                            (#while (!#unary (#. line empty))).(#body
-                                    (#if
-                                        (#. line (startsWith (#. ps brackets begin))).(#body
-                                                (#if
-                                                    (!is line sline).(#body
-                                                            (= operator (#. sline (#[ 0 .. (- (#. line ptr) (#. sline ptr))) idup))
-                                                            (= bt (#. BlockType Comment))
-                                                            #return))
-                                                (Init#var goto))
-                                        #else.(#body
-                                                (#while (&& (!#unary (#. line empty)) (!#unary (#. line (startsWith "\n"))))).(#body
-                                                        (#. line (decodeFront)))
-                                                (#if
-                                                    (!#unary (#. line empty)).(#body
-                                                            (#. line (decodeFront))))))))
-                    #else.(#body
-                            (#: Init)
-                            (#while (&& (!#unary (#. line empty)) (|| (== (#. line (#[ 0)) '\ ') (== (#. line (#[ 0)) '\\n')))).(#body
-                                    (= line (#. line (#[ 1 .. $))))
-                            (#foreach . be (#. ps comments)).(#body
-                                    (#if
-                                        (#. line (startsWith (#. be begin))).(#body
-                                                (= operator (getBlock line be))
-                                                (= bt (#. BlockType Comment))
-                                                #return)))))
-                (in_brackets#var bool)
-                (= (dot_bracket#var string) (~ (#. ps dot) (#. ps brackets begin)))
-                (= (brackets#var BlockBE) (#. ps brackets))
-                (#foreach . be (#. ps strings)).(#body
-                        (#if
-                            (#. line (startsWith (#. be begin))).(#body
-                                    (= operator (getBlock line be))
-                                    (= bt (#. BlockType String))
-                                    (#if
-                                        (#. line (startsWith (#. ps sharp))).(#body
-                                                (= line (#. line (#[ (#. ps sharp length) .. $)))
-                                                (Sharp#var goto))
-                                        (#. line (startsWith (#. ps at))).(#body
-                                                (= line (#. line (#[ (#. ps at length) .. $)))
-                                                (At#var goto))
-                                        #else.(#body
-                                                (Post#var goto))))))
-                (#if
-                    (#. line (startsWith (#. ps brackets begin))).(#body
-                            (= line (#. line (#[ (#. ps brackets begin length) .. $)))
-                            (= in_brackets true)))
-                (#while (!#unary (#. line empty))).(#body
-                        (#if
-                            (#. line (startsWith (#. ps brackets begin))).(#body
-                                    (Arguments#var goto))
-                            (#. line (startsWith (#. ps brackets escape))).(#body
-                                    (= line (#. line (#[ (#. ps brackets escape length) .. $)))
-                                    (= (c#var dchar) (#. line (decodeFront)))
-                                    (~= operator (getEscape c)))
-                            (|| (== (#. line (#[ 0)) '\ ') (== (#. line (#[ 0)) '\\n')).(#body
-                                    (= line (#. line (#[ 1 .. $)))
-                                    (Arguments#var goto))
-                            (#. line (startsWith (#. ps brackets end))).(#body
-                                    (#if
-                                        in_brackets.(#body
-                                                (= line (#. line (#[ (#. ps brackets end length) .. $)))
-                                                (Post#var goto)))
-                                    (End#var goto))
-                            (&& (!#unary in_brackets) (#. line (startsWith dot_bracket))).(#body
-                                    (Post#var goto))
-                            (#. line (startsWith (#. ps sharp))).(#body
-                                    (= line (#. line (#[ (#. ps sharp length) .. $)))
-                                    (Sharp#var goto))
-                            (#. line (startsWith (#. ps at))).(#body
-                                    (= line (#. line (#[ (#. ps at length) .. $)))
-                                    (At#var goto))
-                            #else.(#body
-                                    (~= operator (#. line (decodeFront))))))
-                (#: Sharp)
-                (#while (!#unary (#. line empty))).(#body
-                        (#if
-                            (#. line (startsWith (#. ps brackets begin))).(#body
-                                    (Arguments#var goto))
-                            (#. line (startsWith (#. ps brackets escape))).(#body
-                                    (= line (#. line (#[ (#. ps brackets escape length) .. $)))
-                                    (= (c#var dchar) (#. line (decodeFront)))
-                                    (~= type (getEscape c)))
-                            (|| (== (#. line (#[ 0)) '\ ') (== (#. line (#[ 0)) '\\n')).(#body
-                                    (= line (#. line (#[ 1 .. $)))
-                                    (Arguments#var goto))
-                            (#. line (startsWith (#. ps brackets end))).(#body
-                                    (#if
-                                        in_brackets.(#body
-                                                (= line (#. line (#[ (#. ps brackets end length) .. $)))
-                                                (Post#var goto)))
-                                    (End#var goto))
-                            (&& (!#unary in_brackets) (#. line (startsWith dot_bracket))).(#body
-                                    (Post#var goto))
-                            (#. line (startsWith (#. ps at))).(#body
-                                    (= line (#. line (#[ (#. ps at length) .. $)))
-                                    (At#var goto))
-                            #else.(#body
-                                    (~= type (#. line (decodeFront))))))
-                (#: At)
-                (#while (!#unary (#. line empty))).(#body
-                        (#if
-                            (#. line (startsWith (#. ps brackets end))).(#body
-                                    (#if
-                                        in_brackets.(#body
-                                                (= line (#. line (#[ (#. ps brackets end length) .. $)))
-                                                (Post#var goto)))
-                                    (End#var goto))
-                            (#. line (startsWith (#. ps brackets escape))).(#body
-                                    (= line (#. line (#[ (#. ps brackets escape length) .. $)))
-                                    (= (c#var dchar) (#. line (decodeFront)))
-                                    (~= label (getEscape c)))
-                            (#. line (startsWith (#. ps brackets begin))).(#body
-                                    (Arguments#var goto))
-                            (|| (== (#. line (#[ 0)) '\ ') (== (#. line (#[ 0)) '\\n')).(#body
-                                    (= line (#. line (#[ 1 .. $)))
-                                    (Arguments#var goto))
-                            (&& (!#unary in_brackets) (#. line (startsWith dot_bracket))).(#body
-                                    (Post#var goto))
-                            #else.(#body
-                                    (~= label (#. line (decodeFront))))))
-                (#: Arguments)
-                (#if
-                    (== type "module").(#body
-                            label.(#switch (.
-                                    "D"
-                                    "Lexer").(#body
-                                            (= (#. ps comments) ([] (BlockBE "\\" "\n") (BlockBE "/*" "*/") (BlockBE "/+" "+/" null true)))
-                                            (= (#. ps strings) ([] (BlockBE "\"" "\"" "\\")))
-                                            #break)
-                                    #default.(#body
-                                            #break))))
-                (#if
-                    in_brackets.(#body
-                            (= arguments [])
-                            (#while (!#unary (#. line empty))).(#body
-                                    (#if
-                                        (#. line (startsWith (#. ps brackets end))).(#body
-                                                (= line (#. line (#[ (#. ps brackets end length) .. $)))
-                                                #break)
-                                        (|| (== (#. line (#[ 0)) '\ ') (== (#. line (#[ 0)) '\\n')).(#body
-                                                (= line (#. line (#[ 1 .. $))))
-                                        #else.(#body
-                                                (= (ne#var auto) (#new (Expression line ps this)))
-                                                (#if
-                                                    (&& (== (#. ne operator) (#. ps dot)) (!#unary (#. ne arguments empty))).(#body
-                                                            (#foreach . arg (#. ne arguments)).(#body
-                                                                    (= (#. arg parent) this)
-                                                                    (+= (#. arg index) (#. arguments length)))
-                                                            (~= arguments (#. ne arguments))
-                                                            (#if
-                                                                (!is (#. ne postop) null).(#body
-                                                                        (= (#. ne postop parent) (#. arguments (#[ (- $ 1))))
-                                                                        (= (#. ne postop index) (-#unary (#. ne arguments length)))))
-                                                            (= (#. arguments (#[ (- $ 1)) postop) (#. ne postop)))
-                                                    #else.(#body
-                                                            (= (#. ne parent) this)
-                                                            (= (#. ne index) (#. arguments length))
-                                                            (~= arguments ne))))))))
-                (#: Post)
-                (#if
-                    (#. line (startsWith dot_bracket)).(#body
-                            (= line (#. line (#[ (#. ps dot length) .. $)))
-                            (= (ne#var auto) (#new (Expression line ps this)))
-                            (= (#. ne parent) this)
-                            (= (#. ne index) (-#unary 1))
-                            (= postop ne)))
-                (#: End)
-                (#while (&& (!#unary (#. line empty)) (|| (== (#. line (#[ 0)) '\ ') (== (#. line (#[ 0)) '\\n')))).(#body
-                        (= line (#. line (#[ 1 .. $)))))
-        (this#function #constructor (line string)).(#body
-                (= (l#var ([]#type char)) (#. line dup))
-                (this l)
-                (assert (#. l empty)))
-        (addChild#function void (c Expression)).(#body
-                (= (#. c parent) this)
-                (= (#. c index) (#. arguments length))
-                (~= arguments c))
-        (addChilds#function void (cc ([]#type Expression))).(#body
-                (#foreach i c cc).(#body
-                        (= (#. c parent) this)
-                        (= (#. c index) (+ (#. arguments length) i)))
-                (~= arguments cc))
-        (addPosts#function void (cc ([]#type Expression))).(#body
-                (= (pp#var Expression) this)
-                (#while (!is (#. pp postop) null)).(#body
-                        (= pp (#. pp postop)))
-                (#foreach i c cc).(#body
-                        (= (#. pp postop) c)
-                        (= (#. c parent) pp)
-                        (#if
-                            (== (#. c index) 0).(#body
-                                    (= (#. c index) (-#unary 1))))
-                        (= pp c)))
-        (popChild#function Expression).(#body
-                (#if
-                    (#. arguments empty).(#body
-                            (#return null)))
-                (= (ret#var auto) (#. arguments (#[ (- $ 1))))
-                (= arguments (#. arguments (#[ 0 .. (- $ 1))))
-                (#return ret))
-        (fixParents#function void (p Expression).(#init null) (i long).(#init 0)).(#body
-                (= parent p)
-                (#if
-                    (>= index (-#unary 1)).(#body
-                            (= index i)))
-                (#foreach ind arg arguments).(#body
-                        (#. arg (fixParents this ind)))
-                (#if
-                    (!is postop null).(#body
-                            (#. postop (fixParents this (-#unary 1))))))
-        (escape#function string.(static) (str string) (be BlockBE) (space bool).(#init true)).(#body
-                (#if
-                    (#. be escape empty).(#body
-                            (#return str)))
-                (res#var string)
-                (#while (!#unary (#. str empty))).(#body
-                        (#if
-                            (|| (#. str (startsWith (#. be begin))) (#. str (startsWith (#. be end))) (#. str (startsWith (#. be escape))) (&& space (#. str (startsWith " ")))).(#body
-                                    (~= res (#. be escape))
-                                    (~= res (#. str (decodeFront))))
-                            (#. str (startsWith "\n")).(#body
-                                    (~= res (#. be escape))
-                                    (~= res "n")
-                                    (#. str (decodeFront)))
-                            (#. str (startsWith "\r")).(#body
-                                    (~= res (#. be escape))
-                                    (~= res "r")
-                                    (#. str (decodeFront)))
-                            (#. str (startsWith "\t")).(#body
-                                    (~= res (#. be escape))
-                                    (~= res "t")
-                                    (#. str (decodeFront)))
-                            #else.(#body
-                                    (~= res (#. str (decodeFront))))))
-                (#return res))
-        (save#function string).(#body
-                (ps#var ParserState)
-                (#return (save ps)))
-        (save#function string (ps ParserState ref) (tab int).(#init 0) (cbr ([]#type long)).(#init null) (force_brackets bool).(#init false)).(#body
-                (= (op#var string) operator)
-                (savestr#var string)
-                (#if
-                    (== bt (#. BlockType File)).(#body)
-                    (== bt (#. BlockType Comment)).(#body
-                            (#return op))
-                    (== bt (#. BlockType String)).(#body
-                            (~= savestr op))
-                    #else.(#body
-                            (= (bbe#var auto) (#. ps brackets))
-                            (= op (escape op bbe))
-                            (~= savestr (~ op (#? (#. this type empty) "" (~ (#. ps sharp) (escape type bbe))) (#? (#. this label empty) "" (~ (#. ps at) (escape label bbe)))))))
-                (#if
-                    (&& (#. savestr empty) (!= bt (#. BlockType File))).(#body
-                            (= savestr (#. ps dot))))
-                (#if
-                    (!#unary (#. this arguments empty)).(#body (.
-                            a#var
-                            b#var
-                            c#var).([]#type long)
-                            (#foreach i arg (#. this arguments)).(#body
-                                    (= (arg2#var auto) (#. arg postop))
-                                    (j#var long)
-                                    (#while (!is arg2 null)).(#body
-                                            (#if
-                                                (< (#. arg2 index) (-#unary 1)).(#body
-                                                        (~= a (+ i (#. arg2 index) 1))
-                                                        (~= b i)
-                                                        (~= c j)))
-                                            (= arg2 (#. arg2 postop))
-                                            (++#post j)))
-                            (#foreach i arg (#. this arguments)).(#body
-                                    (#foreach . m a).(#body
-                                            (#if
-                                                (== m i).(#body
-                                                        (~= savestr (~ " " (#. ps brackets begin) (#. ps dot))))))
-                                    (br#var ([]#type long))
-                                    (#foreach j m b).(#body
-                                            (#if
-                                                (== m i).(#body
-                                                        (~= br (#. c (#[ j))))))
-                                    (#if
-                                        (|| (== (#. this type) "body") (== (#. this type) "module") (== (#. this type) "class") (== (#. this type) "struct") (== (#. this type) "if") (== (#. this type) "switch")).(#body
-                                                (~= savestr (~ "\n" (#. '\ ' (repeat (* (+ tab 1) 4)) array) (#. arg (save ps (+ tab 1) br false)))))
-                                        (!= bt (#. BlockType File)).(#body
-                                                (~= savestr (~ " " (#. arg (save ps (+ tab 1) br false)))))
-                                        #else.(#body
-                                                (~= savestr (~ (#. arg (save ps 0 br false)) "\n")))))
-                            (#if
-                                (!= bt (#. BlockType File)).(#body
-                                        (= savestr (~ (#. ps brackets begin) savestr (#. ps brackets end))))))
-                    (|| force_brackets (!is arguments null)).(#body
-                            (= savestr (~ (#. ps brackets begin) savestr (#. ps brackets end)))))
-                (#if
-                    (>= index 0).(#body
-                            (= (cj#var long) 0)
-                            (= (arg#var auto) postop)
-                            (j#var long)
-                            (#while (!is arg null)).(#body
-                                    (#if
-                                        (&& (< cj (#. cbr length)) (== (#. cbr (#[ cj)) j)).(#body
-                                                (~= savestr (#. ps brackets end))
-                                                (++#post cj)))
-                                    (~= savestr (~ (#. ps dot) (#. arg (save ps (+ tab 1) null true))))
-                                    (= arg (#. arg postop))
-                                    (++#post j))))
-                (#return savestr))
-        (saveD#function string (tab int).(#init 0) (post ([]#type Expression)).(#init null) (ptype string).(#init null) (inner string).(#init null)).(#body
-                (savestr#var string)
-                (= (tabstr#var string) "")
-                (#if
-                    (> tab 0).(#body
-                            (= tabstr (#. '\ ' (repeat (* tab 4)) array))))
-                (= (handled#var bool) true)
-                ptype.(#switch (.
-                        "struct"
-                        "module"
-                        "class"
-                        "function"
-                        "ctype").(#body
-                                (#if
-                                    (&& (!#unary (#. this type empty)) (!= (#. this type) "constructor")).(#body
-                                            (= handled false)
-                                            #break))
-                                (#foreach i arg (#. this arguments)).(#body
-                                        (#if
-                                            (== ptype "function").(#body
-                                                    (= savestr (~ (#. arg (saveD (-#unary 1))) " " savestr)))
-                                            #else.(#body
-                                                    (~= savestr (~ (#. arg (saveD (-#unary 1))) " ")))))
-                                (= (poststr#var string) "")
-                                (#if
-                                    (&& (!is parent null) (>= index 0) (> (#. parent arguments length) index)).(#body
-                                            (#foreach i arg (#. parent arguments (#[ index .. $))).(#body
-                                                    (#if
-                                                        (!is (#. arg postop) null).(#body
-                                                                //writefln("%s -- %s (%s == %s)", this, arg2.app_args, arg.index - arg2.app_args + 1, this.index);
-                                                                (#if
-                                                                    (== (+ (#. arg index) (#. arg postop index) 1) (#. this index)).(#body
-                                                                            (#if
-                                                                                (== (#. arg postop operator) "[]").(#body
-                                                                                        (= savestr (~ savestr (#. arg postop (saveD tab))))
-                                                                                        (#foreach i3 arg3 (#. parent arguments (#[ (+ index 1) .. (+ (#. arg index) 1)))).(#body
-                                                                                                (~= poststr (~ ", " (#. arg3 (saveD (-#unary 1) null "ctype"))))))
-                                                                                (== (#. arg postop type) "init").(#body)
-                                                                                #else.(#body
-                                                                                        (= savestr (~ (#. arg postop (saveD (-#unary 1))) " " savestr))
-                                                                                        (#foreach i3 arg3 (#. parent arguments (#[ (+ index 1) .. (+ (#. arg index) 1)))).(#body
-                                                                                                (~= poststr (~ ", " (#. arg3 (saveD (-#unary 1) null "ctype"))))))))
-                                                                    (&& (!= ptype "ctype") (<= (#. this index) (#. arg index)) (> (#. this index) (+ (#. arg index) (#. arg postop index) 1))).(#body
-                                                                            (#return "")))))))
-                                    #else.(#body
-                                            (#foreach . arg (~ post (#? (is postop null) [] ([] postop)))).(#body
-                                                    (#if
-                                                        (== (#. arg index) (-#unary 1)).(#body
-                                                                (#if
-                                                                    (== (#. arg operator) "[]").(#body
-                                                                            (= savestr (~ savestr (#. arg (saveD tab)))))
-                                                                    (== (#. arg type) "init").(#body)
-                                                                    #else.(#body
-                                                                            (= savestr (~ (#. arg (saveD (-#unary 1))) " " savestr)))))))))
-                                (~= savestr (#. this operator))
-                                (#foreach . arg (~ post (#? (is postop null) [] ([] postop)))).(#body
-                                        (#if
-                                            (== (#. arg index) (-#unary 1)).(#body
-                                                    (#if
-                                                        (== (#. arg type) "init").(#body
-                                                                (= savestr (~ savestr (#. arg (saveD tab)))))))))
-                                (~= savestr poststr)
-                                (#if
-                                    (>= tab 0).(#body
-                                            (= savestr (~ tabstr savestr ";\n"))))
-                                #break)
-                        "enum".(#body
-                                (~= savestr (~ tabstr (#. this operator)))
-                                (#foreach i arg (~ post (#? (is postop null) [] ([] postop)))).(#body
-                                        (= savestr (~ savestr (#. arg (saveD tab)))))
-                                #break)
-                        "var".(#body
-                                (#if
-                                    (== (#. this type) ".").(#body
-                                            (= handled false))
-                                    #else.(#body
-                                            (~= savestr (#. this operator))
-                                            (#if
-                                                (!#unary (#. this arguments empty)).(#body
-                                                        (= savestr (~ (#. this arguments (#[ 0) (saveD (-#unary 1))) " " savestr))))
-                                            (#if
-                                                (!is postop null).(#body
-                                                        (= savestr (~ (#. postop (saveD tab null (#. this type))) " " savestr))))))
-                                #break)
-                        #default.(#body
-                                (#if
-                                    (== bt (#. BlockType File)).(#body
-                                            (#foreach i arg (#. this arguments)).(#body
-                                                    (~= savestr (#. arg (saveD tab null (#. this type))))))
-                                    #else.(#body
-                                            (= handled false)))
-                                #break))
-                (#if
-                    (!#unary handled).(#body
-                            (#. this type).(#switch
-                                    "module".(#body
-                                            (~= savestr (~ tabstr "module " (#. this operator) ";\n"))
-                                            (#foreach i arg (#. this arguments)).(#body
-                                                    (~= savestr (#. arg (saveD tab null (#. this type)))))
-                                            #break)
-                                    "import".(#body
-                                            (~= savestr (~ tabstr "import " (#. this arguments (#[ 0) operator)))
-                                            (#if
-                                                (!#unary (#. arguments (#[ 0) arguments empty)).(#body
-                                                        (~= savestr ": ")
-                                                        (#foreach i arg (#. arguments (#[ 0) arguments)).(#body
-                                                                (#if
-                                                                    (> i 0).(#body
-                                                                            (~= savestr ", ")))
-                                                                (~= savestr (#. arg operator))
-                                                                (#if
-                                                                    (!is (#. arg postop) null).(#body
-                                                                            (~= savestr (~ " = " (#. arg postop operator))))))))
-                                            (~= savestr ";\n")
-                                            #break)
-                                    "enum".(#body
-                                            (~= savestr (~ tabstr "enum " (#. this operator) "\n" tabstr "{\n"))
-                                            (#foreach i arg (#. this arguments)).(#body
-                                                    (~= savestr (~ (#. arg (saveD (+ tab 1) null (#. this type))) (#? (< i (- (#. this arguments length) 1)) ",\n" "\n"))))
-                                            (~= savestr (~ tabstr "}\n"))
-                                            #break)
-                                    "init".(#body
-                                            (~= savestr (~ " = " (#. this operator)))
-                                            (#foreach i arg (#. this arguments)).(#body
-                                                    (~= savestr (#. arg (saveD (-#unary 1) null (#. this type)))))
-                                            #break)
-                                    ":".(#body
-                                            (#foreach i arg (#. this arguments)).(#body
-                                                    (~= savestr (#. arg (saveD (-#unary 1) null (#. this type)))))
-                                            (~= savestr (#. this type))
-                                            #break)
-                                    "*".(#body
-                                            (#foreach i arg (#. this arguments)).(#body
-                                                    (~= savestr (#. arg (saveD (-#unary 1) null (#. this type)))))
-                                            (~= savestr (#. this type))
-                                            #break)
-                                    "struct".(#body
-                                            (~= savestr (~ tabstr "struct " (#. this operator) "\n" tabstr "{\n"))
-                                            (#foreach i arg (#. this arguments)).(#body
-                                                    (~= savestr (#. arg (saveD (+ tab 1) null (#. this type)))))
-                                            (~= savestr (~ tabstr "}\n"))
-                                            #break)
-                                    "class".(#body
-                                            (~= savestr (~ tabstr "class " (#. this operator)))
-                                            (#if
-                                                (== (#. arguments (#[ 0) type) "superclass").(#body
-                                                        (~= savestr (~ " : " (#. arguments (#[ 0) (saveD (-#unary 1) null (#. this type)))))))
-                                            (~= savestr (~ "\n" tabstr "{\n"))
-                                            (#foreach i arg (#. this arguments)).(#body
-                                                    (#if
-                                                        (!= (#. arg type) "superclass").(#body
-                                                                (~= savestr (#. arg (saveD (+ tab 1) null (#. this type)))))))
-                                            (~= savestr (~ tabstr "}\n"))
-                                            #break)
-                                    "function".(#body
-                                            (~= savestr (~ tabstr (#. this arguments (#[ 0) (saveD (-#unary 1) null (#. this type))) " " (#? (#. this operator empty) "function" (#. this operator)) "(")) (.
-                                            a#var
-                                            b#var
-                                            c#var).([]#type long)
-                                            (#foreach i arg (#. this arguments)).(#body
-                                                    (#if
-                                                        (!is (#. arg postop) null).(#body
-                                                                (#if
-                                                                    (< (#. arg postop index) (-#unary 1)).(#body
-                                                                            (~= a (+ i (#. arg postop index) 1))
-                                                                            (~= b i)
-                                                                            (~= c 0))))))
-                                            (getPost#function ([]#type Expression) (i long)).(#body
-                                                    (e#var ([]#type Expression))
-                                                    (#foreach j f a).(#body
-                                                            (#if
-                                                                (&& (>= i f) (< i (#. b (#[ j)))).(#body
-                                                                        (~= e (#. this arguments (#[ (#. b (#[ j))) postop)))))
-                                                    (#return e))
-                                            (#if
-                                                (> (#. this arguments length) 1).(#body
-                                                        (~= savestr (#. this arguments (#[ 1) (saveD (-#unary 1) (getPost 1) (#. this type))))))
-                                            (#if
-                                                (> (#. this arguments length) 2).(#body
-                                                        (#foreach i arg (#. this arguments (#[ 2 .. $))).(#body
-                                                                (~= savestr (~ ", " (#. arg (saveD (-#unary 1) (getPost (+ i 2)) (#. this type))))))))
-                                            (#if
-                                                (!is postop null).(#body
-                                                        (~= savestr ")\n")
-                                                        (~= savestr (#. postop (saveD tab null (#. this type)))))
-                                                (>= tab 0).(#body
-                                                        (~= savestr ");\n"))
-                                                #else.(#body
-                                                        (~= savestr ")")))
-                                            #break)
-                                    "body".(#body
-                                            (~= savestr (~ tabstr "{\n"))
-                                            (#foreach i arg (#. this arguments)).(#body
-                                                    (~= savestr (#. arg (saveD (+ tab 1) null (#. this type)))))
-                                            (~= savestr (~ tabstr "}\n"))
-                                            #break) (.
-                                    "return"
-                                    "break"
-                                    "continue"
-                                    "goto").(#body
-                                            (~= savestr (#. this type))
-                                            (#if
-                                                (!#unary (#. this arguments empty)).(#body
-                                                        (~= savestr (~ " " (#. this arguments (#[ 0) (saveD (-#unary 1) null (#. this type)))))
-                                                        (#foreach i arg (#. this arguments (#[ 1 .. $))).(#body
-                                                                (~= savestr (~ ", " (#. arg (saveD (-#unary 1) null (#. this type))))))))
-                                            (#if
-                                                (>= tab 0).(#body
-                                                        (= savestr (~ tabstr savestr ";\n"))))
-                                            #break)
-                                    "for".(#body
-                                            (~= savestr (~ tabstr (#. this type)))
-                                            (~= savestr (~ " (" (#. this arguments (#[ 0) (saveD (-#unary 1) null (#. this type)))))
-                                            (~= savestr (~ "; " (#. this arguments (#[ 1) (saveD (-#unary 1) null (#. this type)))))
-                                            (~= savestr (~ "; " (#. this arguments (#[ 2) (saveD (-#unary 1) null (#. this type))) ")\n"))
-                                            (#if
-                                                (!is postop null).(#body
-                                                        (~= savestr (#. postop (saveD tab)))))
-                                            #break)
-                                    "while".(#body
-                                            (~= savestr (~ tabstr (#. this type)))
-                                            (~= savestr (~ " (" (#. this arguments (#[ 0) (saveD (-#unary 1) null (#. this type))) ")\n"))
-                                            (#if
-                                                (!is postop null).(#body
-                                                        (~= savestr (#. postop (saveD tab)))))
-                                            #break)
-                                    "do".(#body
-                                            (~= savestr (~ tabstr (#. this type) "\n"))
-                                            (#if
-                                                (!is postop null).(#body
-                                                        (~= savestr (#. postop (saveD tab)))))
-                                            (~= savestr (~ tabstr "while (" (#. this arguments (#[ 0) (saveD (-#unary 1) null (#. this type))) ");\n"))
-                                            #break)
-                                    "foreach".(#body
-                                            (~= savestr (~ tabstr (#. this type) " ("))
-                                            (#if
-                                                (!#unary (#. this arguments (#[ 0) operator empty)).(#body
-                                                        (~= savestr (~ (#. this arguments (#[ 0) (saveD (-#unary 1) null (#. this type))) ", "))))
-                                            (~= savestr (~ (#. this arguments (#[ 1) (saveD (-#unary 1) null (#. this type))) "; "))
-                                            (~= savestr (~ (#. this arguments (#[ 2) (saveD (-#unary 1) null (#. this type))) ")\n"))
-                                            (#if
-                                                (!is postop null).(#body
-                                                        (~= savestr (#. postop (saveD tab null (#. this type))))))
-                                            #break)
-                                    "if".(#body
-                                            (~= savestr (~ tabstr "if (" (#? (!#unary (#. operator empty)) (~ operator " == ") "") (#. this arguments (#[ 0) (saveD tab null (#. this type)))))
-                                            (= (or_need#var bool) (is (#. arguments (#[ 0) postop) null))
-                                            (#foreach i arg (#. this arguments (#[ 1 .. $))).(#body
-                                                    (#if
-                                                        (== (#. arg type) "else").(#body
-                                                                (~= savestr (~ tabstr "else\n" (#. arg (saveD tab null "else"))))
-                                                                (= or_need false))
-                                                        or_need.(#body
-                                                                (~= savestr (~ tabstr " || " (#? (!#unary (#. operator empty)) (~ operator " == ") "") (#. arg (saveD tab null (#. this type)))))
-                                                                (= or_need (is (#. arg postop) null)))
-                                                        #else.(#body
-                                                                (~= savestr (~ tabstr "else if (" (#? (!#unary (#. operator empty)) (~ operator " == ") "") (#. arg (saveD tab null (#. this type)))))
-                                                                (= or_need (is (#. arg postop) null)))))
-                                            #break)
-                                    "switch".(#body
-                                            (~= savestr (~ tabstr "switch (" (#? (!#unary (#. operator empty)) operator inner) ")\n"))
-                                            (~= savestr (~ tabstr "{\n"))
-                                            (#foreach i arg (#. this arguments)).(#body
-                                                    (#if
-                                                        (== (#. arg type) "default").(#body
-                                                                (~= savestr (~ tabstr "    default" (#. arg (saveD (+ tab 1) null "case")))))
-                                                        #else.(#body
-                                                                (~= savestr (~ tabstr "    case " (#. arg (saveD (+ tab 1) null "case")))))))
-                                            (~= savestr (~ tabstr "}\n"))
-                                            #break)
-                                    "var".(#body
-                                            (#foreach i arg (#. this arguments)).(#body
-                                                    (~= savestr (~ (#. arg (saveD (-#unary 1))) " ")))
-                                            (= (poststr#var string) "")
-                                            (#if
-                                                (&& (!is parent null) (>= index 0) (> (#. parent arguments length) index)).(#body
-                                                        (#foreach i arg (#. parent arguments (#[ index .. $))).(#body
-                                                                (#if
-                                                                    (!is (#. arg postop) null).(#body
-                                                                            //writefln("%s -- %s (%s == %s)", this, arg2.app_args, arg.index - arg2.app_args + 1, this.index);
-                                                                            (#if
-                                                                                (== (+ (#. arg index) (#. arg postop index) 1) (#. this index)).(#body
-                                                                                        (#if
-                                                                                            (== (#. arg postop operator) "[]").(#body
-                                                                                                    (= savestr (~ savestr (#. arg postop (saveD tab))))
-                                                                                                    (#foreach i3 arg3 (#. parent arguments (#[ (+ index 1) .. (+ (#. arg index) 1)))).(#body
-                                                                                                            (~= poststr (~ ", " (#. arg3 (saveD (-#unary 1) null "ctype"))))))
-                                                                                            (== (#. arg postop type) "init").(#body)
-                                                                                            #else.(#body
-                                                                                                    (= savestr (~ (#. arg postop (saveD (-#unary 1))) " " savestr))
-                                                                                                    (#foreach i3 arg3 (#. parent arguments (#[ (+ index 1) .. (+ (#. arg index) 1)))).(#body
-                                                                                                            (~= poststr (~ ", " (#. arg3 (saveD (-#unary 1) null "ctype"))))))))
-                                                                                (&& (!= ptype "ctype") (<= (#. this index) (#. arg index)) (> (#. this index) (+ (#. arg index) (#. arg postop index) 1))).(#body
-                                                                                        (#return "")))))))
-                                                (!is postop null).(#body
-                                                        (#if
-                                                            (== (#. postop index) (-#unary 1)).(#body
-                                                                    (#if
-                                                                        (== (#. postop operator) "[]").(#body
-                                                                                (= savestr (~ savestr (#. postop (saveD tab)))))
-                                                                        (== (#. postop type) "init").(#body)
-                                                                        #else.(#body
-                                                                                (= savestr (~ (#. postop (saveD (-#unary 1))) " " savestr))))))))
-                                            (~= savestr (~ " " (#. this operator)))
-                                            (#foreach i arg (~ post (#? (is postop null) [] ([] postop)))).(#body
-                                                    (#if
-                                                        (== (#. arg index) (-#unary 1)).(#body
-                                                                (#if
-                                                                    (== (#. arg type) "init").(#body
-                                                                            (= savestr (~ savestr (#. arg (saveD tab)))))))))
-                                            (~= savestr poststr)
-                                            (#if
-                                                (>= tab 0).(#body
-                                                        (= savestr (~ tabstr savestr ";\n"))))
-                                            #break)
-                                    "default".(#body
-                                            (~= savestr ":\n")
-                                            (#if
-                                                (!is postop null).(#body
-                                                        (~= savestr (#. postop (saveD tab null "op")))))
-                                            #break)
-                                    ".".(#body
-                                            (#if
-                                                (!#unary (#. arguments empty)).(#body
-                                                        (~= savestr (#. this arguments (#[ 0) (saveD (-#unary 1) null "op")))
-                                                        (#foreach i arg (#. this arguments (#[ 1 .. $))).(#body
-                                                                (= (next#var auto) (#. arg (saveD (-#unary 1) null "op")))
-                                                                (#if
-                                                                    (== (#. next (#[ 0)) '[').(#body
-                                                                            (~= savestr next))
-                                                                    (== next "init").(#body
-                                                                            (= savestr (~ "(" savestr ")" (#. this type) next)))
-                                                                    #else.(#body
-                                                                            (~= savestr (~ (#. this type) next)))))))
-                                            (#if
-                                                (&& (== ptype "if") (!is postop null)).(#body
-                                                        (~= savestr ")\n"))
-                                                (== ptype "case").(#body
-                                                        (~= savestr ":\n")))
-                                            (#if
-                                                (!is postop null).(#body
-                                                        (#if
-                                                            (== (#. postop type) "switch").(#body
-                                                                    (= savestr (#. postop (saveD tab null "op" savestr))))
-                                                            #else.(#body
-                                                                    (~= savestr (#. postop (saveD tab null "op")))))))
-                                            (#if
-                                                (&& (!= ptype "if") (!= ptype "case") (>= tab 0) (is postop null)).(#body
-                                                        (= savestr (~ tabstr savestr ";\n"))))
-                                            #break)
-                                    "[".(#body
-                                            (~= savestr "[")
-                                            (#if
-                                                (!#unary (#. arguments empty)).(#body
-                                                        (~= savestr (#. this arguments (#[ 0) (saveD (-#unary 1) null "op")))
-                                                        (= (sep#var string) ", ")
-                                                        (#foreach i arg (#. this arguments (#[ 1 .. $))).(#body
-                                                                (#if
-                                                                    (== (#. arg operator) "..").(#body
-                                                                            (= sep "")))
-                                                                (~= savestr (~ sep (#. arg (saveD (-#unary 1) null "op")))))))
-                                            (~= savestr "]")
-                                            (#if
-                                                (&& (== ptype "if") (!is postop null)).(#body
-                                                        (~= savestr ")\n")))
-                                            (#if
-                                                (!is postop null).(#body
-                                                        (~= savestr (#. postop (saveD tab null "op")))))
-                                            (#if
-                                                (&& (!= ptype "if") (>= tab 0) (is postop null)).(#body
-                                                        (= savestr (~ tabstr savestr ";\n"))))
-                                            #break)
-                                    "\\"".(#body
-                                            (~= savestr (~ "\"" (#. this arguments (#[ 0) (saveD (-#unary 1) null "op"))))
-                                            (= (sep#var string) " ")
-                                            (#foreach i arg (#. this arguments (#[ 1 .. $))).(#body
-                                                    (~= savestr (~ sep (#. arg (saveD (-#unary 1) null "op")))))
-                                            (~= savestr "\"")
-                                            (#if
-                                                (&& (== ptype "if") (!is postop null)).(#body
-                                                        (~= savestr ")\n")))
-                                            (#if
-                                                (!is postop null).(#body
-                                                        (~= savestr (#. postop (saveD tab null "op")))))
-                                            (#if
-                                                (&& (!= ptype "if") (>= tab 0) (is postop null)).(#body
-                                                        (= savestr (~ tabstr savestr ";\n"))))
-                                            #break)
-                                    "new".(#body
-                                            (~= savestr (#. this type))
-                                            (#if
-                                                (!#unary (#. this arguments empty)).(#body
-                                                        (~= savestr (~ " " (#. this arguments (#[ 0) (saveD (-#unary 1) null (#. this type)))))
-                                                        (#foreach i arg (#. this arguments (#[ 1 .. $))).(#body
-                                                                (~= savestr (~ ", " (#. arg (saveD (-#unary 1) null (#. this type))))))))
-                                            (#if
-                                                (!is postop null).(#body
-                                                        (~= savestr (~ (#? (!= (#. postop operator) "[]") "." "") (#. postop (saveD (-#unary 1) null (#. this type)))))))
-                                            (#if
-                                                (>= tab 0).(#body
-                                                        (= savestr (~ tabstr savestr ";\n"))))
-                                            #break)
-                                    "cast".(#body
-                                            (~= savestr (~ "(" (#. this type)))
-                                            (#if
-                                                (!#unary (#. this arguments empty)).(#body
-                                                        (~= savestr (~ "(" (#. this arguments (#[ 0) (saveD (-#unary 1) null (#. this type)))))
-                                                        (#foreach i arg (#. this arguments (#[ 1 .. $))).(#body
-                                                                (~= savestr (~ ") (" (#. arg (saveD (-#unary 1) null (#. this type))))))
-                                                        (~= savestr "))")))
-                                            (#if
-                                                (&& (== ptype "if") (!is postop null)).(#body
-                                                        (~= savestr ")\n"))
-                                                (== ptype "case").(#body
-                                                        (~= savestr ":\n")))
-                                            (body_#var bool)
-                                            (#if
-                                                (!is postop null).(#body
-                                                        (#if
-                                                            (== (#. postop type) "body").(#body
-                                                                    (~= savestr (#. postop (saveD tab null (#. this type))))
-                                                                    (= body_ true))
-                                                            (== (#. postop type) "switch").(#body
-                                                                    (= savestr (#. postop (saveD tab null "postop" savestr)))
-                                                                    (= body_ true))
-                                                            #else.(#body
-                                                                    (~= savestr (~ (#? (!= (#. postop operator) "[]") "." "") (#. postop (saveD (-#unary 1) null (#. this type)))))))))
-                                            (#if
-                                                (&& (!= ptype "if") (!= ptype "case") (>= tab 0) (!#unary body_)).(#body
-                                                        (= savestr (~ tabstr savestr ";\n"))))
-                                            #break)
-                                    "noop".(#body
-                                            (~= savestr "{}")
-                                            (#if
-                                                (>= tab 0).(#body
-                                                        (= savestr (~ tabstr savestr "\n"))))
-                                            #break)
-                                    "?".(#body
-                                            (#if
-                                                (>= (#. arguments length) 3).(#body
-                                                        (~= savestr (~ "(" (#. arguments (#[ 0) (saveD (-#unary 1) null "op")) " ? " (#. arguments (#[ 1) (saveD (-#unary 1) null "op")) " : " (#. arguments (#[ 2) (saveD (-#unary 1) null "op")) ")"))))
-                                            #break)
-                                    #default.(#body
-                                            (#. this operator).(#switch (.
-                                                    "+"
-                                                    "-"
-                                                    "*"
-                                                    "/"
-                                                    "^"
-                                                    "^^"
-                                                    "~"
-                                                    "%"
-                                                    "&"
-                                                    "&&"
-                                                    "|"
-                                                    "||"
-                                                    "="
-                                                    "+="
-                                                    "-="
-                                                    "*="
-                                                    "/="
-                                                    "~="
-                                                    "=="
-                                                    "!="
-                                                    "<"
-                                                    ">"
-                                                    "<="
-                                                    ">="
-                                                    "is"
-                                                    "!is"
-                                                    "in"
-                                                    "!in").(#body
-                                                            (#if
-                                                                (!#unary (#. arguments empty)).(#body
-                                                                        (#if
-                                                                            (== type "unary").(#body
-                                                                                    (~= savestr (#. this operator))))
-                                                                        (~= savestr (#. this arguments (#[ 0) (saveD (-#unary 1) null (#? (&& (== (#. this operator) "=") (!= (#. arguments (#[ 0) type) "unary")) "var" "op"))))
-                                                                        (#foreach i arg (#. this arguments (#[ 1 .. $))).(#body
-                                                                                (~= savestr (~ " " (#. this operator) " " (#. arg (saveD (-#unary 1) null "op")))))
-                                                                        (#if
-                                                                            (== type "type").(#body
-                                                                                    (~= savestr (#. this operator))))))
-                                                            (#if
-                                                                (&& (!#unary (&& (>= tab 0) (is postop null))) (== ptype "op")).(#body
-                                                                        (= savestr (~ "(" savestr ")"))))
-                                                            (#if
-                                                                (&& (== ptype "if") (!is postop null)).(#body
-                                                                        (~= savestr ")\n")))
-                                                            (#if
-                                                                (!is postop null).(#body
-                                                                        (#if
-                                                                            (== (#. postop type) "switch").(#body
-                                                                                    (= savestr (#. postop (saveD tab null "postop" savestr))))
-                                                                            #else.(#body
-                                                                                    (~= savestr (#. postop (saveD tab null "postop")))))))
-                                                            (#if
-                                                                (&& (!= ptype "if") (>= tab 0) (is postop null)).(#body
-                                                                        (= savestr (~ tabstr savestr ";\n"))))
-                                                            #break) (.
-                                                    "++"
-                                                    "--").(#body
-                                                            (#if
-                                                                (== type "post").(#body
-                                                                        (= savestr (~ (#. arguments (#[ 0) (saveD (-#unary 1) null "op")) operator)))
-                                                                #else.(#body
-                                                                        (= savestr (~ operator (#. arguments (#[ 0) (saveD (-#unary 1) null "op"))))))
-                                                            (#if
-                                                                (&& (!= ptype "if") (>= tab 0) (is postop null)).(#body
-                                                                        (= savestr (~ tabstr savestr ";\n"))))
-                                                            #break)
-                                                    "!".(#body
-                                                            (~= savestr (#. this operator))
-                                                            (#if
-                                                                (!#unary (#. arguments empty)).(#body
-                                                                        (~= savestr (~ " " (#. this arguments (#[ 0) (saveD (-#unary 1) null "op"))))))
-                                                            (#if
-                                                                (&& (!#unary (&& (>= tab 0) (is postop null))) (== ptype "op")).(#body
-                                                                        (= savestr (~ "(" savestr ")"))))
-                                                            (#if
-                                                                (&& (== ptype "if") (!is postop null)).(#body
-                                                                        (~= savestr ")\n")))
-                                                            (#if
-                                                                (!is postop null).(#body
-                                                                        (#if
-                                                                            (== (#. postop type) "switch").(#body
-                                                                                    (= savestr (#. postop (saveD tab null "postop" savestr))))
-                                                                            #else.(#body
-                                                                                    (~= savestr (#. postop (saveD tab null "postop")))))))
-                                                            (#if
-                                                                (&& (!= ptype "if") (>= tab 0) (is postop null)).(#body
-                                                                        (= savestr (~ tabstr savestr ";\n"))))
-                                                            #break)
-                                                    "[]".(#body
-                                                            (#if
-                                                                (!#unary (#. this arguments empty)).(#body
-                                                                        (~= savestr (#. this arguments (#[ 0) (saveD (-#unary 1) null (#. this type))))
-                                                                        (#if
-                                                                            (== type "type").(#body
-                                                                                    (= (of#var string) "")
-                                                                                    (#if
-                                                                                        (>= (#. this arguments length) 2).(#body
-                                                                                                (= of (#. this arguments (#[ 1) (saveD (-#unary 1) null (#. this type))))))
-                                                                                    (~= savestr (~ "[" of "]")))
-                                                                            #else.(#body
-                                                                                    (= (sep#var string) ", ")
-                                                                                    (#foreach i arg (#. this arguments (#[ 1 .. $))).(#body
-                                                                                            (#if
-                                                                                                (== (#. arg operator) "..").(#body
-                                                                                                        (= sep "")))
-                                                                                            (~= savestr (~ sep (#. arg (saveD (-#unary 1) null (#. this type))))))))))
-                                                            (#if
-                                                                (!= type "type").(#body
-                                                                        (= savestr (~ "[" savestr "]"))))
-                                                            (#if
-                                                                (!is postop null).(#body
-                                                                        (#if
-                                                                            (== (#. postop type) "switch").(#body
-                                                                                    (= savestr (#. postop (saveD tab null "postop" savestr))))
-                                                                            (== type "type").(#body
-                                                                                    (= savestr (~ (#. postop (saveD tab null "op")) " " savestr)))
-                                                                            #else.(#body
-                                                                                    (~= savestr (#. postop (saveD tab null "postop")))))))
-                                                            #break) (.
-                                                    "false"
-                                                    "true").(#body
-                                                            (~= savestr (#. this operator))
-                                                            (#if
-                                                                (&& (== ptype "if") (!is postop null)).(#body
-                                                                        (~= savestr ")\n")))
-                                                            (#if
-                                                                (!is postop null).(#body
-                                                                        (#if
-                                                                            (== (#. postop type) "switch").(#body
-                                                                                    (= savestr (#. postop (saveD tab null "postop" savestr))))
-                                                                            #else.(#body
-                                                                                    (~= savestr (#. postop (saveD tab null "postop")))))))
-                                                            #break)
-                                                    #default.(#body
-                                                            (#if
-                                                                (== ptype "postop").(#body
-                                                                        (~= savestr ".")))
-                                                            (~= savestr (#. this operator))
-                                                            (#if
-                                                                (!#unary (#. this arguments empty)).(#body
-                                                                        (= (first#var bool) true)
-                                                                        (= (f#var auto) (#. this arguments (#[ 0) (saveD (-#unary 1) null (#. this type))))
-                                                                        (#if
-                                                                            (== f "!").(#body
-                                                                                    (~= savestr "!("))
-                                                                            #else.(#body
-                                                                                    (~= savestr (~ "(" f))
-                                                                                    (= first false)))
-                                                                        (#foreach i arg (#. this arguments (#[ 1 .. $))).(#body
-                                                                                (#if
-                                                                                    (== (#. arg type) "!").(#body
-                                                                                            (#if
-                                                                                                (< (+ i 2) (#. arguments length)).(#body
-                                                                                                        (= first false)
-                                                                                                        (~= savestr ")(")))
-                                                                                            #continue)
-                                                                                    first.(#body
-                                                                                            (= first false))
-                                                                                    #else.(#body
-                                                                                            (~= savestr ", ")))
-                                                                                (~= savestr (#. arg (saveD (-#unary 1) null (#. this type)))))
-                                                                        (~= savestr ")"))
-                                                                (!is arguments null).(#body
-                                                                        (~= savestr "()")))
-                                                            (#if
-                                                                (&& (== ptype "if") (!is postop null)).(#body
-                                                                        (~= savestr ")\n"))
-                                                                (== ptype "case").(#body
-                                                                        (~= savestr ":\n")))
-                                                            (body_#var bool)
-                                                            (#if
-                                                                (!is postop null).(#body
-                                                                        (#if
-                                                                            (== (#. postop type) "body").(#body
-                                                                                    (~= savestr (#. postop (saveD tab null (#. this type))))
-                                                                                    (= body_ true))
-                                                                            (== (#. postop type) "switch").(#body
-                                                                                    (= savestr (#. postop (saveD tab null "postop" savestr)))
-                                                                                    (= body_ true))
-                                                                            (== ptype "foreach").(#body
-                                                                                    (= savestr (~ (#. postop (saveD (-#unary 1) null (#. this type))) " " savestr)))
-                                                                            #else.(#body
-                                                                                    (~= savestr (~ (#? (!= (#. postop operator) "[]") "." "") (#. postop (saveD (-#unary 1) null (#. this type)))))))))
-                                                            (#if
-                                                                (&& (!= ptype "if") (!= ptype "case") (>= tab 0) (!#unary body_)).(#body
-                                                                        (= savestr (~ tabstr savestr ";\n"))))
-                                                            #break))
-                                            #break))))
-                (#if
-                    (&& (!= type "module") (!#unary (#. this label empty))).(#body
-                            (= savestr (~ tabstr (#. this label) ":\n" savestr))))
-                (#return savestr))
-        (findBlocks#function void (code Expression ref) (lexemTypes Expression ref) (lexer Expression ref)).(#body
-                (#if
-                    (== type "code").(#body
-                            (= code this))
-                    (&& (== type "enum") (== operator "LexemType")).(#body
-                            (= lexemTypes this))
-                    (&& (== type "struct") (== operator "Lexer")).(#body
-                            (= lexer this)))
-                (#if
-                    (&& (!is code null) (!is lexemTypes null) (!is lexer null)).(#body
-                            #return))
-                (#foreach . arg arguments).(#body
-                        (#. arg (findBlocks code lexemTypes lexer)))
-                (#if
-                    (!is postop null).(#body
-                            (#. postop (findBlocks code lexemTypes lexer)))))
-        (replace#function void (ne Expression)).(#body
-                (= (#. ne parent) (#. this parent))
-                (= (#. ne index) (#. this index))
-                (= (#. ne x) (#. this x))
-                (= (#. ne y) (#. this y))
-                (= (#. ne r1) (#. this r1))
-                (= (#. ne r2) (#. this r2))
-                (= (#. ne center) (#. this center))
-                (#if
-                    (!is (#. this parent) null).(#body
-                            (#if
-                                (>= index 0).(#body
-                                        (= (#. this parent arguments (#[ (#. this index))) ne))
-                                #else.(#body
-                                        (= (#. this parent postop) ne))))))
-        (addAfter#function void (ne Expression)).(#body
-                (= (#. ne parent) (#. this parent))
-                (= (#. ne index) (+ (#. this index) 1))
-                (= (#. ne x) (#. this x))
-                (= (#. ne y) (#. this y))
-                (= (#. ne r1) (#. this r1))
-                (= (#. ne r2) (#. this r2))
-                (= (#. ne center) (#. this center))
-                (#foreach . arg (#. this parent arguments (#[ (+ (#. this index) 1) .. $))).(#body
-                        (++#post (#. arg index)))
-                (= (#. this parent arguments) (~ (#. this parent arguments (#[ 0 .. (+ (#. this index) 1))) ne (#. this parent arguments (#[ (+ (#. this index) 1) .. $)))))
-        (toLexer#function void (code Expression) (main bool)).(#body
-                (#if
-                    (== operator "save").(#body
-                            (= (ne#var Expression) (#new (Expression (~ "(=" (#? (!#unary (#. label empty)) (~ "@" label) "") " back2 this)"))))
-                            (#. code (addChild ne)))
-                    (== operator "back").(#body
-                            (= (ne#var Expression) (#new (Expression (~ "(=" (#? (!#unary (#. label empty)) (~ "@" label) "") " this back2)"))))
-                            (#. code (addChild ne)))
-                    (== type "switch").(#body
-                            (= (ne#var Expression) (#new (Expression (~ "(=" (#? (!#unary (#. label empty)) (~ "@" label) "") " back this)"))))
-                            (#. code (addChild ne))
-                            (= ne (#new (Expression "(nextChr)")))
-                            (#. code (addChild ne))
-                            (= ne (#new (Expression "(#if)")))
-                            (#. code (addChild ne))
-                            (= code ne))
-                    (== (#. parent type) "switch").(#body
-                            (ne#var Expression)
-                            (#if
-                                (#. operator (startsWith "is")).(#body
-                                        (= ne (#new (Expression (~ "(#module (#. chr " operator ").(#body))"))))
-                                        (= ne (#. ne arguments (#[ 0))))
-                                (&& (== operator "!") (#. arguments (#[ 0) operator (startsWith "is"))).(#body
-                                        (= ne (#new (Expression (~ "(#module (! (#. chr " (#. arguments (#[ 0) operator) ")).(#body))"))))
-                                        (= ne (#. ne arguments (#[ 0))))
-                                (|| (&& (> (#. operator length) 2) (== (#. operator (#[ 0)) '\\'') (== (#. operator (#[ (- $ 1))) '\\'')) (== operator "EOF")).(#body
-                                        (= ne (#new (Expression (~ "(#module (== chr " operator ").(#body))"))))
-                                        (= ne (#. ne arguments (#[ 0))))
-                                (&& (> (#. operator length) 2) (== (#. operator (#[ 0)) '"') (== (#. operator (#[ (- $ 1))) '"')).(#body
-                                        (= ne (#new (Expression (~ "(#module (! (#. " operator " (find chr) empty)).(#body))"))))
-                                        (= ne (#. ne arguments (#[ 0))))
-                                (== type "\"").(#body
-                                        (= ne (#new (Expression "(#module (! (#. replace_this (find chr) empty)).(#body))")))
-                                        (= ne (#. ne arguments (#[ 0)))
-                                        (= (dc#var auto) (#. this deepcopy))
-                                        (#. ne arguments (#[ 0) arguments (#[ 0) (replace dc))
-                                        (= (#. dc postop) null))
-                                (== type "default").(#body
-                                        (= ne (#new (Expression "(#module (true).(#body (= this back)))")))
-                                        (= ne (#. ne arguments (#[ 0))))
-                                #else.(#body
-                                        (writefln "%s#%s" operator type)
-                                        (assert 0)))
-                            (#if
-                                (&& (is postop null) (|| (#. code arguments empty) (!= (#. code arguments (#[ (- $ 1)) operator) "||") (!#unary (#. code arguments (#[ (- $ 1)) postop arguments empty)))).(#body
-                                        (= (ne2#var Expression) (#new (Expression "(#module (||).(#body))")))
-                                        (= ne2 (#. ne2 arguments (#[ 0)))
-                                        (= (#. ne postop) null)
-                                        (#. ne2 (addChild ne))
-                                        (#. code (addChild ne2)))
-                                (&& (!#unary (#. code arguments empty)) (== (#. code arguments (#[ (- $ 1)) operator) "||") (#. code arguments (#[ (- $ 1)) postop arguments empty)).(#body
-                                        (= (co#var auto) (#. code arguments (#[ (- $ 1))))
-                                        (= (#. ne postop) null)
-                                        (#. co (addChild ne))
-                                        (#if
-                                            (!is postop null).(#body
-                                                    (= code (#. co postop)))))
-                                #else.(#body
-                                        (#. code (addChild ne))
-                                        (= code (#. ne postop)))))
-                    (== type "while").(#body
-                            (ne#var Expression)
-                            (= (back#var Expression) (#new (Expression "(= this back)")))
-                            (#if
-                                (<= (#. arguments length) 1).(#body
-                                        (#if
-                                            (== (#. arguments (#[ 0) operator) "!").(#body
-                                                    (= ne (#new (Expression (~ "(#module (#do" (#? (!#unary (#. label empty)) (~ "@" label) "") " !).(#body (= back this) nextChr))"))))
-                                                    (= ne (#. ne arguments (#[ 0)))
-                                                    (#. code (addChild ne))
-                                                    (#. code (addChild back))
-                                                    (= code (#. ne arguments (#[ 0))))
-                                            #else.(#body
-                                                    (= ne (#new (Expression "(#module (#do).(#body (= back this) nextChr))")))
-                                                    (= ne (#. ne arguments (#[ 0)))
-                                                    (#. code (addChild ne))
-                                                    (#. code (addChild back))
-                                                    (= code ne))))
-                                #else.(#body
-                                        (= ne (#new (Expression "(#module (#do ||).(#body (= back this) nextChr))")))
-                                        (= ne (#. ne arguments (#[ 0)))
-                                        (#. code (addChild ne))
-                                        (#. code (addChild back))
-                                        (= code (#. ne arguments (#[ 0))))))
-                    (|| (&& (== (#. parent type) "while") (!= operator "!")) (&& (|| (== (#. parent operator) "||") (== (#. parent operator) "!")) (== (#. parent parent type) "while"))).(#body
-                            (ne#var Expression)
-                            (#if
-                                (#. operator (startsWith "is")).(#body
-                                        (= ne (#new (Expression (~ "(#. chr " operator ")")))))
-                                (|| (&& (> (#. operator length) 2) (== (#. operator (#[ 0)) '\\'') (== (#. operator (#[ (- $ 1))) '\\'')) (== operator "EOF")).(#body
-                                        (= ne (#new (Expression (~ "(== chr " operator ")")))))
-                                (&& (> (#. operator length) 2) (== (#. operator (#[ 0)) '"') (== (#. operator (#[ (- $ 1))) '"')).(#body
-                                        (= ne (#new (Expression (~ "(! (#. " operator " (find chr) empty))")))))
-                                (== type "\"").(#body
-                                        (= ne (#new (Expression "(! (#. replace_this (find chr) empty))")))
-                                        (= (dc#var auto) (#. this deepcopy))
-                                        (#. ne arguments (#[ 0) arguments (#[ 0) (replace dc))
-                                        (= (#. dc postop) null))
-                                #else.(#body
-                                        (writefln "%s#%s" operator type)
-                                        (assert 0)))
-                            (#. code (addChild ne)))
-                    (== (#. parent type) "goto").(#body
-                            (= (ne#var Expression) (#new (Expression (~ "(#goto " operator ")"))))
-                            (#. code (addChild ne)))
-                    (== (#. parent type) "return").(#body
-                            (ne#var Expression)
-                            (#if
-                                main.(#body
-                                        (= ne (#new (Expression (~ "(= type (#. LexemType " operator "))"))))
-                                        (#. code (addChild ne))))
-                            (= ne (#new (Expression "(#return)")))
-                            (#. code (addChild ne))))
-                (#foreach . arg arguments).(#body
-                        (#. arg (toLexer code main)))
-                (#if
-                    (!is postop null).(#body
-                            (#. postop (toLexer code main)))))
-        (toLexer#function void (code Expression) (lexer Expression) (lTypes ([]#type bool string) ref)).(#body
-                (#if
-                    (&& (== type "return") (> (#. arguments length) 0)).(#body
-                            (= (#. lTypes (#[ (#. arguments (#[ 0) operator))) true)))
-                (#if
-                    (== type "function").(#body
-                            (#if
-                                (== operator "Start").(#body
-                                        (= (main#var Expression) (#new (Expression)))
-                                        (#if
-                                            (!is postop null).(#body
-                                                    (#. postop (toLexer main true))))
-                                        (#if
-                                            (!#unary (#. main arguments empty)).(#body
-                                                    (#. code (replace (#. main arguments (#[ 0))))
-                                                    (#foreach . arg (#. main arguments (#[ 1 .. $))).(#body
-                                                            (#. code (addAfter arg))
-                                                            (= code arg)))))
-                                #else.(#body
-                                        (= (func#var Expression) (#new (Expression (#. (~ "(#module (" operator "#function void).(#body (back#var Lexer) (back2#var Lexer)))") dup))))
-                                        (= func (#. func arguments (#[ 0)))
-                                        (#if
-                                            (!is postop null).(#body
-                                                    (#. postop (toLexer (#. func postop) false))))
-                                        (#. lexer (addChild func))))))
-                (#foreach . arg arguments).(#body
-                        (#. arg (toLexer code lexer lTypes)))
-                (#if
-                    (!is postop null).(#body
-                            (#. postop (toLexer code lexer lTypes)))))
-        (toLexer#function Expression).(#body (.
-                code#var
-                lexemTypes#var
-                lexer#var).(Expression)
-                (= (text#var string) (readText "lexer_templ.np"))
-                (= (ret#var Expression) (#new (Expression text)))
-                (#. ret (findBlocks code lexemTypes lexer))
-                (assert (!is lexemTypes null))
-                (assert (!is code null))
-                (= (#. ret operator) "lexer_synth.np")
-                (= (#. ret arguments (#[ 0) operator) "lexer_synth")
-                (= (lTypes#var ([]#type bool string)) (#. (#. bool (#[ string)) init))
-                (toLexer code lexer lTypes)
-                (#foreach ltype _ lTypes).(#body
-                        (= (ne#var auto) (#new Expression))
-                        (= (#. ne operator) ltype)
-                        (#. lexemTypes (addChild ne)))
-                (#return ret))
-        (readFile#function ([]#type char).(static) (filename string)).(#body
-                (= (file#var auto) (File filename))
-                (mod#var ([]#type char))
-                (#foreach . line (#. file (byLine))).(#body
-                        (= line (strip line))
-                        (#if
-                            (&& (!#unary (#. mod empty)) (!= (#. mod (#[ (- $ 1))) '\ ')).(#body
-                                    (~= mod '\ ')))
-                        (#if
-                            (== line ".").(#body
-                                    (= line (#. ". " dup))))
-                        (~= mod line))
-                (#return mod))
-        (deepcopy#function Expression).(#body
-                (= (copy#var Expression) (#new (Expression)))
-                (= (#. copy operator) operator)
-                (= (#. copy type) type)
-                (= (#. copy label) label)
-                (= (#. copy parent) parent)
-                (= (#. copy index) index)
-                (= (#. copy center) center)
-                (= (#. copy hidden) hidden)
-                (= (#. copy level) level)
-                (= (#. copy levels) levels)
-                (= (#. copy bt) bt)
-                (= (#. copy x) x)
-                (= (#. copy y) y)
-                (= (#. copy r1) r1)
-                (= (#. copy r2) r2)
-                (= (#. copy r3) r3)
-                (= (#. copy a1) a1)
-                (= (#. copy a2) a2)
-                (#foreach . arg arguments).(#body
-                        (~= (#. copy arguments) (#. arg (deepcopy)))
-                        (= (#. copy arguments (#[ (- $ 1)) parent) copy))
-                (#if
-                    (!is postop null).(#body
-                            (= (#. copy postop) (#. postop (deepcopy)))
-                            (= (#. copy postop parent) copy)))
-                (#return copy))
-        (movecopy#function Expression).(#body
-                (= (copy#var auto) (deepcopy))
-                (#if
-                    (>= index 0).(#body
-                            (++#post (#. copy index))
-                            (#foreach . arg (#. parent arguments (#[ (+ index 1) .. $))).(#body
-                                    (++#post (#. arg index)))
-                            (= (#. parent arguments) (~ (#. parent arguments (#[ 0 .. (+ index 1))) copy (#. parent arguments (#[ (+ index 1) .. $))))))
-                (#return copy))
-        (toString#function string.(override)).(#body
-                (#return (~ operator (#? (!#unary (#. type empty)) (~ "#" type) "") (#? (!#unary (#. label empty)) (~ "@" label) ""))))))
 
+        (r#function real).(#body (#return (#\. c r)))
+        (g#function real).(#body (#return (#\. c g)))
+        (b#function real).(#body (#return (#\. c b)))
+        (a#function real).(#body (#return (#\. c a)))
+
+        (this#function #constructor).
+        (#body
+        )
+
+        (getEscape#function dchar.(static) (c dchar)).
+        (#body c
+            .
+            (#switch 'n'.(#body
+
+
+                    (#return '\\n')) 'r'.(#body
+
+                    (#return '\\r')) 't'.(#body
+
+                    (#return '\\t')) #default.(#body
+
+                    (#return c)))
+        )
+
+        (readEscaped#function string.(static) (line string) (escChar string)).
+        (#body (=
+                (res#var string) "")
+            (escape#var bool)
+
+            (#while (!#unary (#\. line empty))).(#body
+
+                (#if escape.(#body
+
+                        (= escape false) (=
+                            (c#var dchar) (#\. line (decodeFront)))
+                        (~= res (getEscape c))
+                    )
+                    (#\. line (startsWith escChar)).(#body
+
+                        (= escape true)
+                        (= line (#\. line (#[ (#\. escChar length) \.\. $)))
+                    ) #else.
+                    (#body
+
+                        (~= res (#\. line (decodeFront)))
+                    ))
+            )
+
+            (#return res)
+        )
+
+        (getBlock#function string (line ([]#type char) ref) (be BlockBE)).
+        (#body (=
+                (sline#var ([]#type char)) line)
+            (assert (#\. line (startsWith (#\. be begin))))
+            (= line (#\. line (#[ (#\. be begin length) \.\. $)))
+
+            (escape#var bool)
+            (nest#var int)
+            (#while (!#unary (#\. line empty))).(#body
+
+                (#if escape.(#body
+
+                        (= escape false)
+                        (#\. line (decodeFront))
+                    )
+                    (&& (!#unary (#\. be escape empty)) (#\. line (startsWith (#\. be escape)))).(#body
+
+                        (= escape true)
+                        (= line (#\. line (#[ (#\. be escape length) \.\. $)))
+                    )
+                    (&& (#\. be nested) (#\. line (startsWith (#\. be begin)))).(#body
+
+                        (++#post nest)
+                        (= line (#\. line (#[ (#\. be begin length) \.\. $)))
+                    )
+                    (#\. line (startsWith (#\. be end))).(#body
+
+                        (= line (#\. line (#[ (#\. be end length) \.\. $)))
+                        (#if (== nest 0).(#body (#return (#\. sline (#[ 0 \.\. (- (#\. line ptr) (#\. sline ptr))) idup))))
+                        (--#post nest)
+                    ) #else.
+                    (#body
+
+                        (#\. line (decodeFront))
+                    ))
+            )
+
+            (#return (#\. sline (#[ 0 \.\. (- (#\. line ptr) (#\. sline ptr))) idup))
+        )
+
+        (getBE#function BlockBE).
+        (#body (=
+                (be#var BlockBE) (BlockBE operator))
+            (#foreach . arg arguments).(#body (#\. arg type
+                ).
+
+                (#switch "end".(#body
+
+
+                        (= (#\. be end) (#\. arg operator))
+                        #break) "escape".(#body
+
+                        (= (#\. be escape) (#\. arg operator))
+                        #break) "nested".(#body
+
+                        (= (#\. be nested) true)
+                        #break) #default.(#body
+
+                        #break))
+            )
+
+            (#return be)
+        )
+
+        (startsWithDotBracket#function bool.(static) (line ([]#type char)) (ps ParserState)).
+        (#body
+            (#if (#\. line (startsWith (#\. ps dot))).(#body
+
+                    (= line (#\. line (#[ (#\. ps dot length) \.\. $)))
+                    (#while (&& (!#unary (#\. line empty)) (|| (== (#\. line (#[ 0)) '\ ') (== (#\. line (#[ 0)) '\\n')))).(#body
+
+                        (#\. line (decodeFront))
+                    )
+                    (#return (#\. line (startsWith (#\. ps brackets begin))))
+                ))
+            (#return false)
+        )
+
+        (this#function #constructor (line ([]#type char) ref) (ps ParserState).(#init (#\. ParserState init)) (parent Expression).(#init null) (nofile bool).(#init false)).
+        (#body
+            (#if (is parent null).(#body
+
+                    (#if (!#unary nofile).(#body
+
+                            (= bt (#\. BlockType File))
+                            (#while (!#unary (#\. line empty))).(#body (=
+
+                                    (ne#var auto) (#new (Expression line ps this)))
+                                (= (#\. ne parent) this)
+                                (= (#\. ne index) (#\. arguments length))
+                                (~= arguments ne)
+                            )
+                            #return
+                        ) #else.
+                        (#body
+
+                            (= (#\. ps comments) ([] (BlockBE "/*" "*/")))
+                            (= (#\. ps strings) ([] (BlockBE "\"" "\"" "\\") (BlockBE "'" "'" "\\")))
+                        ))
+                ) #else.
+                (#body
+
+                    (= nl1 (#\. parent nl2))
+                ))
+
+            (#if (#\. ps comments empty).(#body (=
+
+                        (sline#var ([]#type char)) line)
+
+                    (#while (!#unary (#\. line empty))).(#body
+
+                        (#if (#\. line (startsWith (#\. ps brackets begin))).(#body
+
+                                (#if (!is line sline).(#body
+
+                                        (= operator (#\. sline (#[ 0 \.\. (- (#\. line ptr) (#\. sline ptr))) idup))
+                                        (= bt (#\. BlockType Comment))
+                                        #return
+                                    ))
+                                (Init#var goto)
+                            ) #else.
+                            (#body
+
+                                (#while (&& (!#unary (#\. line empty)) (!#unary (#\. line (startsWith "\n"))))).(#body
+
+                                    (#\. line (decodeFront))
+                                )
+
+                                (#if (!#unary (#\. line empty)).(#body
+
+                                        (#\. line (decodeFront))
+                                    ))
+                                (++#post nl1)
+                            ))
+                    )
+                )) (#: Init)
+
+
+            (#while (&& (!#unary (#\. line empty)) (|| (== (#\. line (#[ 0)) '\ ') (== (#\. line (#[ 0)) '\\n')))).(#body
+
+                (#if (== (#\. line (#[ 0)) '\\n').(#body
+                        (++#post nl1)))
+                (= line (#\. line (#[ 1 \.\. $)))
+            )
+
+            (#foreach . be (#\. ps comments)).(#body
+
+                (#if (#\. line (startsWith (#\. be begin))).(#body
+
+                        (= operator (getBlock line be))
+                        (= bt (#\. BlockType Comment))
+                        #return
+                    ))
+            )
+
+            (in_brackets#var bool) (=
+                (brackets#var BlockBE) (#\. ps brackets))
+
+            (#if (#\. line (startsWith (#\. ps brackets begin))).(#body
+
+                    (= line (#\. line (#[ (#\. ps brackets begin length) \.\. $)))
+                    (= in_brackets true)
+                    (= arguments ([] null))
+                    (= (#\. arguments length) 0)
+                    (assert (!is arguments null))
+                ))
+
+            (#foreach . be (#\. ps strings)).(#body
+
+                (#if (#\. line (startsWith (#\. be begin))).(#body
+
+                        (= operator (getBlock line be))
+                        (= bt (#\. BlockType String))
+
+                        (#if (#\. line (startsWith (#\. ps sharp))).(#body
+
+                                (= line (#\. line (#[ (#\. ps sharp length) \.\. $)))
+                                (Sharp#var goto)
+                            )
+                            (#\. line (startsWith (#\. ps at))).(#body
+
+                                (= line (#\. line (#[ (#\. ps at length) \.\. $)))
+                                (At#var goto)
+                            ) #else.
+                            (#body (Arguments#var goto)))
+                    ))
+            )
+
+            (#while (!#unary (#\. line empty))).(#body
+
+                (#if (#\. line (startsWith (#\. ps brackets begin))).(#body
+
+                        (Arguments#var goto)
+                    )
+                    (#\. line (startsWith (#\. ps brackets escape))).(#body
+
+                        (= line (#\. line (#[ (#\. ps brackets escape length) \.\. $))) (=
+                            (c#var dchar) (#\. line (decodeFront)))
+                        (~= operator (getEscape c))
+                    )
+                    (|| (== (#\. line (#[ 0)) '\ ') (== (#\. line (#[ 0)) '\\n')).(#body
+
+                        (Arguments#var goto)
+                    )
+                    (#\. line (startsWith (#\. ps brackets end))).(#body
+
+                        (#if in_brackets.(#body
+
+                                (= line (#\. line (#[ (#\. ps brackets end length) \.\. $)))
+                                (Post#var goto)
+                            ))
+                        (End#var goto)
+                    )
+                    (&& (!#unary in_brackets) (startsWithDotBracket line ps)).(#body
+
+                        (Post#var goto)
+                    )
+                    (#\. line (startsWith (#\. ps sharp))).(#body
+
+                        (= line (#\. line (#[ (#\. ps sharp length) \.\. $)))
+                        (Sharp#var goto)
+                    )
+                    (#\. line (startsWith (#\. ps at))).(#body
+
+                        (= line (#\. line (#[ (#\. ps at length) \.\. $)))
+                        (At#var goto)
+                    ) #else.
+                    (#body
+                        (~= operator (#\. line (decodeFront)))))
+            ) (#: Sharp)
+
+
+            (#while (!#unary (#\. line empty))).(#body
+
+                (#if (#\. line (startsWith (#\. ps brackets begin))).(#body
+
+                        (Arguments#var goto)
+                    )
+                    (#\. line (startsWith (#\. ps brackets escape))).(#body
+
+                        (= line (#\. line (#[ (#\. ps brackets escape length) \.\. $))) (=
+                            (c#var dchar) (#\. line (decodeFront)))
+                        (~= type (getEscape c))
+                    )
+                    (|| (== (#\. line (#[ 0)) '\ ') (== (#\. line (#[ 0)) '\\n')).(#body
+
+                        (Arguments#var goto)
+                    )
+                    (#\. line (startsWith (#\. ps brackets end))).(#body
+
+                        (#if in_brackets.(#body
+
+                                (= line (#\. line (#[ (#\. ps brackets end length) \.\. $)))
+                                (Post#var goto)
+                            ))
+                        (End#var goto)
+                    )
+                    (&& (!#unary in_brackets) (startsWithDotBracket line ps)).(#body
+
+                        (Post#var goto)
+                    )
+                    (#\. line (startsWith (#\. ps at))).(#body
+
+                        (= line (#\. line (#[ (#\. ps at length) \.\. $)))
+                        (At#var goto)
+                    ) #else.
+                    (#body
+                        (~= type (#\. line (decodeFront)))))
+            ) (#: At)
+
+
+            (#while (!#unary (#\. line empty))).(#body
+
+                (#if (#\. line (startsWith (#\. ps brackets end))).(#body
+
+                        (#if in_brackets.(#body
+
+                                (= line (#\. line (#[ (#\. ps brackets end length) \.\. $)))
+                                (Post#var goto)
+                            ))
+                        (End#var goto)
+                    )
+                    (#\. line (startsWith (#\. ps brackets escape))).(#body
+
+                        (= line (#\. line (#[ (#\. ps brackets escape length) \.\. $))) (=
+                            (c#var dchar) (#\. line (decodeFront)))
+                        (~= label (getEscape c))
+                    )
+                    (#\. line (startsWith (#\. ps brackets begin))).(#body
+
+                        (Arguments#var goto)
+                    )
+                    (|| (== (#\. line (#[ 0)) '\ ') (== (#\. line (#[ 0)) '\\n')).(#body
+
+                        (Arguments#var goto)
+                    )
+                    (&& (!#unary in_brackets) (startsWithDotBracket line ps)).(#body
+
+                        (Post#var goto)
+                    ) #else.
+                    (#body
+                        (~= label (#\. line (decodeFront)))))
+            ) (#: Arguments)
+
+
+            (#if (== type "module").(#body label
+                    .
+
+                    (#switch (. "D" "Lexer").(#body
+
+
+
+                            (= (#\. ps comments) ([] (BlockBE "//" "\n") (BlockBE "/*" "*/") (BlockBE "/+" "+/" null true)))
+                            (= (#\. ps strings) ([] (BlockBE "\"" "\"" "\\") (BlockBE "'" "'" "\\")))
+                            #break) #default.(#body
+
+                            #break))
+                ))
+
+            (#if in_brackets.(#body
+
+                    (#while (!#unary (#\. line empty))).(#body
+
+                        (#if (#\. line (startsWith (#\. ps brackets end))).(#body
+
+                                (= line (#\. line (#[ (#\. ps brackets end length) \.\. $)))
+                                (Post#var goto)
+                            )
+                            (|| (== (#\. line (#[ 0)) '\ ') (== (#\. line (#[ 0)) '\\n')).(#body
+
+                                (#if (== (#\. line (#[ 0)) '\\n').(#body (++#post nl2)))
+                                (= line (#\. line (#[ 1 \.\. $)))
+                            ) #else.
+                            (#body (=
+
+                                    (ne#var auto) (#new (Expression line ps this)))
+
+                                (#if (&& (== (#\. ne operator) (#\. ps dot)) (!#unary (#\. ne arguments empty))).(#body
+
+                                        (#foreach . arg (#\. ne arguments)).(#body
+
+                                            (= (#\. arg parent) this)
+                                            (+= (#\. arg index) (#\. arguments length))
+                                        )
+
+                                        (~= arguments (#\. ne arguments))
+
+                                        (#if (!is (#\. ne postop) null).(#body
+
+                                                (= (#\. ne postop parent) (#\. arguments (#[ (- $ 1))))
+                                                (= (#\. ne postop index) (-#unary (#\. ne arguments length)))
+                                            ))
+
+                                        (= (#\. arguments (#[ (- $ 1)) postop) (#\. ne postop))
+                                    ) #else.
+                                    (#body
+
+                                        (= (#\. ne parent) this)
+                                        (= (#\. ne index) (#\. arguments length))
+                                        (~= arguments ne)
+                                    ))
+
+                                (= nl2 0)
+                            ))
+                    )
+                    (assert 0 "Not closed bracket")
+                )) (#: Post)
+
+
+            (#if (startsWithDotBracket line ps).(#body
+
+                    (= line (#\. line (#[ (#\. ps dot length) \.\. $))) (=
+                        (ne#var auto) (#new (Expression line ps this)))
+                    (= (#\. ne parent) this)
+                    (= (#\. ne index) (-#unary 1))
+                    (= postop ne)
+                )) (#: End) (=
+
+
+                (eline#var auto) line)
+            (#while (&& (!#unary (#\. eline empty)) (|| (== (#\. eline (#[ 0)) '\ ') (== (#\. eline (#[ 0)) '\\n')))).(#body
+
+                (= eline (#\. eline (#[ 1 \.\. $)))
+            )
+            (#if (#\. eline empty).(#body (= line eline)))
+        )
+
+        (this#function #constructor (line string) (nofile bool).(#init false)).
+        (#body (=
+                (l#var ([]#type char)) (#\. line dup))
+            (this l (#\. ParserState init) null nofile)
+            (assert (#\. l empty))
+        )
+
+        (addChild#function void (c Expression)).
+        (#body
+            (= (#\. c parent) this)
+            (= (#\. c index) (#\. arguments length))
+            (~= arguments c)
+        )
+
+        (addChilds#function void (cc ([]#type Expression))).
+        (#body
+            (#foreach i c cc).(#body
+
+                (= (#\. c parent) this)
+                (= (#\. c index) (+ (#\. arguments length) i))
+            )
+
+            (~= arguments cc)
+        )
+
+        (addPosts#function void (cc ([]#type Expression))).
+        (#body (=
+                (pp#var Expression) this)
+            (#while (!is (#\. pp postop) null)).(#body (= pp (#\. pp postop)))
+            (#foreach i c cc).(#body
+
+                (= (#\. pp postop) c)
+                (= (#\. c parent) pp)
+                (#if (>= (#\. c index) 0).(#body (= (#\. c index) (-#unary 1))))
+                (= pp c)
+            )
+        )
+
+        (popChild#function Expression).
+        (#body
+            (#if (#\. arguments empty).(#body (#return null))) (=
+                (ret#var auto) (#\. arguments (#[ (- $ 1))))
+            (= arguments (#\. arguments (#[ 0 \.\. (- $ 1))))
+            (#return ret)
+        )
+
+        (fixParents#function void (p Expression).(#init null) (i long).(#init 0)).
+        (#body
+            (= parent p)
+            (assert (|| (&& (>= i 0) (>= index 0)) (&& (< i 0) (<= index 0))))
+            (#if (>= index (-#unary 1)).(#body
+                    (= index i)))
+
+            (#foreach ind arg arguments).(#body
+
+                (#\. arg (fixParents this ind))
+            )
+
+            (#if (!is postop null).(#body
+
+                    (#\. postop (fixParents this (-#unary 1)))
+                ))
+        )
+
+        (escape#function string.(static) (str string) (be BlockBE) (space bool).(#init true) (dot bool).(#init true)).
+        (#body
+            (#if (#\. be escape empty).(#body (#return str)))
+
+            (res#var string)
+            (#while (!#unary (#\. str empty))).(#body
+
+                (#if (|| (#\. str (startsWith (#\. be begin))) (#\. str (startsWith (#\. be end))) (#\. str (startsWith (#\. be escape))) (&& space (#\. str (startsWith " "))) (&& dot (#\. str (startsWith ".")))).(#body
+
+                        (~= res (#\. be escape))
+                        (~= res (#\. str (decodeFront)))
+                    )
+                    (#\. str (startsWith "\n")).(#body
+
+                        (~= res (#\. be escape))
+                        (~= res "n")
+                        (#\. str (decodeFront))
+                    )
+                    (#\. str (startsWith "\r")).(#body
+
+                        (~= res (#\. be escape))
+                        (~= res "r")
+                        (#\. str (decodeFront))
+                    )
+                    (#\. str (startsWith "\t")).(#body
+
+                        (~= res (#\. be escape))
+                        (~= res "t")
+                        (#\. str (decodeFront))
+                    ) #else.
+                    (#body
+
+                        (~= res (#\. str (decodeFront)))
+                    ))
+            )
+
+            (#return res)
+        )
+
+        (save#function string).
+        (#body
+            (ps#var ParserState)
+            (#return (save ps))
+        )
+
+        (save#function string (ps ParserState ref) (tab int).(#init 0) (cbr ([]#type long)).(#init null) (force_brackets bool).(#init false)).
+        (#body (=
+                (op#var string) operator)
+            (savestr#var string)
+
+            (#if (== bt (#\. BlockType File)).(#body
+
+                )
+                (== bt (#\. BlockType Comment)).(#body
+
+                    (#return (~ (#\. (#? (> nl1 0) (~ (#\. '\\n' (repeat nl1) array) (#\. '\ ' (repeat (* tab 4)) array)) "") idup) op))
+                )
+                (== bt (#\. BlockType String)).(#body
+
+                    (~= savestr op)
+                ) #else.
+                (#body (=
+
+                        (bbe#var auto) (#\. ps brackets))
+                    (= op (escape op bbe))
+                    (~= savestr (~ op (#? (#\. this type empty) "" (~ (#\. ps sharp) (escape type bbe))) (#? (#\. this label empty) "" (~ (#\. ps at) (escape label bbe)))))
+                ))
+
+            (#if (&& (#\. savestr empty) (!= bt (#\. BlockType File))).(#body
+                    (= savestr (#\. ps dot))))
+
+            (#if (!#unary (#\. this arguments empty)).(#body (.
+
+                    a#var b#var c#var).([]#type long)
+                    (#foreach i arg (#\. this arguments)).(#body (=
+
+                            (arg2#var auto) (#\. arg postop))
+                        (j#var long)
+                        (#while (!is arg2 null)).(#body
+
+                            (#if (< (#\. arg2 index) (-#unary 1)).(#body
+
+                                    (~= a (+ i (#\. arg2 index) 1))
+                                    (~= b i)
+                                    (~= c j)
+                                ))
+
+                            (= arg2 (#\. arg2 postop))
+                            (++#post j)
+                        )
+                    )
+
+                    (#foreach i arg (#\. this arguments)).(#body
+
+                        (#foreach . m a).(#body
+
+                            (#if (== m i).(#body
+
+                                    (~= savestr (~ " " (#\. ps brackets begin) (#\. ps dot)))
+                                ))
+                        )
+
+                        (br#var ([]#type long))
+                        (#foreach j m b).(#body
+
+                            (#if (== m i).(#body
+
+                                    (~= br (#\. c (#[ j)))
+                                ))
+                        )
+
+                        (#if (== bt (#\. BlockType File)).(#body
+                                (~= savestr (#\. arg (save ps 0 br false)))) #else.
+                            (#body (=
+
+                                    (as#var auto) (#\. arg (save ps (+ tab 1) br false)))
+                                (#if (|| (#\. as (startsWith " ")) (#\. as (startsWith "\n"))).(#body
+                                        (~= savestr as)) #else.
+                                    (#body
+                                        (~= savestr (~ " " as))))
+                            ))
+                    )
+
+                    (#if (!= bt (#\. BlockType File)).(#body
+
+
+
+                            (= savestr (~ (#\. ps brackets begin) savestr (#\. (#? (> nl2 0) (~ (#\. '\\n' (repeat nl2) array) (#\. '\ ' (repeat (* tab 4)) array)) "") idup) (#\. ps brackets end)))
+                        ))
+                )
+                (|| force_brackets (!is arguments null)).(#body
+
+
+
+                    (= savestr (~ (#\. ps brackets begin) savestr (#\. (#? (> nl2 0) (~ (#\. '\\n' (repeat nl2) array) (#\. '\ ' (repeat (* tab 4)) array)) "") idup) (#\. ps brackets end)))
+                )
+                (> nl2 0).(#body
+
+                    (~= savestr (#\. (~ (#\. '\\n' (repeat nl2) array) (#\. '\ ' (repeat (* tab 4)) array)) idup))
+                ))
+
+            (= savestr (~ (#\. (#? (> nl1 0) (~ (#\. '\\n' (repeat nl1) array) (#\. '\ ' (repeat (* tab 4)) array)) "") idup) savestr))
+
+            (#if (>= index 0).(#body (=
+
+                        (cj#var long) 0) (=
+
+                        (arg#var auto) postop)
+                    (j#var long)
+                    (#while (!is arg null)).(#body
+
+                        (#if (&& (< cj (#\. cbr length)) (== (#\. cbr (#[ cj)) j)).(#body
+
+                                (~= savestr (#\. ps brackets end))
+                                (++#post cj)
+                            ))
+
+                        (~= savestr (~ (#\. ps dot) (#\. arg (save ps tab null true))))
+                        (= arg (#\. arg postop))
+                        (++#post j)
+                    )
+                ))
+
+            (#return savestr)
+        )
+
+        (wrapWithSpaces#function string (str string) (tabstr string)).
+        (#body
+            (#return (~ (#\. (#? (> nl1 0) (~ (#\. '\\n' (repeat nl1) array) tabstr) "") idup) str (#\. (#? (> nl2 0) (#\. '\\n' (repeat nl2) array) "") idup)))
+        )
+
+        (beforeSpaces#function string (tabstr string)).
+        (#body
+            (#return (#\. (#? (> nl1 0) (~ (#\. '\\n' (repeat nl1) array) tabstr) "") idup))
+        )
+
+        (afterSpaces#function string).
+        (#body
+            (#return (#\. (#? (> nl2 0) (#\. '\\n' (repeat nl2) array) "") idup))
+        )
+
+        (saveD#function string (tab int).(#init 0) (post ([]#type Expression)).(#init null) (ptype string).(#init null) (inner string).(#init null)).
+        (#body
+            (savestr#var string) (=
+                (tabstr#var string) "")
+            (#if (> tab 0).(#body (= tabstr (#\. '\ ' (repeat (* tab 4)) array)))) (=
+
+                (handled#var bool) true) ptype
+            .
+            (#switch (. "struct" "module" "class" "function" "ctype").(#body
+
+
+
+
+
+
+                    (#if (&& (!#unary (#\. this type empty)) (!= (#\. this type) "constructor")).(#body
+
+                            (= handled false)
+                            #break
+                        ))
+
+                    (#foreach i arg (#\. this arguments)).(#body
+
+                        (#if (== ptype "function").(#body
+
+                                (= savestr (~ (#\. arg (saveD (-#unary 1))) " " savestr))
+                            ) #else.
+                            (#body
+
+                                (~= savestr (~ (#\. arg (saveD (-#unary 1))) " "))
+                            ))
+                    ) (=
+
+                        (poststr#var string) "")
+                    (#if (&& (!is parent null) (>= index 0) (> (#\. parent arguments length) index)).(#body
+
+                            (#foreach i arg (#\. parent arguments (#[ index \.\. $))).(#body
+
+                                (#if (!is (#\. arg postop) null).(#body
+
+                                        //writefln("%s -- %s (%s == %s)", this, arg2.app_args, arg.index - arg2.app_args + 1, this.index);
+                                        (#if (== (+ (#\. arg index) (#\. arg postop index) 1) (#\. this index)).(#body
+
+                                                (#if (== (#\. arg postop operator) "[]").(#body
+
+                                                        (= savestr (~ savestr (#\. arg postop (saveD tab))))
+
+                                                        (#foreach i3 arg3 (#\. parent arguments (#[ (+ index 1) \.\. (+ (#\. arg index) 1)))).(#body
+
+                                                            (~= poststr (~ ", " (#\. arg3 (saveD (-#unary 1) null "ctype"))))
+                                                        )
+                                                    )
+                                                    (== (#\. arg postop type) "init").(#body
+
+                                                    ) #else.
+                                                    (#body
+
+                                                        (= savestr (~ (#\. arg postop (saveD (-#unary 1))) " " savestr))
+
+                                                        (#foreach i3 arg3 (#\. parent arguments (#[ (+ index 1) \.\. (+ (#\. arg index) 1)))).(#body
+
+                                                            (~= poststr (~ ", " (#\. arg3 (saveD (-#unary 1) null "ctype"))))
+                                                        )
+                                                    ))
+                                            )
+                                            (&& (!= ptype "ctype") (<= (#\. this index) (#\. arg index)) (> (#\. this index) (+ (#\. arg index) (#\. arg postop index) 1))).(#body
+                                                (#return "")))
+                                    ))
+                            )
+                        ) #else.
+                        (#body
+                            (#foreach . arg (~ post (#? (is postop null) [] ([] postop)))).(#body
+
+                                (#if (== (#\. arg index) (-#unary 1)).(#body
+
+                                        (#if (== (#\. arg operator) "[]").(#body
+
+                                                (= savestr (~ savestr (#\. arg (saveD tab))))
+                                            )
+                                            (== (#\. arg type) "init").(#body
+
+                                            ) #else.
+                                            (#body
+
+                                                (= savestr (~ (#\. arg (saveD (-#unary 1))) " " savestr))
+                                            ))
+                                    ))
+                            )))
+
+                    (~= savestr (#\. this operator))
+
+                    (#foreach . arg (~ post (#? (is postop null) [] ([] postop)))).(#body
+
+                        (#if (== (#\. arg index) (-#unary 1)).(#body
+
+                                (#if (== (#\. arg type) "init").(#body
+
+                                        (= savestr (~ savestr (#\. arg (saveD tab))))
+                                    ))
+                            ))
+                    )
+
+                    (~= savestr poststr)
+
+                    (#if (>= tab 0).(#body
+
+                            (= savestr (wrapWithSpaces (~ savestr ";") tabstr))
+                        ))
+                    #break) "enum".(#body
+
+
+                    (~= savestr (~ (beforeSpaces tabstr) (#\. this operator)))
+                    (#foreach i arg (~ post (#? (is postop null) [] ([] postop)))).(#body
+
+                        (= savestr (~ savestr (#\. arg (saveD tab))))
+                    )
+                    (~= savestr (afterSpaces))
+                    #break) "var".(#body
+
+
+                    (#if (== (#\. this type) ".").(#body
+                            (= handled false)) #else.
+                        (#body
+
+                            (~= savestr (#\. this operator))
+                            (#if (!#unary (#\. this arguments empty)).(#body
+                                    (= savestr (~ (#\. this arguments (#[ 0) (saveD (-#unary 1))) " " savestr))))
+
+                            (#if (!is postop null).(#body
+
+                                    (= savestr (~ (#\. postop (saveD tab null (#\. this type))) " " savestr))
+                                ))
+                        ))
+                    #break) #default.(#body
+
+
+                    (#if (== bt (#\. BlockType File)).(#body
+
+                            (#foreach i arg (#\. this arguments)).(#body
+
+                                (~= savestr (#\. arg (saveD tab null (#\. this type))))
+                            )
+                        ) #else.
+                        (#body (= handled false)))
+                    #break))
+
+            (#if (!#unary handled).(#body (#\. this type
+                    ).
+
+                    (#switch "module".(#body
+
+
+                            (~= savestr (~ (beforeSpaces tabstr) "module " (#\. this operator) ";"))
+                            (#foreach i arg (#\. this arguments)).(#body
+
+                                (~= savestr (#\. arg (saveD tab null (#\. this type))))
+                            )
+                            (~= savestr (afterSpaces))
+                            #break) "import".(#body (=
+
+
+                                (impstr#var string) (~ "import " (#\. this arguments (#[ 0) operator)))
+                            (#if (!#unary (#\. arguments (#[ 0) arguments empty)).(#body
+
+                                    (~= impstr ": ")
+                                    (#foreach i arg (#\. arguments (#[ 0) arguments)).(#body
+
+                                        (#if (> i 0).(#body (~= impstr ", ")))
+                                        (~= impstr (#\. arg operator))
+                                        (#if (!is (#\. arg postop) null).(#body
+
+                                                (~= impstr (~ " = " (#\. arg postop operator)))
+                                            ))
+                                    )
+                                ))
+                            (~= impstr ";")
+                            (~= savestr (wrapWithSpaces impstr tabstr))
+                            #break) "enum".(#body
+
+
+                            (~= savestr (~ (beforeSpaces tabstr) "enum " (#\. this operator) " {"))
+                            (#foreach i arg (#\. this arguments)).(#body
+
+                                (~= savestr (~ (#\. arg (saveD (+ tab 1) null (#\. this type))) (#? (< i (- (#\. this arguments length) 1)) ", " "")))
+                            )
+                            (~= savestr (~ tabstr "}" (afterSpaces)))
+                            #break) "init".(#body
+
+
+                            (~= savestr (~ " = " (#\. this operator)))
+
+                            (#foreach i arg (#\. this arguments)).(#body
+
+                                (~= savestr (#\. arg (saveD (-#unary 1) null (#\. this type))))
+                            )
+                            #break) ":".(#body
+
+
+                            (#foreach i arg (#\. this arguments)).(#body
+
+                                (~= savestr (#\. arg (saveD (-#unary 1) null (#\. this type))))
+                            )
+                            (~= savestr (#\. this type))
+                            #break) "*".(#body
+
+
+                            (#foreach i arg (#\. this arguments)).(#body
+
+                                (~= savestr (#\. arg (saveD (-#unary 1) null (#\. this type))))
+                            )
+                            (~= savestr (#\. this type))
+                            #break) "struct".(#body
+
+
+                            (~= savestr (~ (beforeSpaces tabstr) "struct " (#\. this operator) " {"))
+                            (#foreach i arg (#\. this arguments)).(#body
+
+                                (~= savestr (#\. arg (saveD (+ tab 1) null (#\. this type))))
+                            )
+                            (~= savestr (~ (afterSpaces) tabstr "}"))
+                            #break) "class".(#body
+
+
+                            (~= savestr (~ (beforeSpaces tabstr) "class " (#\. this operator)))
+                            (#if (== (#\. arguments (#[ 0) type) "superclass").(#body
+                                    (~= savestr (~ " : " (#\. arguments (#[ 0) (saveD (-#unary 1) null (#\. this type)))))))
+                            (~= savestr " {")
+
+                            (#foreach i arg (#\. this arguments)).(#body
+
+                                (#if (!= (#\. arg type) "superclass").(#body
+                                        (~= savestr (#\. arg (saveD (+ tab 1) null (#\. this type))))))
+                            )
+                            (~= savestr (~ (afterSpaces) tabstr "}"))
+                            #break) "function".(#body
+
+
+                            (~= savestr (~ (beforeSpaces tabstr) (#\. this arguments (#[ 0) (saveD (-#unary 1) null (#\. this type))) " " (#? (#\. this operator empty) "function" (#\. this operator)) "(")) (.
+
+                            a#var b#var c#var).([]#type long)
+                            (#foreach i arg (#\. this arguments)).(#body
+
+                                (#if (!is (#\. arg postop) null).(#body
+
+                                        (#if (< (#\. arg postop index) (-#unary 1)).(#body
+
+                                                (~= a (+ i (#\. arg postop index) 1))
+                                                (~= b i)
+                                                (~= c 0)
+                                            ))
+                                    ))
+                            )
+
+                            (getPost#function ([]#type Expression) (i long)).(#body
+
+                                (e#var ([]#type Expression))
+
+                                (#foreach j f a).(#body
+
+                                    (#if (&& (>= i f) (< i (#\. b (#[ j)))).(#body
+                                            (~= e (#\. this arguments (#[ (#\. b (#[ j))) postop))))
+                                )
+
+                                (#return e)
+                            )
+
+                            (#if (> (#\. this arguments length) 1).(#body
+                                    (~= savestr (#\. this arguments (#[ 1) (saveD (-#unary 1) (getPost 1) (#\. this type))))))
+                            (#if (> (#\. this arguments length) 2).(#body
+
+                                    (#foreach i arg (#\. this arguments (#[ 2 \.\. $))).(#body
+
+                                        (~= savestr (~ ", " (#\. arg (saveD (-#unary 1) (getPost (+ i 2)) (#\. this type)))))
+                                    )
+                                ))
+                            (#if (!is postop null).(#body
+
+                                    (~= savestr ")")
+                                    (~= savestr (#\. postop (saveD tab null (#\. this type))))
+                                )
+                                (>= tab 0).(#body
+
+                                    (~= savestr ");")
+                                ) #else.
+                                (#body
+
+                                    (~= savestr ")")
+                                ))
+                            #break) "body".(#body
+
+
+                            (~= savestr (~ (beforeSpaces tabstr) "{"))
+                            (#foreach i arg (#\. this arguments)).(#body
+
+                                (~= savestr (#\. arg (saveD (+ tab 1) null (#\. this type))))
+                            )
+                            (~= savestr (~ (afterSpaces) tabstr "}"))
+                            #break) (. "return" "break" "continue" "goto").(#body
+
+
+
+
+
+                            (~= savestr (#\. this type))
+                            (#if (!#unary (#\. this arguments empty)).(#body
+
+                                    (~= savestr (~ " " (#\. this arguments (#[ 0) (saveD (-#unary 1) null (#\. this type)))))
+                                    (#foreach i arg (#\. this arguments (#[ 1 \.\. $))).(#body
+
+                                        (~= savestr (~ ", " (#\. arg (saveD (-#unary 1) null (#\. this type)))))
+                                    )
+                                ))
+
+                            (#if (>= tab 0).(#body
+
+                                    (= savestr (wrapWithSpaces (~ savestr ";") tabstr))
+                                ))
+                            #break) "for".(#body
+
+
+                            (~= savestr (~ (beforeSpaces tabstr) (#\. this type)))
+                            (~= savestr (~ " (" (#\. this arguments (#[ 0) (saveD (-#unary 1) null (#\. this type)))))
+                            (~= savestr (~ "; " (#\. this arguments (#[ 1) (saveD (-#unary 1) null (#\. this type)))))
+                            (~= savestr (~ "; " (#\. this arguments (#[ 2) (saveD (-#unary 1) null (#\. this type))) ") "))
+                            (#if (!is postop null).(#body
+
+                                    (~= savestr (#\. postop (saveD tab)))
+                                ))
+                            (~= savestr (afterSpaces))
+                            #break) "while".(#body
+
+
+                            (~= savestr (~ (beforeSpaces tabstr) (#\. this type)))
+                            (~= savestr (~ " (" (#\. this arguments (#[ 0) (saveD (-#unary 1) null (#\. this type))) ") "))
+                            (#if (!is postop null).(#body
+
+                                    (~= savestr (#\. postop (saveD tab)))
+                                ))
+                            (~= savestr (afterSpaces))
+                            #break) "do".(#body
+
+
+                            (~= savestr (~ (beforeSpaces tabstr) (#\. this type)))
+                            (#if (!is postop null).(#body
+
+                                    (~= savestr (#\. postop (saveD tab)))
+                                ))
+                            (~= savestr (~ "while (" (#\. this arguments (#[ 0) (saveD (-#unary 1) null (#\. this type))) ");" (afterSpaces)))
+                            #break) "foreach".(#body
+
+
+                            (~= savestr (~ (beforeSpaces tabstr) (#\. this type) " ("))
+                            (#if (!#unary (#\. this arguments (#[ 0) operator empty)).(#body
+                                    (~= savestr (~ (#\. this arguments (#[ 0) (saveD (-#unary 1) null (#\. this type))) ", "))))
+                            (~= savestr (~ (#\. this arguments (#[ 1) (saveD (-#unary 1) null (#\. this type))) "; "))
+                            (~= savestr (~ (#\. this arguments (#[ 2) (saveD (-#unary 1) null (#\. this type))) ")"))
+                            (#if (!is postop null).(#body
+
+                                    (~= savestr (#\. postop (saveD tab null (#\. this type))))
+                                ))
+                            (~= savestr (afterSpaces))
+                            #break) "if".(#body
+
+
+                            (~= savestr (~ (beforeSpaces tabstr) (#\. arguments (#[ 0) (beforeSpaces tabstr)) "if (" (#? (!#unary (#\. operator empty)) (~ operator " == ") "") (#\. this arguments (#[ 0) (saveD tab null (#\. this type))) (#\. arguments (#[ 0) (afterSpaces)))) (=
+                                (or_need#var bool) (is (#\. arguments (#[ 0) postop) null))
+                            (#foreach i arg (#\. this arguments (#[ 1 \.\. $))).(#body
+
+                                (#if (== (#\. arg type) "else").(#body
+
+                                        (~= savestr (~ (#\. arg (beforeSpaces tabstr)) "else " (#\. arg (saveD tab null "else")) (#\. arg (afterSpaces))))
+                                        (= or_need false)
+                                    )
+                                    or_need.(#body
+
+                                        (~= savestr (~ (#\. arg (beforeSpaces tabstr)) " || " (#? (!#unary (#\. operator empty)) (~ operator " == ") "") (#\. arg (saveD tab null (#\. this type))) (#\. arg (afterSpaces))))
+                                        (= or_need (is (#\. arg postop) null))
+                                    ) #else.
+                                    (#body
+
+                                        (~= savestr (~ (#\. arg (beforeSpaces tabstr)) "else if (" (#? (!#unary (#\. operator empty)) (~ operator " == ") "") (#\. arg (saveD tab null (#\. this type))) (#\. arg (afterSpaces))))
+                                        (= or_need (is (#\. arg postop) null))
+                                    ))
+                            )
+                            (~= savestr (afterSpaces))
+                            #break) "switch".(#body
+
+
+                            (~= savestr (~ (beforeSpaces tabstr) "switch (" (#? (!#unary (#\. operator empty)) operator inner) ")"))
+                            (~= savestr " {")
+                            (#foreach i arg (#\. this arguments)).(#body
+
+                                (#if (== (#\. arg type) "default").(#body
+                                        (~= savestr (~ (#\. arg (beforeSpaces tabstr)) "    default" (#\. arg (saveD (+ tab 1) null "case")) (#\. arg (afterSpaces))))) #else.
+                                    (#body
+                                        (~= savestr (~ (#\. arg (beforeSpaces tabstr)) "    case " (#\. arg (saveD (+ tab 1) null "case")) (#\. arg (afterSpaces))))))
+                            )
+                            (~= savestr (~ (afterSpaces) tabstr "}"))
+                            #break) "var".(#body
+
+
+                            (#foreach i arg (#\. this arguments)).(#body
+
+                                (~= savestr (~ (#\. arg (saveD (-#unary 1))) " "))
+                            ) (=
+
+                                (poststr#var string) "")
+                            (#if (&& (!is parent null) (>= index 0) (> (#\. parent arguments length) index)).(#body
+
+                                    (#foreach i arg (#\. parent arguments (#[ index \.\. $))).(#body
+
+                                        (#if (!is (#\. arg postop) null).(#body
+
+                                                //writefln("%s -- %s (%s == %s)", this, arg2.app_args, arg.index - arg2.app_args + 1, this.index);
+                                                (#if (== (+ (#\. arg index) (#\. arg postop index) 1) (#\. this index)).(#body
+
+                                                        (#if (== (#\. arg postop operator) "[]").(#body
+
+                                                                (= savestr (~ savestr (#\. arg postop (saveD tab))))
+
+                                                                (#foreach i3 arg3 (#\. parent arguments (#[ (+ index 1) \.\. (+ (#\. arg index) 1)))).(#body
+
+                                                                    (~= poststr (~ ", " (#\. arg3 (saveD (-#unary 1) null "ctype"))))
+                                                                )
+                                                            )
+                                                            (== (#\. arg postop type) "init").(#body
+
+                                                            ) #else.
+                                                            (#body
+
+                                                                (= savestr (~ (#\. arg postop (saveD (-#unary 1))) " " savestr))
+
+                                                                (#foreach i3 arg3 (#\. parent arguments (#[ (+ index 1) \.\. (+ (#\. arg index) 1)))).(#body
+
+                                                                    (~= poststr (~ ", " (#\. arg3 (saveD (-#unary 1) null "ctype"))))
+                                                                )
+                                                            ))
+                                                    )
+                                                    (&& (!= ptype "ctype") (<= (#\. this index) (#\. arg index)) (> (#\. this index) (+ (#\. arg index) (#\. arg postop index) 1))).(#body
+                                                        (#return "")))
+                                            ))
+                                    )
+                                )
+
+                                (!is postop null).(#body
+
+                                    (#if (== (#\. postop index) (-#unary 1)).(#body
+
+                                            (#if (== (#\. postop operator) "[]").(#body
+
+                                                    (= savestr (~ savestr (#\. postop (saveD tab))))
+                                                )
+                                                (== (#\. postop type) "init").(#body
+
+                                                ) #else.
+                                                (#body
+
+                                                    (= savestr (~ (#\. postop (saveD (-#unary 1))) " " savestr))
+                                                ))
+                                        ))
+                                ))
+
+                            (~= savestr (~ " " (#\. this operator)))
+
+                            (#foreach i arg (~ post (#? (is postop null) [] ([] postop)))).(#body
+
+                                (#if (== (#\. arg index) (-#unary 1)).(#body
+
+                                        (#if (== (#\. arg type) "init").(#body
+
+                                                (= savestr (~ savestr (#\. arg (saveD tab))))
+                                            ))
+                                    ))
+                            )
+
+                            (~= savestr poststr)
+
+                            (#if (>= tab 0).(#body
+
+                                    (= savestr (wrapWithSpaces (~ savestr ";") tabstr))
+                                ))
+                            #break) "default".(#body
+
+
+                            (~= savestr ":")
+                            (#if (!is postop null).(#body
+
+                                    (~= savestr (#\. postop (saveD tab null "op")))
+                                ))
+                            #break) "\.".(#body
+
+
+                            (#if (!#unary (#\. arguments empty)).(#body
+
+                                    (~= savestr (#\. this arguments (#[ 0) (saveD (-#unary 1) null "op")))
+                                    (#foreach i arg (#\. this arguments (#[ 1 \.\. $))).(#body (=
+
+                                            (next#var auto) (#\. arg (saveD (-#unary 1) null "op")))
+                                        (#if (== (#\. next (#[ 0)) '[').(#body
+                                                (~= savestr next))
+                                            (== next "init").(#body
+                                                (= savestr (~ "(" savestr ")" (#\. this type) next))) #else.
+                                            (#body
+                                                (~= savestr (~ (#\. this type) next))))
+                                    )
+                                ))
+
+                            (#if (&& (== ptype "if") (!is postop null)).(#body
+
+                                    (~= savestr ") ")
+                                )
+                                (== ptype "case").(#body
+
+                                    (~= savestr ":")
+                                ))
+
+                            (#if (!is postop null).(#body
+
+                                    (#if (== (#\. postop type) "switch").(#body
+                                            (= savestr (#\. postop (saveD tab null "op" savestr)))) #else.
+                                        (#body
+                                            (~= savestr (#\. postop (saveD tab null "op")))))
+                                ))
+
+                            (#if (&& (!= ptype "if") (!= ptype "case") (>= tab 0) (is postop null)).(#body
+
+                                    (= savestr (wrapWithSpaces (~ savestr ";") tabstr))
+                                ))
+                            #break) "[".(#body
+
+
+                            (~= savestr "[")
+                            (#if (!#unary (#\. arguments empty)).(#body
+
+                                    (~= savestr (#\. this arguments (#[ 0) (saveD (-#unary 1) null "op"))) (=
+                                        (sep#var string) ", ")
+                                    (#foreach i arg (#\. this arguments (#[ 1 \.\. $))).(#body
+
+                                        (#if (== (#\. arg operator) "..").(#body (= sep "")))
+                                        (~= savestr (~ sep (#\. arg (saveD (-#unary 1) null "op"))))
+                                    )
+                                ))
+                            (~= savestr "]")
+
+                            (#if (&& (== ptype "if") (!is postop null)).(#body
+
+                                    (~= savestr ") ")
+                                ))
+
+                            (#if (!is postop null).(#body
+
+                                    (~= savestr (#\. postop (saveD tab null "op")))
+                                ))
+
+                            (#if (&& (!= ptype "if") (>= tab 0) (is postop null)).(#body
+
+                                    (= savestr (wrapWithSpaces (~ savestr ";") tabstr))
+                                ))
+                            #break) "\\"".(#body
+
+
+                            (~= savestr (~ "\"" (#\. this arguments (#[ 0) (saveD (-#unary 1) null "op")))) (=
+                                (sep#var string) " ")
+                            (#foreach i arg (#\. this arguments (#[ 1 \.\. $))).(#body
+
+                                (~= savestr (~ sep (#\. arg (saveD (-#unary 1) null "op"))))
+                            )
+                            (~= savestr "\"")
+
+                            (#if (&& (== ptype "if") (!is postop null)).(#body
+
+                                    (~= savestr ") ")
+                                ))
+
+                            (#if (!is postop null).(#body
+
+                                    (~= savestr (#\. postop (saveD tab null "op")))
+                                ))
+
+                            (#if (&& (!= ptype "if") (>= tab 0) (is postop null)).(#body
+
+                                    (= savestr (wrapWithSpaces (~ savestr ";") tabstr))
+                                ))
+                            #break) "new".(#body
+
+
+                            (~= savestr (#\. this type))
+                            (#if (!#unary (#\. this arguments empty)).(#body
+
+                                    (~= savestr (~ " " (#\. this arguments (#[ 0) (saveD (-#unary 1) null (#\. this type)))))
+                                    (#foreach i arg (#\. this arguments (#[ 1 \.\. $))).(#body
+
+                                        (~= savestr (~ ", " (#\. arg (saveD (-#unary 1) null (#\. this type)))))
+                                    )
+                                ))
+
+                            (#if (!is postop null).(#body
+
+                                    (~= savestr (~ (#? (!= (#\. postop operator) "[]") "." "") (#\. postop (saveD (-#unary 1) null (#\. this type)))))
+                                ))
+
+                            (#if (>= tab 0).(#body
+
+                                    (= savestr (wrapWithSpaces (~ savestr ";") tabstr))
+                                ))
+                            #break) "cast".(#body
+
+
+                            (~= savestr (~ "(" (#\. this type)))
+                            (#if (!#unary (#\. this arguments empty)).(#body
+
+                                    (~= savestr (~ "(" (#\. this arguments (#[ 0) (saveD (-#unary 1) null (#\. this type)))))
+                                    (#foreach i arg (#\. this arguments (#[ 1 \.\. $))).(#body
+
+                                        (~= savestr (~ ") (" (#\. arg (saveD (-#unary 1) null (#\. this type)))))
+                                    )
+                                    (~= savestr "))")
+                                ))
+
+                            (#if (&& (== ptype "if") (!is postop null)).(#body
+
+                                    (~= savestr ") ")
+                                )
+                                (== ptype "case").(#body
+
+                                    (~= savestr ":")
+                                ))
+
+                            (body_#var bool)
+                            (#if (!is postop null).(#body
+
+                                    (#if (== (#\. postop type) "body").(#body
+
+                                            (~= savestr (#\. postop (saveD tab null (#\. this type))))
+                                            (= body_ true)
+                                        )
+                                        (== (#\. postop type) "switch").(#body
+
+                                            (= savestr (#\. postop (saveD tab null "postop" savestr)))
+                                            (= body_ true)
+                                        ) #else.
+                                        (#body
+                                            (~= savestr (~ (#? (!= (#\. postop operator) "[]") "." "") (#\. postop (saveD (-#unary 1) null (#\. this type)))))))
+                                ))
+
+                            (#if (&& (!= ptype "if") (!= ptype "case") (>= tab 0) (!#unary body_)).(#body
+
+                                    (= savestr (wrapWithSpaces (~ savestr ";") tabstr))
+                                ))
+                            #break) "noop".(#body
+
+
+                            (~= savestr "{}")
+                            (#if (>= tab 0).(#body
+
+                                    (= savestr (wrapWithSpaces savestr tabstr))
+                                ))
+                            #break) "?".(#body
+
+
+                            (#if (>= (#\. arguments length) 3).(#body
+
+                                    (~= savestr (~ "(" (#\. arguments (#[ 0) (saveD (-#unary 1) null "op")) " ? " (#\. arguments (#[ 1) (saveD (-#unary 1) null "op")) " : " (#\. arguments (#[ 2) (saveD (-#unary 1) null "op")) ")"))
+                                ))
+                            #break) #default.(#body (#\. this operator
+                            ).
+
+
+                            (#switch (. "+" "-" "*" "/" "^" "^^" "~" "%" "&" "&&" "|" "||" "=" "+=" "-=" "*=" "/=" "~=" "==" "!=" "<" ">" "<=" ">=" "is" "!is" "in" "!in").(#body
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                    (#if (!#unary (#\. arguments empty)).(#body
+
+                                            (#if (== type "unary").(#body
+                                                    (~= savestr (#\. this operator))))
+                                            (~= savestr (#\. this arguments (#[ 0) (saveD (-#unary 1) null (#? (&& (== (#\. this operator) "=") (!= (#\. arguments (#[ 0) type) "unary")) "var" "op"))))
+                                            (#foreach i arg (#\. this arguments (#[ 1 \.\. $))).(#body
+
+                                                (~= savestr (~ " " (#\. this operator) " " (#\. arg (saveD (-#unary 1) null "op"))))
+                                            )
+                                            (#if (== type "type").(#body
+                                                    (~= savestr (#\. this operator))))
+                                        ))
+
+                                    (#if (&& (!#unary (&& (>= tab 0) (is postop null))) (== ptype "op")).(#body
+
+                                            (= savestr (~ "(" savestr ")"))
+                                        ))
+
+                                    (#if (&& (== ptype "if") (!is postop null)).(#body
+
+                                            (~= savestr ") ")
+                                        ))
+
+                                    (#if (!is postop null).(#body
+
+                                            (#if (== (#\. postop type) "switch").(#body
+                                                    (= savestr (#\. postop (saveD tab null "postop" savestr)))) #else.
+                                                (#body
+                                                    (~= savestr (#\. postop (saveD tab null "postop")))))
+                                        ))
+
+                                    (#if (&& (!= ptype "if") (>= tab 0) (is postop null)).(#body
+
+                                            (= savestr (wrapWithSpaces (~ savestr ";") tabstr))
+                                        ))
+                                    #break) (. "++" "--").(#body
+
+
+
+                                    (#if (== type "post").(#body
+
+                                            (= savestr (~ (#\. arguments (#[ 0) (saveD (-#unary 1) null "op")) operator))
+                                        ) #else.
+                                        (#body
+
+                                            (= savestr (~ operator (#\. arguments (#[ 0) (saveD (-#unary 1) null "op"))))
+                                        ))
+
+                                    (#if (&& (!= ptype "if") (>= tab 0) (is postop null)).(#body
+
+                                            (= savestr (wrapWithSpaces (~ savestr ";") tabstr))
+                                        ))
+                                    #break) "!".(#body
+
+
+                                    (~= savestr (#\. this operator))
+                                    (#if (!#unary (#\. arguments empty)).(#body
+                                            (~= savestr (~ " " (#\. this arguments (#[ 0) (saveD (-#unary 1) null "op"))))))
+
+                                    (#if (&& (!#unary (&& (>= tab 0) (is postop null))) (== ptype "op")).(#body
+
+                                            (= savestr (~ "(" savestr ")"))
+                                        ))
+
+                                    (#if (&& (== ptype "if") (!is postop null)).(#body
+
+                                            (~= savestr ") ")
+                                        ))
+
+                                    (#if (!is postop null).(#body
+
+                                            (#if (== (#\. postop type) "switch").(#body
+                                                    (= savestr (#\. postop (saveD tab null "postop" savestr)))) #else.
+                                                (#body
+                                                    (~= savestr (#\. postop (saveD tab null "postop")))))
+                                        ))
+
+                                    (#if (&& (!= ptype "if") (>= tab 0) (is postop null)).(#body
+
+                                            (= savestr (wrapWithSpaces (~ savestr ";") tabstr))
+                                        ))
+                                    #break) "[]".(#body
+
+
+
+                                    (#if (!#unary (#\. this arguments empty)).(#body
+
+                                            (~= savestr (#\. this arguments (#[ 0) (saveD (-#unary 1) null (#\. this type))))
+                                            (#if (== type "type").(#body (=
+
+                                                        (of#var string) "")
+                                                    (#if (>= (#\. this arguments length) 2).(#body
+                                                            (= of (#\. this arguments (#[ 1) (saveD (-#unary 1) null (#\. this type))))))
+                                                    (~= savestr (~ "[" of "]"))
+                                                ) #else.
+                                                (#body (=
+
+                                                        (sep#var string) ", ")
+                                                    (#foreach i arg (#\. this arguments (#[ 1 \.\. $))).(#body
+
+                                                        (#if (== (#\. arg operator) "..").(#body (= sep "")))
+                                                        (~= savestr (~ sep (#\. arg (saveD (-#unary 1) null (#\. this type)))))
+                                                    )
+                                                ))
+                                        ))
+
+                                    (#if (!= type "type").(#body
+                                            (= savestr (~ "[" savestr "]"))))
+
+                                    (#if (!is postop null).(#body
+
+                                            (#if (== (#\. postop type) "switch").(#body
+                                                    (= savestr (#\. postop (saveD tab null "postop" savestr))))
+                                                (== type "type").(#body
+                                                    (= savestr (~ (#\. postop (saveD tab null "op")) " " savestr))) #else.
+                                                (#body
+                                                    (~= savestr (#\. postop (saveD tab null "postop")))))
+                                        ))
+
+                                    #break) (. "false" "true").(#body
+
+
+
+                                    (~= savestr (#\. this operator))
+
+                                    (#if (&& (== ptype "if") (!is postop null)).(#body
+
+                                            (~= savestr ") ")
+                                        ))
+
+                                    (#if (!is postop null).(#body
+
+                                            (#if (== (#\. postop type) "switch").(#body
+                                                    (= savestr (#\. postop (saveD tab null "postop" savestr)))) #else.
+                                                (#body
+                                                    (~= savestr (#\. postop (saveD tab null "postop")))))
+                                        ))
+                                    #break) #default.(#body
+
+
+                                    (#if (== ptype "postop").(#body (~= savestr ".")))
+
+                                    (~= savestr (#\. this operator))
+                                    (#if (!#unary (#\. this arguments empty)).(#body (=
+
+                                                (first#var bool) true) (=
+                                                (f#var auto) (#\. this arguments (#[ 0) (saveD (-#unary 1) null (#\. this type))))
+
+                                            (#if (== f "!").(#body
+                                                    (~= savestr "!(")) #else.
+                                                (#body
+
+                                                    (~= savestr (~ "(" f))
+                                                    (= first false)
+                                                ))
+
+                                            (#foreach i arg (#\. this arguments (#[ 1 \.\. $))).(#body
+
+                                                (#if (== (#\. arg type) "!").(#body
+
+                                                        (#if (< (+ i 2) (#\. arguments length)).(#body
+
+                                                                (= first false)
+                                                                (~= savestr ")(")
+                                                            ))
+                                                        #continue
+                                                    )
+                                                    first.(#body
+                                                        (= first false)) #else.
+                                                    (#body
+                                                        (~= savestr ", ")))
+                                                (~= savestr (#\. arg (saveD (-#unary 1) null (#\. this type))))
+                                            )
+                                            (~= savestr ")")
+                                        )
+                                        (!is arguments null).(#body
+
+                                            (~= savestr "()")
+                                        ))
+
+                                    (#if (&& (== ptype "if") (!is postop null)).(#body
+
+                                            (~= savestr ") ")
+                                        )
+                                        (== ptype "case").(#body
+
+                                            (~= savestr ":")
+                                        ))
+
+                                    (body_#var bool)
+                                    (#if (!is postop null).(#body
+
+                                            (#if (== (#\. postop type) "body").(#body
+
+                                                    (~= savestr (#\. postop (saveD tab null (#\. this type))))
+                                                    (= body_ true)
+                                                )
+                                                (== (#\. postop type) "switch").(#body
+
+                                                    (= savestr (#\. postop (saveD tab null "postop" savestr)))
+                                                    (= body_ true)
+                                                )
+                                                (== ptype "foreach").(#body
+
+                                                    (= savestr (~ (#\. postop (saveD (-#unary 1) null (#\. this type))) " " savestr))
+                                                ) #else.
+                                                (#body
+                                                    (~= savestr (~ (#? (!= (#\. postop operator) "[]") "." "") (#\. postop (saveD (-#unary 1) null (#\. this type)))))))
+                                        ))
+
+                                    (#if (&& (!= ptype "if") (!= ptype "case") (>= tab 0) (!#unary body_)).(#body
+
+                                            (= savestr (wrapWithSpaces (~ savestr ";") tabstr))
+                                        ))
+                                    #break))
+                            #break))
+                ))
+
+            (#if (&& (!= type "module") (!#unary (#\. this label empty))).(#body
+                    (= savestr (~ (#\. this label) ": " savestr))))
+
+            (#return savestr)
+        )
+
+        (fixIndent#function void).
+        (#body
+            (#if (== type "body").(#body
+
+                    (= nl1 1)
+                    (= nl2 1)
+                )
+                (&& (!is parent null) (|| (== (#\. parent type) "body") (== (#\. parent type) "module") (== (#\. parent type) "class") (== (#\. parent type) "struct") (== (#\. parent type) "if") (== (#\. parent type) "switch") (== (#\. parent type) "enum") (== (#\. parent bt) (#\. BlockType File)))).(#body
+
+                    (#if (== type "module").(#body
+
+                            (= nl1 0)
+                            (= nl2 0)
+                        )
+                        (|| (== type "class") (== type "struct")).(#body
+
+                            (= nl1 2)
+                            (= nl2 1)
+                        )
+                        (== type "function").(#body
+
+                            (= nl1 2)
+                            (= nl2 0)
+                        )
+                        (== type "switch").(#body
+
+                            (= nl1 1)
+                            (= nl2 1)
+                        ) #else.
+                        (#body
+
+                            (= nl1 1)
+                            (= nl2 0)
+                        ))
+                ) #else.
+                (#body
+
+                    (= nl1 0)
+                    (= nl2 0)
+                ))
+
+            (#foreach . arg arguments).(#body
+
+                (#\. arg (fixIndent))
+            )
+
+            (#if (!is postop null).(#body
+
+                    (#\. postop (fixIndent))
+                ))
+        )
+
+        (findBlocks#function void (code Expression ref) (lexemTypes Expression ref) (lexer Expression ref)).
+        (#body
+            (#if (== type "code").(#body (= code this))
+                (&& (== type "enum") (== operator "LexemType")).(#body (= lexemTypes this))
+                (&& (== type "struct") (== operator "Lexer")).(#body (= lexer this)))
+
+            (#if (&& (!is code null) (!is lexemTypes null) (!is lexer null)).(#body #return))
+
+            (#foreach . arg arguments).(#body
+
+                (#\. arg (findBlocks code lexemTypes lexer))
+            )
+
+            (#if (!is postop null).(#body
+
+                    (#\. postop (findBlocks code lexemTypes lexer))
+                ))
+        )
+
+        (replace#function void (ne Expression)).
+        (#body
+            (= (#\. ne parent) (#\. this parent))
+            (= (#\. ne index) (#\. this index))
+            (= (#\. ne x) (#\. this x))
+            (= (#\. ne y) (#\. this y))
+            (= (#\. ne r1) (#\. this r1))
+            (= (#\. ne r2) (#\. this r2))
+            (= (#\. ne center) (#\. this center))
+            (#if (!is (#\. this parent) null).(#body
+
+                    (#if (>= index 0).(#body
+
+                            (= (#\. this parent arguments (#[ (#\. this index))) ne)
+                        ) #else.
+                        (#body
+
+                            (= (#\. this parent postop) ne)
+                        ))
+                ))
+        )
+
+        (addAfter#function void (ne Expression)).
+        (#body
+            (= (#\. ne parent) (#\. this parent))
+            (= (#\. ne index) (+ (#\. this index) 1))
+            (= (#\. ne x) (#\. this x))
+            (= (#\. ne y) (#\. this y))
+            (= (#\. ne r1) (#\. this r1))
+            (= (#\. ne r2) (#\. this r2))
+            (= (#\. ne center) (#\. this center))
+            (#foreach . arg (#\. this parent arguments (#[ (+ (#\. this index) 1) \.\. $))).(#body
+
+                (++#post (#\. arg index))
+            )
+            (= (#\. this parent arguments) (~ (#\. this parent arguments (#[ 0 \.\. (+ (#\. this index) 1))) ne (#\. this parent arguments (#[ (+ (#\. this index) 1) \.\. $))))
+        )
+
+        (toLexer#function void (code Expression) (main bool)).
+        (#body
+            (assert (!is code null))
+            (#if (== operator "save").(#body (=
+
+                        (ne#var Expression) (#new (Expression (~ "(=" (#? (!#unary (#\. label empty)) (~ "@" label) "") " back2 this)") true)))
+                    (#\. code (addChild ne))
+                )
+                (== operator "back").(#body (=
+
+                        (ne#var Expression) (#new (Expression (~ "(=" (#? (!#unary (#\. label empty)) (~ "@" label) "") " this back2)") true)))
+                    (#\. code (addChild ne))
+                )
+                (== type "switch").(#body (=
+
+                        (ne#var Expression) (#new (Expression (~ "(=" (#? (!#unary (#\. label empty)) (~ "@" label) "") " back this)") true)))
+                    (#\. code (addChild ne))
+
+                    (= ne (#new (Expression "(nextChr)" true)))
+                    (#\. code (addChild ne))
+
+                    (= ne (#new (Expression "(#if)" true)))
+                    (#\. code (addChild ne))
+
+                    (= code ne)
+                    (assert (!is code null))
+                )
+                (== (#\. parent type) "switch").(#body
+
+                    (ne#var Expression)
+                    (#if (#\. operator (startsWith "is")).(#body
+
+                            (= ne (#new (Expression (~ "(" operator " chr).(#body)") true)))
+                        )
+                        (&& (== operator "!") (#\. arguments (#[ 0) operator (startsWith "is"))).(#body
+
+                            (= ne (#new (Expression (~ "(! (#. chr " (#\. arguments (#[ 0) operator) ")).(#body)") true)))
+                        )
+                        (|| (&& (> (#\. operator length) 2) (== (#\. operator (#[ 0)) '\\'') (== (#\. operator (#[ (- $ 1))) '\\'')) (== operator "EOF")).(#body
+
+                            (= ne (#new (Expression (~ "(== chr " operator ").(#body)") true)))
+                        )
+                        (&& (> (#\. operator length) 2) (== (#\. operator (#[ 0)) '"') (== (#\. operator (#[ (- $ 1))) '"')).(#body
+
+                            (= ne (#new (Expression (~ "(! (#. " operator " (find chr) empty)).(#body)") true)))
+                        )
+                        (== type "\"").(#body
+
+                            (= ne (#new (Expression "(! (#. replace_this (find chr) empty)).(#body)" true))) (=
+                                (dc#var auto) (#\. this deepcopy))
+                            (#\. ne arguments (#[ 0) arguments (#[ 0) (replace dc))
+                            (= (#\. dc postop) null)
+                        )
+                        (== type "default").(#body
+
+                            (= ne (#new (Expression "(true).(#body (= this back))" true)))
+                        ) #else.
+                        (#body
+
+                            (writefln "%s#%s" operator type)
+                            (assert 0)
+                        ))
+
+                    (#if (&& (is postop null) (|| (#\. code arguments empty) (!= (#\. code arguments (#[ (- $ 1)) operator) "||") (!#unary (#\. code arguments (#[ (- $ 1)) postop arguments empty)))).(#body (=
+
+                                (ne2#var Expression) (#new (Expression "(||).(#body)" true)))
+
+                            (= (#\. ne postop) null)
+                            (#\. ne2 (addChild ne))
+                            (#\. code (addChild ne2))
+                        )
+                        (&& (!#unary (#\. code arguments empty)) (== (#\. code arguments (#[ (- $ 1)) operator) "||") (#\. code arguments (#[ (- $ 1)) postop arguments empty)).(#body (=
+
+                                (co#var auto) (#\. code arguments (#[ (- $ 1))))
+                            (= (#\. ne postop) null)
+                            (#\. co (addChild ne))
+                            (#if (!is postop null).(#body
+
+                                    (= code (#\. co postop))
+                                    (assert (!is code null))
+                                ))
+                        ) #else.
+                        (#body
+
+                            (#\. code (addChild ne))
+                            (= code (#\. ne postop))
+                            (assert (!is code null))
+                        ))
+                )
+                (== type "while").(#body
+
+                    (ne#var Expression) (=
+
+                        (back#var Expression) (#new (Expression "(= this back)" true)))
+
+                    (#if (<= (#\. arguments length) 1).(#body
+
+                            (#if (== (#\. arguments (#[ 0) operator) "!").(#body
+
+                                    (= ne (#new (Expression (~ "(#do" (#? (!#unary (#\. label empty)) (~ "@" label) "") " !).(#body (= back this) nextChr)") true)))
+                                    (#\. code (addChild ne))
+                                    (#\. code (addChild back))
+
+                                    (= code (#\. ne arguments (#[ 0)))
+                                ) #else.
+                                (#body
+
+                                    (= ne (#new (Expression "(#do).(#body (= back this) nextChr)" true)))
+                                    (#\. code (addChild ne))
+                                    (#\. code (addChild back))
+
+                                    (= code ne)
+                                ))
+                        ) #else.
+                        (#body
+
+                            (= ne (#new (Expression "(#do ||).(#body (= back this) nextChr)" true)))
+                            (#\. code (addChild ne))
+                            (#\. code (addChild back))
+
+                            (= code (#\. ne arguments (#[ 0)))
+                        ))
+
+                )
+                (|| (&& (== (#\. parent type) "while") (!= operator "!")) (&& (|| (== (#\. parent operator) "||") (== (#\. parent operator) "!")) (== (#\. parent parent type) "while"))).(#body
+
+                    (ne#var Expression)
+                    (#if (#\. operator (startsWith "is")).(#body
+
+                            (= ne (#new (Expression (~ "(" operator " chr)") true)))
+                        )
+                        (|| (&& (> (#\. operator length) 2) (== (#\. operator (#[ 0)) '\\'') (== (#\. operator (#[ (- $ 1))) '\\'')) (== operator "EOF")).(#body
+
+                            (= ne (#new (Expression (~ "(== chr " operator ")") true)))
+                        )
+                        (&& (> (#\. operator length) 2) (== (#\. operator (#[ 0)) '"') (== (#\. operator (#[ (- $ 1))) '"')).(#body
+
+                            (= ne (#new (Expression (~ "(! (#. " operator " (find chr) empty))") true)))
+                        )
+                        (== type "\"").(#body
+
+                            (= ne (#new (Expression "(! (#. replace_this (find chr) empty))" true))) (=
+                                (dc#var auto) (#\. this deepcopy))
+                            (#\. ne arguments (#[ 0) arguments (#[ 0) (replace dc))
+                            (= (#\. dc postop) null)
+                        ) #else.
+                        (#body
+
+                            (writefln "%s#%s" operator type)
+                            (assert 0)
+                        ))
+
+                    (#\. code (addChild ne))
+                )
+                (== (#\. parent type) "goto").(#body (=
+
+                        (ne#var Expression) (#new (Expression (~ "(#goto " operator ")") true)))
+                    (#\. code (addChild ne))
+                )
+                (== (#\. parent type) "return").(#body
+
+                    (ne#var Expression)
+
+                    (#if main.(#body
+
+                            (= ne (#new (Expression (~ "(= type (#. LexemType " operator "))") true)))
+                            (#\. code (addChild ne))
+                        ))
+
+                    (= ne (#new (Expression "(#return)" true)))
+                    (#\. code (addChild ne))
+                )
+                (|| (== operator "--") (== operator "++")).(#body
+
+                    (#\. code (addChild this))
+                    #return
+                ))
+
+            (#foreach . arg arguments).(#body
+
+                (#\. arg (toLexer code main))
+            )
+
+            (#if (!is postop null).(#body
+
+                    (#\. postop (toLexer code main))
+                ))
+        )
+
+        (toLexer#function void (code Expression) (lexer Expression) (lTypes ([]#type bool string) ref)).
+        (#body
+            (#if (&& (== type "return") (> (#\. arguments length) 0)).(#body
+
+                    (= (#\. lTypes (#[ (#\. arguments (#[ 0) operator))) true)
+                ))
+
+            (#if (== type "function").(#body
+
+                    (#if (== operator "Start").(#body (=
+
+                                (main#var Expression) (#new (Expression)))
+                            (#if (!is postop null).(#body
+
+                                    (#\. postop (toLexer main true))
+                                ))
+
+                            (#if (!#unary (#\. main arguments empty)).(#body
+
+                                    (#\. code (replace (#\. main arguments (#[ 0))))
+                                    (#foreach . arg (#\. main arguments (#[ 1 \.\. $))).(#body
+
+                                        (#\. code (addAfter arg))
+                                        (= code arg)
+                                    )
+                                ))
+                        ) #else.
+                        (#body (=
+
+                                (func#var Expression) (#new (Expression (~ "(" operator "#function void).(#body (back#var Lexer) (back2#var Lexer))") true)))
+                            (#if (!is postop null).(#body
+
+                                    (#\. postop (toLexer (#\. func postop) false))
+                                ))
+
+                            (#\. lexer (addChild func))
+                        ))
+                ))
+
+            (#foreach . arg arguments).(#body
+
+                (#\. arg (toLexer code lexer lTypes))
+            )
+
+            (#if (!is postop null).(#body
+
+                    (#\. postop (toLexer code lexer lTypes))
+                ))
+        )
+
+        (toLexer#function Expression).
+        (#body (.
+            code#var lexemTypes#var lexer#var).(Expression) (=
+                (text#var string) (readText "lexer_templ.np")) (=
+                (ret#var Expression) (#new (Expression text)))
+            (#\. ret (findBlocks code lexemTypes lexer))
+            (assert (!is lexemTypes null))
+            (assert (!is code null))
+
+            (= (#\. ret operator) "lexer_synth.np")
+            (= (#\. ret arguments (#[ 0) operator) "lexer_synth") (=
+
+                (lTypes#var ([]#type bool string)) (#\. (#\. bool (#[ string)) init))
+
+            (toLexer code lexer lTypes)
+
+            (#foreach ltype _ lTypes).(#body (=
+
+                    (ne#var auto) (#new Expression))
+                (= (#\. ne operator) ltype)
+                (#\. lexemTypes (addChild ne))
+            )
+
+            (#return ret)
+        )
+
+        (readFile#function ([]#type char).(static) (filename string)).
+        (#body (=
+                (file#var auto) (File filename))
+            (mod#var ([]#type char))
+            (#foreach . line (#\. file (byLine))).(#body
+
+                (= line (strip line))
+                (#if (&& (!#unary (#\. mod empty)) (!= (#\. mod (#[ (- $ 1))) '\ ')).(#body
+
+                        (~= mod '\ ')
+                    ))
+
+                (#if (== line ".").(#body
+
+                        (= line (#\. ". " dup))
+                    ))
+
+                (~= mod line)
+            )
+
+            (#return mod)
+        )
+
+        (deepcopy#function Expression).
+        (#body (=
+                (copy#var Expression) (#new (Expression)))
+            (= (#\. copy operator) operator)
+            (= (#\. copy type) type)
+            (= (#\. copy label) label)
+            (= (#\. copy parent) parent)
+            (= (#\. copy index) index)
+            (= (#\. copy center) center)
+            (= (#\. copy hidden) hidden)
+            (= (#\. copy level) level)
+            (= (#\. copy levels) levels)
+            (= (#\. copy bt) bt)
+
+            (= (#\. copy x) x)
+            (= (#\. copy y) y)
+            (= (#\. copy r1) r1)
+            (= (#\. copy r2) r2)
+            (= (#\. copy r3) r3)
+            (= (#\. copy a1) a1)
+            (= (#\. copy a2) a2)
+
+            (#foreach . arg arguments).(#body
+
+                (~= (#\. copy arguments) (#\. arg (deepcopy)))
+                (= (#\. copy arguments (#[ (- $ 1)) parent) copy)
+            )
+
+            (#if (!is postop null).(#body
+
+                    (= (#\. copy postop) (#\. postop (deepcopy)))
+                    (= (#\. copy postop parent) copy)
+                ))
+
+            (#return copy)
+        )
+
+        (movecopy#function Expression).
+        (#body (=
+                (copy#var auto) (deepcopy))
+
+            (#if (>= index 0).(#body
+
+                    (++#post (#\. copy index))
+                    (#foreach . arg (#\. parent arguments (#[ (+ index 1) \.\. $))).(#body
+
+                        (++#post (#\. arg index))
+                    )
+                    (= (#\. parent arguments) (~ (#\. parent arguments (#[ 0 \.\. (+ index 1))) copy (#\. parent arguments (#[ (+ index 1) \.\. $))))
+                ))
+
+            (#return copy)
+        )
+
+        (toString#function string.(override)).
+        (#body
+            (#return (~ operator (#? (!#unary (#\. type empty)) (~ "#" type) "") (#? (!#unary (#\. label empty)) (~ "@" label) "")))
+        )
+    ))

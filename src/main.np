@@ -1,268 +1,361 @@
 /**
  * main.d
  */
+
 (main#module@D
+
     (#import iface)
-    (#import (gio.Application GioApplication.(Application)))
-    (#import gio.FileT)
-    (#import gtk.Application)
-    (#import gtk.ApplicationWindow)
-    (#import gtk.Widget)
-    (#import gdk.Event)
-    (#import gdk.Keymap)
-    (#import std.stdio)
-    (#import std.array)
-    (#import std.string)
-    (#import std.conv)
-    (#import (std.typecons Flag Yes No))
-    (#import std.algorithm.searching)
-    (#import std.math.traits)
-    (#import std.math)
-    (#import std.algorithm)
-    (#import std.uni)
-    (#import std.file)
+
+    (#import (gio\.Application GioApplication.(Application)))
+    (#import gio\.FileT)
+    (#import gtk\.Application)
+    (#import gtk\.ApplicationWindow)
+    (#import gtk\.Widget)
+    (#import gdk\.Event)
+    (#import gdk\.Keymap)
+    (#import std\.stdio)
+    (#import std\.array)
+    (#import std\.string)
+    (#import std\.conv)
+    (#import (std\.typecons Flag Yes No))
+    (#import std\.algorithm\.searching)
+    (#import std\.math\.traits)
+    (#import std\.math)
+    (#import std\.algorithm)
+    (#import std\.uni)
+    (#import std\.file)
     (#import expression)
     (#import lexer)
     (#import parser)
-    (MyWindow#class
-        ApplicationWindow#superclass
-        (this#function #constructor.(public) (gtkApplicationWindow (#* GtkApplicationWindow)) (ownedRef bool).(#init false)).(#body
-                (super gtkApplicationWindow ownedRef))
-        (this#function #constructor.(public) (application Application)).(#body
-                (super application)
-                (addEvents (| (#. EventMask KEY_PRESS_MASK) (#. EventMask BUTTON_PRESS_MASK)))
-                (addOnKeyPress (&#unary keyPressCallback))
-                (addOnButtonPress (&#unary buttonPressCallback))
-                (addOnScroll (&#unary scrollCallback)))
+
+    (MyWindow#class ApplicationWindow#superclass
+
+        (this#function #constructor.(public) (gtkApplicationWindow (#* GtkApplicationWindow)) (ownedRef bool).(#init false)).
+        (#body
+            (super gtkApplicationWindow ownedRef)
+        )
+
+        (this#function #constructor.(public) (application Application)).
+        (#body
+            (super application)
+            (addEvents (| (#\. EventMask KEY_PRESS_MASK) (#\. EventMask BUTTON_PRESS_MASK)))
+            (addOnKeyPress (&#unary keyPressCallback))
+            (addOnButtonPress (&#unary buttonPressCallback))
+            (addOnScroll (&#unary scrollCallback))
+        )
+
         (#: protected)
-        (keyPressCallback#function bool (event Event) (widget Widget)).(#body
-                (val#var uint)
-                (#. event (getKeyval val))
-                (= (unicode#var dchar) (#cast dchar (#. Keymap (keyvalToUnicode val))))
-                (state#var GdkModifierType)
-                (#. event (getState state))
-                (#if
-                    (&& (& state (#. GdkModifierType SHIFT_MASK)) (== val 65361)).(#body
-                            /*LEFT*/
-                            //write("S<");
-                            //write("S<");
-                            (#. IFACE (moveleft)))
-                    (&& (& state (#. GdkModifierType SHIFT_MASK)) (== val 65363)).(#body
-                            /*RIGHT*/
-                            //write("S>");
-                            //write("S>");
-                            (#. IFACE (moveright)))
-                    (== val 65535).(#body
-                            //write("Del");
-                            //write("Del");
-                            (#. IFACE (del)))
-                    /*Escape*/
-                    /*Enter*/
-                    (|| (== val 65307) (== val 65293)).(#body
-                            //write('\n');
-                            //write('\n');
-                            (#. IFACE (escape)))
-                    (== unicode '\ ').(#body
-                            //write(unicode);
-                            //write(unicode);
-                            (#. IFACE (space)))
-                    (& state (#. GdkModifierType CONTROL_MASK)).(#body
-                            (#if
-                                (== unicode ',').(#body
-                                        //write("^<");
-                                        //write("^<");
-                                        (#. IFACE (less)))
-                                (== unicode '.').(#body
-                                        //write("^>");
-                                        //write("^>");
-                                        (#. IFACE (greater)))
-                                (== unicode 's').(#body
-                                        (#. IFACE (save)))
-                                (== unicode 'd').(#body
-                                        (#. IFACE (saveD)))
-                                (== unicode 'c').(#body
-                                        //write('C', unicode);
-                                        //write('C', unicode);
-                                        (#. IFACE (copy)))
-                                (== unicode 'x').(#body
-                                        //write('C', unicode);
-                                        //write('C', unicode);
-                                        (#. IFACE (copy))
-                                        (#. IFACE (del)))
-                                (== unicode 'v').(#body
-                                        //write('C', unicode);
-                                        //write('C', unicode);
-                                        (#. IFACE (insert)))
-                                (== unicode 'l').(#body
-                                        //write('C', unicode);
-                                        //write('C', unicode);
-                                        (#. IFACE (toLexer)))
-                                (== unicode '=').(#body
-                                        (/= (#. IFACE sx2) 1.5)
-                                        (/= (#. IFACE sy2) 1.5)
-                                        (#. IFACE (redraw)))
-                                (== unicode '-').(#body
-                                        (*= (#. IFACE sx2) 1.5)
-                                        (*= (#. IFACE sy2) 1.5)
-                                        (#. IFACE (redraw)))
-                                (== val 65288).(#body
-                                        //write("C<-");
-                                        //write("C<-");
-                                        (#. IFACE (remove)))
-                                (== val 65361).(#body
-                                        /*LEFT*/
-                                        //write("C<");
-                                        //write("C<");
-                                        (#. IFACE (field_left)))
-                                (== val 65363).(#body
-                                        /*RIGHT*/
-                                        //write("C>");
-                                        //write("C>");
-                                        (#. IFACE (field_right)))
-                                (== val 65364).(#body
-                                        /*DOWN*/
-                                        //write("Cv");
-                                        //write("Cv");
-                                        (#. IFACE (field_down)))
-                                (== val 65362).(#body
-                                        /*UP*/
-                                        //write("C^");
-                                        //write("C^");
-                                        (#. IFACE (field_up)))))
-                    (== val 65288).(#body
-                            //write("<-");
-                            //write("<-");
-                            (#. IFACE (backspace)))
-                    (== val 65361).(#body
-                            /*LEFT*/
-                            //write("<");
-                            //write("<");
-                            (#. IFACE (left)))
-                    (== val 65363).(#body
-                            /*RIGHT*/
-                            //write(">");
-                            //write(">");
-                            (#. IFACE (right)))
-                    (== val 65364).(#body
-                            /*DOWN*/
-                            //write("v");
-                            //write("v");
-                            (#. IFACE (down)))
-                    (== val 65362).(#body
-                            /*UP*/
-                            //write("^");
-                            //write("^");
-                            (#. IFACE (up)))
-                    (== unicode '.').(#body
-                            //write(unicode);
-                            //write(unicode);
-                            (#. IFACE (dot)))
-                    (== unicode ',').(#body
-                            //write(unicode);
-                            //write(unicode);
-                            (#. IFACE (comma)))
-                    (|| (isAlphaNum unicode) (isPunctuation unicode)).(#body
-                            //write(unicode);
-                            //write(unicode);
-                            (#. IFACE (print unicode))))
-                (#. IFACE (redraw))
-                (#return false))
-        (buttonPressCallback#function bool (event Event) (widget Widget)).(#body
-                (button#var uint)
-                (#. event (getButton button)) (.
-                x#var
-                y#var).(double)
-                (#. event (getCoords x y))
-                //writefln("%s. %sx%s", button, x, y);
-                (#return (#. IFACE (click button x y))))
-        (scrollCallback#function bool (event Event) (widget Widget)).(#body (.
-                deltaX#var
-                deltaY#var).(double)
-                (#. event (getScrollDeltas deltaX deltaY))
-                (#return (#. IFACE (scroll deltaX deltaY)))))
+        (keyPressCallback#function bool (event Event) (widget Widget)).
+        (#body
+            (val#var uint)
+            (#\. event (getKeyval val)) (=
+                (unicode#var dchar) (#cast dchar (#\. Keymap (keyvalToUnicode val))))
+
+            (state#var GdkModifierType)
+            (#\. event (getState state))
+
+            (#if (&& (& state (#\. GdkModifierType SHIFT_MASK)) (== val 65361)).(#body /*LEFT*/
+
+                    //write("S<");
+                    (#\. IFACE (moveleft))
+                )
+                (&& (& state (#\. GdkModifierType SHIFT_MASK)) (== val 65363)).(#body /*RIGHT*/
+
+                    //write("S>");
+                    (#\. IFACE (moveright))
+                )
+                (== val 65535).(#body
+
+                    //write("Del");
+                    (#\. IFACE (del))
+                )
+                (|| (== val 65307) (== val 65293)).(#body
+
+                    //write('\n');
+                    (#\. IFACE (escape))
+                ) /*Escape*/ /*Enter*/
+                (== unicode '\ ').(#body
+
+                    //write(unicode);
+                    (#\. IFACE (space))
+                )
+                (& state (#\. GdkModifierType CONTROL_MASK)).(#body
+
+                    (#if (== unicode ',').(#body
+
+                            //write("^<");
+                            (#\. IFACE (less))
+                        )
+                        (== unicode '\.').(#body
+
+                            //write("^>");
+                            (#\. IFACE (greater))
+                        )
+                        (== unicode 's').(#body
+
+                            (#\. IFACE (save))
+                        )
+                        (== unicode 'd').(#body
+
+                            (#\. IFACE (saveD))
+                        )
+                        (== unicode 'f').(#body
+
+                            (#\. IFACE (fixIndent))
+                        )
+                        (== unicode 'c').(#body
+
+                            //write('C', unicode);
+                            (#\. IFACE (copy))
+                        )
+                        (== unicode 'x').(#body
+
+                            //write('C', unicode);
+                            (#\. IFACE (copy))
+                            (#\. IFACE (del))
+                        )
+                        (== unicode 'v').(#body
+
+                            //write('C', unicode);
+                            (#\. IFACE (insert))
+                        )
+                        (== unicode 'l').(#body
+
+                            //write('C', unicode);
+                            (#\. IFACE (toLexer))
+                        )
+                        (== unicode '=').(#body
+
+                            (/= (#\. IFACE sx2) 1\.5)
+                            (/= (#\. IFACE sy2) 1\.5)
+                            (#\. IFACE (redraw))
+                        )
+                        (== unicode '-').(#body
+
+                            (*= (#\. IFACE sx2) 1\.5)
+                            (*= (#\. IFACE sy2) 1\.5)
+                            (#\. IFACE (redraw))
+                        )
+                        (== val 65288).(#body
+
+                            //write("C<-");
+                            (#\. IFACE (remove))
+                        )
+                        (== val 65361).(#body /*LEFT*/
+
+                            //write("C<");
+                            (#\. IFACE (field_left))
+                        )
+                        (== val 65363).(#body /*RIGHT*/
+
+                            //write("C>");
+                            (#\. IFACE (field_right))
+                        )
+                        (== val 65364).(#body /*DOWN*/
+
+                            //write("Cv");
+                            (#\. IFACE (field_down))
+                        )
+                        (== val 65362).(#body /*UP*/
+
+                            //write("C^");
+                            (#\. IFACE (field_up))
+                        ))
+                )
+                (== val 65288).(#body
+
+                    //write("<-");
+                    (#\. IFACE (backspace))
+                )
+                (== val 65361).(#body /*LEFT*/
+
+                    //write("<");
+                    (#\. IFACE (left))
+                )
+                (== val 65363).(#body /*RIGHT*/
+
+                    //write(">");
+                    (#\. IFACE (right))
+                )
+                (== val 65364).(#body /*DOWN*/
+
+                    //write("v");
+                    (#\. IFACE (down))
+                )
+                (== val 65362).(#body /*UP*/
+
+                    //write("^");
+                    (#\. IFACE (up))
+                )
+                (== unicode '\.').(#body
+
+                    //write(unicode);
+                    (#\. IFACE (dot))
+                )
+                (== unicode ',').(#body
+
+                    //write(unicode);
+                    (#\. IFACE (comma))
+                )
+                (|| (isAlphaNum unicode) (isPunctuation unicode)).(#body
+
+                    //write(unicode);
+                    (#\. IFACE (print unicode))
+                ))
+
+            (#\. IFACE (redraw))
+
+            (#return false)
+        )
+
+        (buttonPressCallback#function bool (event Event) (widget Widget)).
+        (#body
+            (button#var uint)
+            (#\. event (getButton button)) (.
+            x#var y#var).(double)
+            (#\. event (getCoords x y))
+
+            //writefln("%s. %sx%s", button, x, y);
+            (#return (#\. IFACE (click button x y)))
+        )
+
+        (scrollCallback#function bool (event Event) (widget Widget)).
+        (#body (.
+            deltaX#var deltaY#var).(double)
+            (#\. event (getScrollDeltas deltaX deltaY))
+            (#return (#\. IFACE (scroll deltaX deltaY)))
+        )
+    )
+
     (IFACE Iface)
+
     (BranchInfo#struct
+
         (maxdeep int)
         (maxx real)
         (maxy real)
-        (fig Expression))
-    (main#function int (args ([]#type string))).(#body
-            (#if
-                (> (#. args length) 1).(#body
-                        (#if
-                            (|| (== (#. args (#[ 1)) "-h") (== (#. args (#[ 1)) "--help")).(#body
-                                    (writefln (~ "usage: %s [file1] [file2]... -- for editing files in GUI\n" "   or: %s -c <source> <destination> -- for converting between neparsy/D formats\n" "where files must have '.np' or '.d' extension") (#. args (#[ 0)) (#. args (#[ 0)))
-                                    (#return 0))
-                            (&& (== (#. args (#[ 1)) "-c") (== (#. args length) 4)).(#body
-                                    (expr#var Expression)
-                                    (#if
-                                        (#. args (#[ 2) (endsWith ".d")).(#body
-                                                (lex#var Lexer)
-                                                (= (#. lex file) (readText (#. args (#[ 2))))
-                                                (= (pars#var Parser) (#new Parser))
-                                                (= (#. pars lexer) lex)
-                                                (= expr (#. pars (parse)))
-                                                (#. expr (fixParents)))
-                                        (#. args (#[ 2) (endsWith ".np")).(#body
-                                                (= (mod#var string) (readText (#. args (#[ 2))))
-                                                (= expr (#new (Expression mod))))
-                                        #else.(#body
-                                                (writefln "Can't convert file with unknown extension: `%s`" (#. args (#[ 2)))
-                                                (#return 1)))
-                                    (savestr#var string)
-                                    (#if
-                                        (#. args (#[ 3) (endsWith ".d")).(#body
-                                                (= savestr (#. expr saveD)))
-                                        (#. args (#[ 3) (endsWith ".np")).(#body
-                                                (= savestr (#. expr save)))
-                                        #else.(#body
-                                                (writefln "Can't convert to file with unknown extension: `%s`" (#. args (#[ 3)))
-                                                (#return 1)))
-                                    (= (file#var auto) (File (#. args (#[ 3)) "w"))
-                                    (#. file (writeln savestr))
-                                    (#return 0)))))
-            (application#var Application)
-            (activateClock#function void (app GioApplication)).(#body
-                    (= (win#var MyWindow) (#new (MyWindow application)))
-                    (#. win (setTitle "Neparsy"))
-                    (#. win (setDefaultSize 640 480))
-                    (= (x#var real) 0.0)
-                    (= (y#var real) 0.0)
-                    (= (state#var int) 0)
-                    (branches#var ([]#type BranchInfo))
-                    (= (root#var Expression) (#new (Expression)))
-                    (= (#. root type) "root")
-                    (#foreach i arg (#. args (#[ 1 .. $))).(#body
-                            (#if
-                                (#. arg (endsWith ".d")).(#body
-                                        (lex#var Lexer)
-                                        (= (#. lex file) (readText arg))
-                                        (= (pars#var Parser) (#new Parser))
-                                        (= (#. pars lexer) lex)
-                                        (= (expr#var Expression) (#. pars (parse)))
-                                        (#. expr (fixParents))
-                                        (= (#. expr parent) root)
-                                        (= (#. expr operator) (~ (#. arg (#[ 0 .. (- $ 2))) ".np"))
-                                        (= (#. expr type) "*")
-                                        (= (#. expr index) (#. root arguments length))
-                                        (~= (#. root arguments) expr))
-                                (#. arg (endsWith ".np")).(#body
-                                        (= (mod#var string) (readText arg))
-                                        (= (expr#var Expression) (#new (Expression mod)))
-                                        (= (#. expr parent) root)
-                                        (= (#. expr operator) arg)
-                                        (= (#. expr index) i)
-                                        (~= (#. root arguments) expr))
-                                #else.(#body
-                                        (writefln "Skip file with unknown extension: `%s`" arg))))
-                    (= IFACE (#new (Iface root)))
-                    (#. win (add IFACE))
-                    (#. IFACE (show))
-                    (#. win (showAll)))
-            (handleOpen#function void (files ([]#type FileIF)) (name string) (app GioApplication)).(#body
-                    (activateClock app))
-            (= application (#new (Application "org.gtkd.demo.cairo.iface" (#. GApplicationFlags HANDLES_OPEN))))
-            (#. application (addOnOpen (&#unary handleOpen)))
-            (#. application (addOnActivate (&#unary activateClock)))
-            (#return (#. application (run args)))))
+        (fig Expression)
+    )
 
+    (main#function int (args ([]#type string))).
+    (#body
+        (#if (> (#\. args length) 1).(#body
+
+                (#if (|| (== (#\. args (#[ 1)) "-h") (== (#\. args (#[ 1)) "--help")).(#body
+
+                        (writefln
+
+                            (~ "usage: %s [file1] [file2]... -- for editing files in GUI\n" "   or: %s -c <source> <destination> -- for converting between neparsy/D formats\n" "where files must have '.np' or '.d' extension") (#\. args (#[ 0)) (#\. args (#[ 0)))
+                        (#return 0)
+                    )
+                    (&& (== (#\. args (#[ 1)) "-c") (== (#\. args length) 4)).(#body
+
+                        (expr#var Expression)
+                        (#if (#\. args (#[ 2) (endsWith ".d")).(#body
+
+                                (lex#var Lexer)
+                                (= (#\. lex file) (readText (#\. args (#[ 2)))) (=
+                                    (pars#var Parser) (#new Parser))
+                                (= (#\. pars lexer) lex)
+                                (= expr (#\. pars (parse)))
+                                (#\. expr (fixParents))
+                            )
+                            (#\. args (#[ 2) (endsWith ".np")).(#body (=
+
+                                    (mod#var string) (readText (#\. args (#[ 2))))
+                                (= expr (#new (Expression mod)))
+                            ) #else.
+                            (#body
+
+                                (writefln "Can't convert file with unknown extension: `%s`" (#\. args (#[ 2)))
+                                (#return 1)
+                            ))
+
+                        (savestr#var string)
+
+                        (#if (#\. args (#[ 3) (endsWith ".d")).(#body
+
+                                (= savestr (#\. expr saveD))
+                            )
+                            (#\. args (#[ 3) (endsWith ".np")).(#body
+
+                                (= savestr (#\. expr save))
+                            ) #else.
+                            (#body
+
+                                (writefln "Can't convert to file with unknown extension: `%s`" (#\. args (#[ 3)))
+                                (#return 1)
+                            )) (=
+
+                            (file#var auto) (File (#\. args (#[ 3)) "w"))
+                        (#\. file (writeln savestr))
+                        (#return 0)
+                    ))
+            ))
+
+        (application#var Application)
+
+        (activateClock#function void (app GioApplication)).(#body (=
+
+                (win#var MyWindow) (#new (MyWindow application)))
+
+            (#\. win (setTitle "Neparsy"))
+            (#\. win (setDefaultSize 640 480)) (=
+
+                (x#var real) 0\.0) (=
+                (y#var real) 0\.0) (=
+
+                (state#var int) 0)
+            (branches#var ([]#type BranchInfo)) (=
+
+                (root#var Expression) (#new (Expression)))
+            (= (#\. root type) "root")
+
+            (#foreach i arg (#\. args (#[ 1 \.\. $))).(#body
+
+                (#if (#\. arg (endsWith ".d")).(#body
+
+                        (lex#var Lexer)
+                        (= (#\. lex file) (readText arg)) (=
+                            (pars#var Parser) (#new Parser))
+                        (= (#\. pars lexer) lex) (=
+                            (expr#var Expression) (#\. pars (parse)))
+                        (#\. expr (fixParents))
+
+                        (= (#\. expr parent) root)
+                        (= (#\. expr operator) (~ (#\. arg (#[ 0 \.\. (- $ 2))) ".np"))
+                        (= (#\. expr type) "*")
+                        (= (#\. expr index) (#\. root arguments length))
+                        (~= (#\. root arguments) expr)
+                    )
+                    (#\. arg (endsWith ".np")).(#body (=
+
+                            (mod#var string) (readText arg)) (=
+                            (expr#var Expression) (#new (Expression mod)))
+                        (= (#\. expr parent) root)
+                        (= (#\. expr operator) arg)
+                        (= (#\. expr index) i)
+                        (~= (#\. root arguments) expr)
+                    ) #else.
+                    (#body
+
+                        (writefln "Skip file with unknown extension: `%s`" arg)
+                    ))
+            )
+
+            (= IFACE (#new (Iface root)))
+            (#\. win (add IFACE))
+            (#\. IFACE (show))
+            (#\. win (showAll))
+        )
+
+        (handleOpen#function void (files ([]#type FileIF)) (name string) (app GioApplication)).(#body
+
+            (activateClock app)
+        )
+
+        (= application (#new (Application "org.gtkd.demo.cairo.iface" (#\. GApplicationFlags HANDLES_OPEN))))
+        (#\. application (addOnOpen (&#unary handleOpen)))
+        (#\. application (addOnActivate (&#unary activateClock)))
+        (#return (#\. application (run args)))
+    ))
