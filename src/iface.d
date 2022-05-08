@@ -1426,6 +1426,12 @@ protected:
         real Y1 = Y + (p1-d1)/2;
         real Y2 = Y + (p2-d2)/2;
 
+        if (r1 <= 0.01)
+        {
+            a_from = 0;
+            a_to = 360;
+        }
+
 		cr.setLineWidth(m_lineWidth * (r2-r1)/30);
         a_from = 270 + a_from;
         a_to = 270 + a_to;
@@ -1567,6 +1573,7 @@ protected:
 
                 ds.f = 0;
                 ds.t = 360;
+                auto width = expr.pw[1];
                 ds.r = 0;
                 ds.d = 0;
                 ds.level = 0;
@@ -2371,7 +2378,7 @@ protected:
                         assert(dr1 > 0);
                         assert(dr2 > 0);
                         real Y = expr.y + (expr.r1+expr.r2-expr.d1-expr.d2)/4;
-                        if (a2 > a1+10)
+                        if (a2 > a1+5)
                             drawArcText(cr, text, 360-a1, 360-a2, r, dr1, dr2, expr.x, Y, col, invert, colors);
                     }
 

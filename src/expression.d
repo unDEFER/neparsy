@@ -758,6 +758,13 @@ class Expression
     {
         string savestr;
         string tabstr = "";
+        bool negtab;
+        if (tab < 0)
+        {
+            negtab = true;
+            tab = -tab;
+        }
+
         if (tab > 0) tabstr = ' '.repeat(tab*4).array;
 
         bool handled = true;
@@ -778,11 +785,11 @@ class Expression
                 {
                     if (ptype == "function")
                     {
-                        savestr = arg.saveD(-1) ~ " " ~ savestr;
+                        savestr = arg.saveD(-tab-1) ~ " " ~ savestr;
                     }
                     else
                     {
-                        savestr ~= arg.saveD(-1) ~ " ";
+                        savestr ~= arg.saveD(-tab-1) ~ " ";
                     }
                 }
 
@@ -791,35 +798,39 @@ class Expression
                 {
                     foreach(i, arg; parent.arguments[index..$])
                     {
-                        if (arg.postop !is null)
+                        auto ap = arg.postop;
+                        while (ap !is null)
                         {
-                            //writefln("%s -- %s (%s == %s)", this, arg2.app_args, arg.index - arg2.app_args + 1, this.index);
-                            if (arg.index + arg.postop.index + 1 == this.index)
+                            //writefln("%s -- %s (%s == %s)", this, ap.index, arg.index + ap.index + 1, this.index);
+                            if (arg.index + ap.index + 1 == this.index)
                             {
-                                if (arg.postop.operator == "[]")
+                                if (ap.operator == "[]")
                                 {
-                                    savestr =  savestr ~ arg.postop.saveD(tab);
+                                    savestr =  savestr ~ ap.saveD(tab);
 
                                     foreach(i3, arg3; parent.arguments[index+1..arg.index+1])
                                     {
-                                        poststr ~= ", " ~ arg3.saveD(-1, null, "ctype");
+                                        poststr ~= ", " ~ arg3.saveD(-tab-1, null, "ctype");
                                     }
                                 }
-                                else if (arg.postop.type == "init")
+                                else if (ap.type == "init")
                                 {
                                 }
                                 else
                                 {
-                                    savestr = arg.postop.saveD(-1) ~ " " ~ savestr;
+                                    savestr = ap.saveD(-tab-1) ~ " " ~ savestr;
+                                    //writefln("%s -- %s-%s", savestr, index, arg.index);
 
                                     foreach(i3, arg3; parent.arguments[index+1..arg.index+1])
                                     {
-                                        poststr ~= ", " ~ arg3.saveD(-1, null, "ctype");
+                                        poststr ~= ", " ~ arg3.saveD(-tab-1, null, "ctype");
                                     }
                                 }
                             }
-                            else if (ptype != "ctype" && this.index <= arg.index && this.index > arg.index + arg.postop.index + 1)
+                            else if (ptype != "ctype" && this.index <= arg.index && this.index > arg.index + ap.index + 1)
                                 return "";
+
+                            ap = ap.postop;
                         }
                     }
                 }
@@ -837,7 +848,7 @@ class Expression
                         }
                         else
                         {
-                            savestr = arg.saveD(-1) ~ " " ~ savestr;
+                            savestr = arg.saveD(-tab-1) ~ " " ~ savestr;
                         }
                     }
                 }
@@ -857,10 +868,11 @@ class Expression
 
                 savestr ~= poststr;
 
-                if (tab >= 0)
+                if (!negtab)
                 {
-                    savestr = wrapWithSpaces(savestr ~ ";", tabstr);
+                    savestr = savestr ~ ";";
                 }
+                savestr = wrapWithSpaces(savestr, tabstr);
                 break;
 
             case "enum":
@@ -879,13 +891,14 @@ class Expression
                 {
                     savestr ~= this.operator;
                     if (!this.arguments.empty)
-                        savestr = this.arguments[0].saveD(-1) ~ " " ~ savestr;
+                        savestr = this.arguments[0].saveD(-tab-1) ~ " " ~ savestr;
 
                     if (postop !is null)
                     {
                         savestr = postop.saveD(tab, null, this.type) ~ " " ~ savestr;
                     }
                 }
+                savestr = wrapWithSpaces(savestr, tabstr);
                 break;
 
             default:
@@ -902,7 +915,12 @@ class Expression
         
         if (!handled)
         {
-            switch(this.type)
+            if (bt == BlockType.Comment)
+            {
+                savestr ~= this.operator;
+                savestr = wrapWithSpaces(savestr, tabstr);
+            }
+            else switch(this.type)
             {
                 case "module":
                     savestr ~= beforeSpaces(tabstr) ~ "module "~this.operator~";";
@@ -946,24 +964,26 @@ class Expression
 
                     foreach(i, arg; this.arguments)
                     {
-                        savestr ~= arg.saveD(-1, null, this.type);
+                        savestr ~= arg.saveD(-tab-1, null, this.type);
                     }
                     break;
 
                 case ":":
                     foreach(i, arg; this.arguments)
                     {
-                        savestr ~= arg.saveD(-1, null, this.type);
+                        savestr ~= arg.saveD(-tab-1, null, this.type);
                     }
                     savestr ~= this.type;
+                    savestr = wrapWithSpaces(savestr, tabstr);
                     break;
 
                 case "*":
                     foreach(i, arg; this.arguments)
                     {
-                        savestr ~= arg.saveD(-1, null, this.type);
+                        savestr ~= arg.saveD(-tab-1, null, this.type);
                     }
                     savestr ~= this.type;
+                    savestr = wrapWithSpaces(savestr, tabstr);
                     break;
 
                 case "struct":
@@ -978,7 +998,7 @@ class Expression
                 case "class":
                     savestr ~= beforeSpaces(tabstr) ~ "class "~this.operator;
                     if (arguments[0].type == "superclass")
-                        savestr ~= " : " ~ arguments[0].saveD(-1, null, this.type);
+                        savestr ~= " : " ~ arguments[0].saveD(-tab-1, null, this.type);
                     savestr ~= " {";
 
                     foreach(i, arg; this.arguments)
@@ -990,7 +1010,7 @@ class Expression
                     break;
 
                 case "function":
-                    savestr ~= beforeSpaces(tabstr) ~ this.arguments[0].saveD(-1, null, this.type) ~" "~(this.operator.empty?"function":this.operator)~"(";
+                    savestr ~= beforeSpaces(tabstr) ~ this.arguments[0].saveD(-tab-1, null, this.type) ~" "~(this.operator.empty?"function":this.operator)~"(";
 
                     long[] a, b, c;
                     foreach(i, arg; this.arguments)
@@ -1020,12 +1040,12 @@ class Expression
                     }
 
                     if (this.arguments.length > 1)
-                        savestr ~= this.arguments[1].saveD(-1, getPost(1), this.type);
+                        savestr ~= this.arguments[1].saveD(-tab-1, getPost(1), this.type);
                     if (this.arguments.length > 2)
                     {
                         foreach(i, arg; this.arguments[2..$])
                         {
-                            savestr ~= ", " ~ arg.saveD(-1, getPost(i+2), this.type);
+                            savestr ~= ", " ~ arg.saveD(-tab-1, getPost(i+2), this.type);
                         }
                     }
                     if (postop !is null)
@@ -1033,7 +1053,7 @@ class Expression
                         savestr ~= ")";
                         savestr ~= postop.saveD(tab, null, this.type);
                     }
-                    else if (tab >= 0)
+                    else if (!negtab)
                     {
                         savestr ~= ");";
                     }
@@ -1059,24 +1079,25 @@ class Expression
                     savestr ~= this.type;
                     if (!this.arguments.empty)
                     {
-                        savestr ~= " " ~ this.arguments[0].saveD(-1, null, this.type);
+                        savestr ~= " " ~ this.arguments[0].saveD(-tab-1, null, this.type);
                         foreach(i, arg; this.arguments[1..$])
                         {
-                            savestr ~= ", " ~ arg.saveD(-1, null, this.type);
+                            savestr ~= ", " ~ arg.saveD(-tab-1, null, this.type);
                         }
                     }
 
-                    if (tab >= 0)
+                    if (!negtab)
                     {
-                        savestr = wrapWithSpaces(savestr~";", tabstr);
+                        savestr = savestr ~ ";";
                     }
+                    savestr = wrapWithSpaces(savestr, tabstr);
                     break;
 
                 case "for":
                     savestr ~= beforeSpaces(tabstr) ~ this.type;
-                    savestr ~= " (" ~ this.arguments[0].saveD(-1, null, this.type);
-                    savestr ~= "; " ~ this.arguments[1].saveD(-1, null, this.type);
-                    savestr ~= "; " ~ this.arguments[2].saveD(-1, null, this.type) ~ ") ";
+                    savestr ~= " (" ~ this.arguments[0].saveD(-tab-1, null, this.type);
+                    savestr ~= "; " ~ this.arguments[1].saveD(-tab-1, null, this.type);
+                    savestr ~= "; " ~ this.arguments[2].saveD(-tab-1, null, this.type) ~ ") ";
                     if (postop !is null)
                     {
                         savestr ~= postop.saveD(tab);
@@ -1086,7 +1107,7 @@ class Expression
 
                 case "while":
                     savestr ~= beforeSpaces(tabstr) ~ this.type;
-                    savestr ~= " (" ~ this.arguments[0].saveD(-1, null, this.type) ~ ") ";
+                    savestr ~= " (" ~ this.arguments[0].saveD(-tab-1, null, this.type) ~ ") ";
                     if (postop !is null)
                     {
                         savestr ~= postop.saveD(tab);
@@ -1100,15 +1121,15 @@ class Expression
                     {
                         savestr ~= postop.saveD(tab);
                     }
-                    savestr ~= "while (" ~ this.arguments[0].saveD(-1, null, this.type) ~ ");" ~ afterSpaces();
+                    savestr ~= "while (" ~ this.arguments[0].saveD(-tab-1, null, this.type) ~ ");" ~ afterSpaces();
                     break;
 
                 case "foreach":
                     savestr ~= beforeSpaces(tabstr) ~ this.type ~ " (";
                     if (!this.arguments[0].operator.empty)
-                        savestr ~= this.arguments[0].saveD(-1, null, this.type) ~ ", ";
-                    savestr ~= this.arguments[1].saveD(-1, null, this.type) ~ "; ";
-                    savestr ~= this.arguments[2].saveD(-1, null, this.type) ~ ")";
+                        savestr ~= this.arguments[0].saveD(-tab-1, null, this.type) ~ ", ";
+                    savestr ~= this.arguments[1].saveD(-tab-1, null, this.type) ~ "; ";
+                    savestr ~= this.arguments[2].saveD(-tab-1, null, this.type) ~ ")";
                     if (postop !is null)
                     {
                         savestr ~= postop.saveD(tab, null, this.type);
@@ -1121,7 +1142,11 @@ class Expression
                     bool or_need = arguments[0].postop is null;
                     foreach(i, arg; this.arguments[1..$])
                     {
-                        if (arg.type == "else")
+                        if (arg.bt == BlockType.Comment)
+                        {
+                            savestr ~= arg.beforeSpaces(tabstr) ~ arg.saveD(tab, null, this.type) ~ arg.afterSpaces();
+                        }
+                        else if (arg.type == "else")
                         {
                             savestr ~= arg.beforeSpaces(tabstr) ~ "else " ~ arg.saveD(tab, null, "else") ~ arg.afterSpaces();
                             or_need = false;
@@ -1156,7 +1181,7 @@ class Expression
                 case "var":
                     foreach(i, arg; this.arguments)
                     {
-                        savestr ~= arg.saveD(-1) ~ " ";
+                        savestr ~= arg.saveD(-tab-1) ~ " ";
                     }
 
                     string poststr = "";
@@ -1175,7 +1200,7 @@ class Expression
 
                                         foreach(i3, arg3; parent.arguments[index+1..arg.index+1])
                                         {
-                                            poststr ~= ", " ~ arg3.saveD(-1, null, "ctype");
+                                            poststr ~= ", " ~ arg3.saveD(-tab-1, null, "ctype");
                                         }
                                     }
                                     else if (arg.postop.type == "init")
@@ -1183,11 +1208,11 @@ class Expression
                                     }
                                     else
                                     {
-                                        savestr = arg.postop.saveD(-1) ~ " " ~ savestr;
+                                        savestr = arg.postop.saveD(-tab-1) ~ " " ~ savestr;
 
                                         foreach(i3, arg3; parent.arguments[index+1..arg.index+1])
                                         {
-                                            poststr ~= ", " ~ arg3.saveD(-1, null, "ctype");
+                                            poststr ~= ", " ~ arg3.saveD(-tab-1, null, "ctype");
                                         }
                                     }
                                 }
@@ -1210,7 +1235,7 @@ class Expression
                             }
                             else
                             {
-                                savestr = postop.saveD(-1) ~ " " ~ savestr;
+                                savestr = postop.saveD(-tab-1) ~ " " ~ savestr;
                             }
                         }
                     }
@@ -1230,10 +1255,11 @@ class Expression
 
                     savestr ~= poststr;
 
-                    if (tab >= 0)
+                    if (!negtab)
                     {
-                        savestr = wrapWithSpaces(savestr ~ ";", tabstr);
+                        savestr = savestr ~ ";";
                     }
+                    savestr = wrapWithSpaces(savestr, tabstr);
                     break;
 
                 case "default":
@@ -1247,10 +1273,10 @@ class Expression
                 case ".":
                     if (!arguments.empty)
                     {
-                        savestr ~= this.arguments[0].saveD(-1, null, "op");
+                        savestr ~= this.arguments[0].saveD(-tab-1, null, "op");
                         foreach(i, arg; this.arguments[1..$])
                         {
-                            auto next = arg.saveD(-1, null, "op");
+                            auto next = arg.saveD(-tab-1, null, "op");
                             if (next[0] == '[')
                                 savestr ~= next;
                             else if (next == "init")
@@ -1277,22 +1303,24 @@ class Expression
                             savestr ~= postop.saveD(tab, null, "op");
                     }
 
-                    if (ptype != "if" && ptype != "case" && tab >= 0 && postop is null)
+                    if (ptype != "if" && ptype != "case" && !negtab && postop is null)
                     {
-                        savestr = wrapWithSpaces(savestr ~ ";", tabstr);
+                        savestr = savestr ~ ";";
                     }
+                    if (ptype != "if" && ptype != "else" && ptype != "case")
+                        savestr = wrapWithSpaces(savestr, tabstr);
                     break;
 
                 case "[":
                     savestr ~= "[";
                     if (!arguments.empty)
                     {
-                        savestr ~= this.arguments[0].saveD(-1, null, "op");
+                        savestr ~= this.arguments[0].saveD(-tab-1, null, "op");
                         string sep = ", ";
                         foreach(i, arg; this.arguments[1..$])
                         {
                             if (arg.operator == "..") sep = "";
-                            savestr ~= sep ~ arg.saveD(-1, null, "op");
+                            savestr ~= sep ~ arg.saveD(-tab-1, null, "op");
                         }
                     }
                     savestr ~= "]";
@@ -1307,18 +1335,20 @@ class Expression
                         savestr ~= postop.saveD(tab, null, "op");
                     }
 
-                    if (ptype != "if" && tab >= 0 && postop is null)
+                    if (ptype != "if" && !negtab && postop is null)
                     {
-                        savestr = wrapWithSpaces(savestr ~ ";", tabstr);
+                        savestr = savestr ~ ";";
                     }
+                    if (ptype != "if" && ptype != "else")
+                        savestr = wrapWithSpaces(savestr, tabstr);
                     break;
 
                 case "\"":
-                    savestr ~= "\"" ~ this.arguments[0].saveD(-1, null, "op");
+                    savestr ~= "\"" ~ this.arguments[0].saveD(-tab-1, null, "op");
                     string sep = " ";
                     foreach(i, arg; this.arguments[1..$])
                     {
-                        savestr ~= sep ~ arg.saveD(-1, null, "op");
+                        savestr ~= sep ~ arg.saveD(-tab-1, null, "op");
                     }
                     savestr ~= "\"";
 
@@ -1332,42 +1362,45 @@ class Expression
                         savestr ~= postop.saveD(tab, null, "op");
                     }
 
-                    if (ptype != "if" && tab >= 0 && postop is null)
+                    if (ptype != "if" && !negtab && postop is null)
                     {
-                        savestr = wrapWithSpaces(savestr ~ ";", tabstr);
+                        savestr = savestr ~ ";";
                     }
+                    if (ptype != "if" && ptype != "else")
+                        savestr = wrapWithSpaces(savestr, tabstr);
                     break;
 
                 case "new":
                     savestr ~= this.type;
                     if (!this.arguments.empty)
                     {
-                        savestr ~= " " ~ this.arguments[0].saveD(-1, null, this.type);
+                        savestr ~= " " ~ this.arguments[0].saveD(-tab-1, null, this.type);
                         foreach(i, arg; this.arguments[1..$])
                         {
-                            savestr ~= ", " ~ arg.saveD(-1, null, this.type);
+                            savestr ~= ", " ~ arg.saveD(-tab-1, null, this.type);
                         }
                     }
 
                     if (postop !is null)
                     {
-                        savestr ~= (postop.operator != "[]"?".":"") ~ postop.saveD(-1, null, this.type);
+                        savestr ~= (postop.operator != "[]"?".":"") ~ postop.saveD(-tab-1, null, this.type);
                     }
 
-                    if (tab >= 0)
+                    if (!negtab)
                     {
-                        savestr = wrapWithSpaces(savestr ~ ";", tabstr);
+                        savestr = savestr ~ ";";
                     }
+                    savestr = wrapWithSpaces(savestr, tabstr);
                     break;
 
                 case "cast":
                     savestr ~= "(" ~ this.type;
                     if (!this.arguments.empty)
                     {
-                        savestr ~= "(" ~ this.arguments[0].saveD(-1, null, this.type);
+                        savestr ~= "(" ~ this.arguments[0].saveD(-tab-1, null, this.type);
                         foreach(i, arg; this.arguments[1..$])
                         {
-                            savestr ~= ") (" ~ arg.saveD(-1, null, this.type);
+                            savestr ~= ") (" ~ arg.saveD(-tab-1, null, this.type);
                         }
                         savestr ~= "))";
                     }
@@ -1395,18 +1428,20 @@ class Expression
                             body_ = true;
                         }
                         else
-                            savestr ~= (postop.operator != "[]"?".":"") ~ postop.saveD(-1, null, this.type);
+                            savestr ~= (postop.operator != "[]"?".":"") ~ postop.saveD(-tab-1, null, this.type);
                     }
 
-                    if (ptype != "if" && ptype != "case" && tab >= 0 && !body_)
+                    if (ptype != "if" && ptype != "case" && !negtab && !body_)
                     {
-                        savestr = wrapWithSpaces(savestr ~ ";", tabstr);
+                        savestr = savestr ~ ";";
                     }
+                    if (ptype != "if" && ptype != "else" && ptype != "case")
+                        savestr = wrapWithSpaces(savestr, tabstr);
                     break;
 
                 case "noop":
                     savestr ~= "{}";
-                    if (tab >= 0)
+                    if (!negtab)
                     {
                         savestr = wrapWithSpaces(savestr, tabstr);
                     }
@@ -1415,7 +1450,7 @@ class Expression
                 case "?":
                     if (arguments.length >= 3)
                     {
-                        savestr ~= "(" ~ arguments[0].saveD(-1, null, "op") ~ " ? " ~ arguments[1].saveD(-1, null, "op") ~ " : " ~ arguments[2].saveD(-1, null, "op") ~ ")";
+                        savestr ~= "(" ~ arguments[0].saveD(-tab-1, null, "op") ~ " ? " ~ arguments[1].saveD(-tab-1, null, "op") ~ " : " ~ arguments[2].saveD(-tab-1, null, "op") ~ ")";
                     }
                     break;
                 
@@ -1454,16 +1489,16 @@ class Expression
                             {
                                 if (type == "unary")
                                     savestr ~= this.operator;
-                                savestr ~= this.arguments[0].saveD(-1, null, this.operator == "=" && arguments[0].type != "unary"?"var":"op");
+                                savestr ~= this.arguments[0].saveD(-tab-1, null, this.operator == "=" && arguments[0].type != "unary"?"var":"op");
                                 foreach(i, arg; this.arguments[1..$])
                                 {
-                                    savestr ~= " " ~ this.operator ~ " " ~ arg.saveD(-1, null, "op");
+                                    savestr ~= " " ~ this.operator ~ " " ~ arg.saveD(-tab-1, null, "op");
                                 }
                                 if (type == "type")
                                     savestr ~= this.operator;
                             }
 
-                            if (!(tab >= 0 && postop is null) && ptype == "op")
+                            if (!(!negtab && postop is null) && ptype == "op")
                             {
                                 savestr = "(" ~ savestr ~ ")";
                             }
@@ -1481,35 +1516,39 @@ class Expression
                                     savestr ~= postop.saveD(tab, null, "postop");
                             }
 
-                            if (ptype != "if" && tab >= 0 && postop is null)
+                            if (ptype != "if" && !negtab && postop is null)
                             {
-                                savestr = wrapWithSpaces(savestr ~ ";", tabstr);
+                                savestr = savestr ~ ";";
                             }
+                            if (ptype != "if" && ptype != "else")
+                                savestr = wrapWithSpaces(savestr, tabstr);
                             break;
 
                         case "++":
                         case "--":
                             if (type == "post")
                             {
-                                savestr = arguments[0].saveD(-1, null, "op") ~ operator;
+                                savestr = arguments[0].saveD(-tab-1, null, "op") ~ operator;
                             }
                             else
                             {
-                                savestr = operator ~ arguments[0].saveD(-1, null, "op");
+                                savestr = operator ~ arguments[0].saveD(-tab-1, null, "op");
                             }
 
-                            if (ptype != "if" && tab >= 0 && postop is null)
+                            if (ptype != "if" && !negtab && postop is null)
                             {
-                                savestr = wrapWithSpaces(savestr ~ ";", tabstr);
+                                savestr = savestr ~ ";";
                             }
+                            if (ptype != "if" && ptype != "else")
+                                savestr = wrapWithSpaces(savestr, tabstr);
                             break;
 
                         case "!":
                             savestr ~= this.operator;
                             if (!arguments.empty)
-                                savestr ~= " " ~ this.arguments[0].saveD(-1, null, "op");
+                                savestr ~= " " ~ this.arguments[0].saveD(-tab-1, null, "op");
 
-                            if (!(tab >= 0 && postop is null) && ptype == "op")
+                            if (!(!negtab && postop is null) && ptype == "op")
                             {
                                 savestr = "(" ~ savestr ~ ")";
                             }
@@ -1527,22 +1566,24 @@ class Expression
                                     savestr ~= postop.saveD(tab, null, "postop");
                             }
 
-                            if (ptype != "if" && tab >= 0 && postop is null)
+                            if (ptype != "if" && !negtab && postop is null)
                             {
-                                savestr = wrapWithSpaces(savestr ~ ";", tabstr);
+                                savestr = savestr ~ ";";
                             }
+                            if (ptype != "if" && ptype != "else")
+                                savestr = wrapWithSpaces(savestr, tabstr);
                             break;
 
                         case "[]":
 
                             if (!this.arguments.empty)
                             {
-                                savestr ~= this.arguments[0].saveD(-1, null, this.type);
+                                savestr ~= this.arguments[0].saveD(-tab-1, null, this.type);
                                 if (type == "type")
                                 {
                                     string of = "";
                                     if (this.arguments.length >= 2)
-                                        of = this.arguments[1].saveD(-1, null, this.type);
+                                        of = this.arguments[1].saveD(-tab-1, null, this.type);
                                     savestr ~= "["~of~"]";
                                 }
                                 else
@@ -1551,7 +1592,7 @@ class Expression
                                     foreach(i, arg; this.arguments[1..$])
                                     {
                                         if (arg.operator == "..") sep = "";
-                                        savestr ~= sep ~ arg.saveD(-1, null, this.type);
+                                        savestr ~= sep ~ arg.saveD(-tab-1, null, this.type);
                                     }
                                 }
                             }
@@ -1596,7 +1637,7 @@ class Expression
                             if (!this.arguments.empty)
                             {
                                 bool first = true;
-                                auto f = this.arguments[0].saveD(-1, null, this.type);
+                                auto f = this.arguments[0].saveD(-tab-1, null, this.type);
                                 
                                 if (f == "!")
                                     savestr ~= "!(";
@@ -1621,7 +1662,7 @@ class Expression
                                         first = false;
                                     else
                                         savestr ~= ", ";
-                                    savestr ~= arg.saveD(-1, null, this.type);
+                                    savestr ~= arg.saveD(-tab-1, null, this.type);
                                 }
                                 savestr ~= ")";
                             }
@@ -1654,16 +1695,18 @@ class Expression
                                 }
                                 else if (ptype == "foreach")
                                 {
-                                    savestr = postop.saveD(-1, null, this.type) ~ " " ~ savestr;
+                                    savestr = postop.saveD(-tab-1, null, this.type) ~ " " ~ savestr;
                                 }
                                 else
-                                    savestr ~= (postop.operator != "[]"?".":"") ~ postop.saveD(-1, null, this.type);
+                                    savestr ~= (postop.operator != "[]"?".":"") ~ postop.saveD(-tab-1, null, this.type);
                             }
 
-                            if (ptype != "if" && ptype != "case" && tab >= 0 && !body_)
+                            if (ptype != "if" && ptype != "case" && !negtab && !body_)
                             {
-                                savestr = wrapWithSpaces(savestr ~ ";", tabstr);
+                                savestr = savestr ~ ";";
                             }
+                            if (ptype != "if" && ptype != "else" && ptype != "case")
+                                savestr = wrapWithSpaces(savestr, tabstr);
                             break;
                     }
                     break;

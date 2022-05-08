@@ -1634,6 +1634,7 @@ class Parser {
         else if (lexer == LexemType.Identifier) 
         {
             Expression arg = new Expression;
+            arg.nl1 = getNL;
             Expression type = new Expression;
             type.operator = lexer.lexem;Name: 
             getLexem;
