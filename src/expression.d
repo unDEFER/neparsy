@@ -17,7 +17,84 @@ import std.array;
 import std.string;
 import std.file;
 
-import iface;
+struct Color
+{
+    real r, g, b, a;
+    Color invert()
+    {
+        auto ret = Color(1.0 + 0.402*r - 1.174*g - 0.228*b,
+                1.0 - 0.598*r - 0.174*g - 0.228*b,
+                1.0 - 0.598*r - 1.174*g + 0.772*b,
+                a);
+        auto mi = min(ret.r, ret.g, ret.b);
+        auto ma = max(ret.r, ret.g, ret.b);
+        
+        if (mi < 0)
+        {
+            ret.r -= mi;
+            ret.g -= mi;
+            ret.b -= mi;
+        }
+        
+        if (ma > 1.0)
+        {
+            ret.r /= ma;
+            ret.g /= ma;
+            ret.b /= ma;
+        }
+
+        return ret;
+    }
+
+    static Color hsv(real H, real S, real V, real A = 1.0)
+    {
+        byte Hi = cast(byte) (H*6) % 6;
+        real Vmin = (1.0-S)*V;
+        real a = (V-Vmin)*((H*360) % 60)/60;
+        real Vinc = Vmin + a;
+        real Vdec = V - a;
+
+        real R, G, B;
+
+        switch (Hi)
+        {
+            case 0:
+                R = V;
+                G = Vinc;
+                B = Vmin;
+                break;
+            case 1:
+                R = Vdec;
+                G = V;
+                B = Vmin;
+                break;
+            case 2:
+                R = Vmin;
+                G = V;
+                B = Vinc;
+                break;
+            case 3:
+                R = Vmin;
+                G = Vdec;
+                B = V;
+                break;
+            case 4:
+                R = Vinc;
+                G = Vmin;
+                B = V;
+                break;
+            case 5:
+                R = V;
+                G = Vmin;
+                B = Vdec;
+                break;
+            default:
+                assert(0);
+        }
+
+        return Color(R, G, B, A);
+    }
+}
 
 struct BlockBE
 {
@@ -66,6 +143,7 @@ class Expression
     int nl1, nl2;
     BlockType bt;
     Expression[] arguments;
+    bool prefix;
     Expression postop;
     Expression parent;
     long index;
@@ -188,12 +266,21 @@ class Expression
 
     static bool startsWithDotBracket(char[] line, ParserState ps)
     {
+        while (!line.empty)
+        {
+            if (line[0] == ' ' || line[0] == '\n')
+            {
+                line = line[1..$];
+            }
+            else break;
+        }
+
         if (line.startsWith(ps.dot))
         {
             line = line[ps.dot.length .. $];
-            while (!line.empty && (line[0] == ' ' || line[0] == '\n'))
+            if (line.startsWith(ps.dot))
             {
-                line.decodeFront();
+                line = line[ps.dot.length .. $];
             }
             return line.startsWith(ps.brackets.begin);
         }
@@ -471,11 +558,26 @@ class Expression
 
                         if (ne.postop !is null)
                         {
-                            ne.postop.parent = arguments[$-1];
+                            if (ne.postop.prefix)
+                            {
+                                ne.postop.parent = arguments[$-ne.arguments.length];
+                            }
+                            else
+                            {
+                                ne.postop.parent = arguments[$-1];
+                            }
+
                             ne.postop.index = -ne.arguments.length;
                         }
 
-                        arguments[$-1].postop = ne.postop;
+                        if (ne.postop.prefix)
+                        {
+                            arguments[$-ne.arguments.length].postop = ne.postop;
+                        }
+                        else
+                        {
+                            arguments[$-1].postop = ne.postop;
+                        }
                     }
                     else
                     {
@@ -493,11 +595,49 @@ class Expression
         Post:
         if (startsWithDotBracket(line, ps))
         {
+            while (!line.empty)
+            {
+                if (line[0] == ' ' || line[0] == '\n')
+                {
+                    if (line[0] == '\n') nl2++;
+                    line = line[1..$];
+                }
+                else break;
+            }
+
             line = line[ps.dot.length .. $];
+            bool prefix;
+            if (line.startsWith(ps.dot))
+            {
+                prefix = true;
+                line = line[ps.dot.length .. $];
+            }
             auto ne = new Expression(line, ps, this);
+            if (prefix)
+            {
+                auto o = ne.operator;
+                auto t = ne.type;
+                auto l = ne.label;
+                auto a = ne.arguments;
+                auto p = ne.postop;
+
+                ne.operator = this.operator;
+                ne.type = this.type;
+                ne.label = this.label;
+                ne.arguments = this.arguments;
+                ne.postop = this.postop;
+
+                this.operator = o;
+                this.type = t;
+                this.label = l;
+                this.arguments = a;
+                this.postop = p;
+            }
             ne.parent = this;
             ne.index = -1;
+            ne.prefix = prefix;
             postop = ne;
+            nl2 = 0;
         }
 
         End:
@@ -547,6 +687,17 @@ class Expression
         }
     }
 
+    Expression getPostOpN(int n)
+    {
+        Expression pp = this.postop;
+        while (pp !is null && n > 0)
+        {
+            pp = pp.postop;
+            n--;
+        }
+        return pp;
+    }
+
     Expression popChild()
     {
         if (arguments.empty) return null;
@@ -573,14 +724,14 @@ class Expression
         }
     }
 
-    static string escape(string str, BlockBE be, bool space = true, bool dot = true)
+    static string escape(string str, BlockBE be, bool space = true)
     {
         if (be.escape.empty) return str;
 
         string res;
         while (!str.empty)
         {
-            if (str.startsWith(be.begin) || str.startsWith(be.end) || str.startsWith(be.escape) || space && str.startsWith(" ") || dot && str.startsWith("."))
+            if (str.startsWith(be.begin) || str.startsWith(be.end) || str.startsWith(be.escape) || space && str.startsWith(" "))
             {
                 res ~= be.escape;
                 res ~= str.decodeFront();
@@ -618,7 +769,7 @@ class Expression
         return save(ps);
     }
 
-    string save(ref ParserState ps, int tab = 0, long[] cbr = null, bool force_brackets = false)
+    string save(ref ParserState ps, int tab = 0, long[] cbr1 = null, long[] cbr2 = null, bool force_brackets = false)
     {
         string op = operator;
         string savestr;
@@ -647,6 +798,7 @@ class Expression
         if (!this.arguments.empty)
         {
             long[] a, b, c;
+            Expression[] ce;
             foreach(i, arg; this.arguments)
             {
                 auto arg2 = arg.postop;
@@ -655,9 +807,18 @@ class Expression
                 {
                     if (arg2.index < -1)
                     {
-                        a ~= i+arg2.index+1;
-                        b ~= i;
+                        if (arg2.prefix)
+                        {
+                            a ~= i;
+                            b ~= i-arg2.index-1;
+                        }
+                        else
+                        {
+                            a ~= i+arg2.index+1;
+                            b ~= i;
+                        }
                         c ~= j;
+                        ce ~= arg2;
                     }
 
                     arg2 = arg2.postop;
@@ -667,47 +828,68 @@ class Expression
 
             foreach(i, arg; this.arguments)
             {
-                foreach(m; a)
+                long[] br1, br2;
+                foreach(j, m; a)
                 {
                     if (m == i)
                     {
-                        savestr ~= " " ~ ps.brackets.begin ~ ps.dot;
+                        if (ce[j].prefix)
+                        {
+                            br1 ~= c[j];
+                        }
+                        else
+                        {
+                            savestr ~= " " ~ ps.brackets.begin ~ ps.dot;
+                        }
                     }
                 }
-                
-                long[] br;
+
                 foreach(j, m; b)
                 {
                     if (m == i)
                     {
-                        br ~= c[j];
+                        if (!ce[j].prefix)
+                        {
+                            br2 ~= c[j];
+                        }
                     }
                 }
 
                 if (bt == BlockType.File)
-                    savestr ~= arg.save(ps, 0, br, false);
+                    savestr ~= arg.save(ps, 0, br1, br2, false);
                 else
                 {
-                    auto as = arg.save(ps, tab+1, br, false);
+                    auto as = arg.save(ps, tab+1, br1, br2, false);
                     if (as.startsWith(" ") || as.startsWith("\n"))
                         savestr ~= as;
                     else
                         savestr ~= " " ~ as;
                 }
+
+                foreach(j, m; b)
+                {
+                    if (m == i)
+                    {
+                        if (ce[j].prefix)
+                        {
+                            savestr ~= ps.brackets.end;
+                        }
+                    }
+                }
             }
 
             if (bt != BlockType.File)
             {
-                savestr = ps.brackets.begin ~ savestr ~ 
+                savestr = (index < 0 && !prefix ? ps.dot : "") ~ ps.brackets.begin ~ savestr ~ 
                     (nl2 > 0 ? '\n'.repeat(nl2).array ~ ' '.repeat(tab*4).array : "").idup ~
-                    ps.brackets.end;
+                    ps.brackets.end ~ (index < 0 && prefix ? ps.dot ~ ps.dot : "");
             }
         }
         else if (force_brackets || arguments !is null)
         {
-            savestr = ps.brackets.begin ~ savestr ~
+            savestr = (index < 0 && !prefix ? ps.dot : "") ~ ps.brackets.begin ~ savestr ~
                 (nl2 > 0 ? '\n'.repeat(nl2).array ~ ' '.repeat(tab*4).array : "").idup ~
-                ps.brackets.end;
+                ps.brackets.end ~ (index < 0 && prefix ? ps.dot ~ ps.dot : "");
         }
         else if (nl2 > 0)
         {
@@ -718,19 +900,34 @@ class Expression
 
         if (index >= 0)
         {
-            long cj = 0;
+            long cj1 = 0;
+            long cj2 = 0;
 
             auto arg = postop;
             long j;
             while (arg !is null)
             {
-                if (cj < cbr.length && cbr[cj] == j)
+                if (cj1 < cbr1.length && cbr1[cj1] == j)
                 {
-                    savestr ~= ps.brackets.end;
-                    cj++;
+                    savestr = ps.brackets.begin ~ ps.dot ~ " " ~ savestr;
+                    cj1++;
                 }
 
-                savestr ~= ps.dot ~ arg.save(ps, tab, null, true);
+                if (cj2 < cbr2.length && cbr2[cj2] == j)
+                {
+                    savestr ~= ps.brackets.end;
+                    cj2++;
+                }
+
+                if (arg.prefix)
+                {
+                    savestr = arg.save(ps, tab, null, null, true) ~ savestr;
+                }
+                else
+                {
+                    savestr ~= arg.save(ps, tab, null, null, true);
+                }
+
                 arg = arg.postop;
                 j++;
             }
@@ -802,7 +999,7 @@ class Expression
                         while (ap !is null)
                         {
                             //writefln("%s -- %s (%s == %s)", this, ap.index, arg.index + ap.index + 1, this.index);
-                            if (arg.index + ap.index + 1 == this.index)
+                            if (ap.prefix ? arg.index == this.index : arg.index + ap.index + 1 == this.index)
                             {
                                 if (ap.operator == "[]")
                                 {
@@ -827,7 +1024,9 @@ class Expression
                                     }
                                 }
                             }
-                            else if (ptype != "ctype" && this.index <= arg.index && this.index > arg.index + ap.index + 1)
+                            else if (ptype != "ctype" && 
+                                    (ap.prefix ? this.index <= arg.index && this.index > arg.index + ap.index + 1
+                                               : this.index <= arg.index - ap.index - 1 && this.index > arg.index))
                                 return "";
 
                             ap = ap.postop;
