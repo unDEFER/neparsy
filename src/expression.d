@@ -11,90 +11,15 @@ import std.algorithm.searching;
 import std.algorithm.mutation;
 import std.range.primitives;
 import std.utf;
+import std.ascii: isDigit;
+import std.conv;
 import std.algorithm;
 import std.range: repeat;
 import std.array;
 import std.string;
 import std.file;
 
-struct Color
-{
-    real r, g, b, a;
-    Color invert()
-    {
-        auto ret = Color(1.0 + 0.402*r - 1.174*g - 0.228*b,
-                1.0 - 0.598*r - 0.174*g - 0.228*b,
-                1.0 - 0.598*r - 1.174*g + 0.772*b,
-                a);
-        auto mi = min(ret.r, ret.g, ret.b);
-        auto ma = max(ret.r, ret.g, ret.b);
-        
-        if (mi < 0)
-        {
-            ret.r -= mi;
-            ret.g -= mi;
-            ret.b -= mi;
-        }
-        
-        if (ma > 1.0)
-        {
-            ret.r /= ma;
-            ret.g /= ma;
-            ret.b /= ma;
-        }
-
-        return ret;
-    }
-
-    static Color hsv(real H, real S, real V, real A = 1.0)
-    {
-        byte Hi = cast(byte) (H*6) % 6;
-        real Vmin = (1.0-S)*V;
-        real a = (V-Vmin)*((H*360) % 60)/60;
-        real Vinc = Vmin + a;
-        real Vdec = V - a;
-
-        real R, G, B;
-
-        switch (Hi)
-        {
-            case 0:
-                R = V;
-                G = Vinc;
-                B = Vmin;
-                break;
-            case 1:
-                R = Vdec;
-                G = V;
-                B = Vmin;
-                break;
-            case 2:
-                R = Vmin;
-                G = V;
-                B = Vinc;
-                break;
-            case 3:
-                R = Vmin;
-                G = Vdec;
-                B = V;
-                break;
-            case 4:
-                R = Vinc;
-                G = Vmin;
-                B = V;
-                break;
-            case 5:
-                R = V;
-                G = Vmin;
-                B = Vdec;
-                break;
-            default:
-                assert(0);
-        }
-
-        return Color(R, G, B, A);
-    }
-}
+import color;
 
 struct BlockBE
 {
@@ -116,10 +41,21 @@ struct ParserState
 {
     BlockBE[] strings = [];
     BlockBE[] comments = [];
-    BlockBE brackets = BlockBE("(", ")", "\\", true);
+    BlockBE parentheses = BlockBE("(", ")", "\\", true);
+    BlockBE braces = BlockBE("{", "}", "\\", true);
+    string[] delimiters = [" ", "\t", "\n"];
     string sharp = "#";
     string at = "@";
     string dot = ".";
+    string line, nline, newline;
+    long numline = 1;
+}
+
+enum PostfixType
+{
+    Postfix = -1,
+    Prefix = -2,
+    InBrace = -3
 }
 
 class Expression
@@ -140,14 +76,16 @@ class Expression
     string operator;
     string type;
     string label;
-    int nl1, nl2;
+    string[][2][2] texts;
+    string[][2] indents;
+    int indent;
+    bool parentheses;
     BlockType bt;
     Expression[] arguments;
-    bool prefix;
     Expression postop;
     Expression parent;
-    long index;
-    long focus_index;
+    ptrdiff_t index;
+    ptrdiff_t focus_index;
 
     real r() { return c.r; }
     real g() { return c.g; }
@@ -200,44 +138,61 @@ class Expression
         return res;
     }
 
-    string getBlock(ref char[] line, BlockBE be)
+    string getBlock(ref ParserState ps, BlockBE be)
     {
-        char[] sline = line;
-        assert(line.startsWith(be.begin));
-        line = line[be.begin.length .. $];
+        string sline = ps.line;
+        /*string sline = ps.nline;
+        string empty_begin = sline[0..ps.line.ptr - sline.ptr];
+
+        if ( !isSpaces(empty_begin) )
+        {
+            sline = ps.line;
+        }*/
+
+        assert(ps.line.startsWith(be.begin));
+        ps.line = ps.line[be.begin.length .. $];
 
         bool escape;
         int nest;
-        while (!line.empty)
+        while (!ps.line.empty)
         {
             if (escape)
             {
                 escape = false;
-                line.decodeFront();
+                ps.line.decodeFront();
             }
-            else if ( !be.escape.empty && line.startsWith(be.escape) )
+            else if ( !be.escape.empty && ps.line.startsWith(be.escape) )
             {
                 escape = true;
-                line = line[be.escape.length .. $];
+                ps.line = ps.line[be.escape.length .. $];
             }
-            else if ( be.nested && line.startsWith(be.begin) )
+            else if ( be.nested && ps.line.startsWith(be.begin) )
             {
                 nest++;
-                line = line[be.begin.length .. $];
+                ps.line = ps.line[be.begin.length .. $];
             }
-            else if ( line.startsWith(be.end) )
+            else if ( ps.line.startsWith(be.end) )
             {
-                line = line[be.end.length .. $];
-                if (nest == 0) return sline[0..line.ptr - sline.ptr].idup;
+                ps.line = ps.line[be.end.length .. $];
+                if (be.end == "\n")
+                {
+                    nextLine(ps, 0, 0, false, "end block "~be.end);
+                }
+                if (nest == 0) return sline[0..ps.line.ptr - sline.ptr].idup;
                 nest--;
+            }
+            else if (ps.line.startsWith("\n"))
+            {
+                ps.line.decodeFront();
+                nextLine(ps, 0, 0, false, "block "~be.begin~" nl");
             }
             else
             {
-                line.decodeFront();
+                ps.line.decodeFront();
             }
         }
 
-        return sline[0..line.ptr - sline.ptr].idup;
+        return sline[0..ps.line.ptr - sline.ptr].idup;
     }
 
     BlockBE getBE()
@@ -264,40 +219,268 @@ class Expression
         return be;
     }
 
-    static bool startsWithDotBracket(char[] line, ParserState ps)
+    static bool startsWithDelimiter(ParserState ps)
     {
-        while (!line.empty)
+        foreach(dl; ps.delimiters)
         {
-            if (line[0] == ' ' || line[0] == '\n')
-            {
-                line = line[1..$];
-            }
-            else break;
-        }
-
-        if (line.startsWith(ps.dot))
-        {
-            line = line[ps.dot.length .. $];
-            if (line.startsWith(ps.dot))
-            {
-                line = line[ps.dot.length .. $];
-            }
-            return line.startsWith(ps.brackets.begin);
+            if (ps.line.startsWith(dl))
+                return true;
         }
         return false;
     }
 
-    this(ref char[] line, ParserState ps = ParserState.init, Expression parent = null, bool nofile = false)
+    static bool isSpaces(string line)
     {
+        foreach(dchar c; line)
+        {
+            if (c != ' ' && c != '\t')
+                return false;
+        }
+
+        return true;
+    }
+
+    static bool startsWithDelimitersNL(ParserState ps)
+    {
+        while (startsWithDelimiter(ps))
+        {
+            if (ps.line.startsWith("\n"))
+                return true;
+            ps.line.decodeFront();
+        }
+        return false;
+    }
+
+    static bool startsWithDotBracket(ParserState ps)
+    {
+        while (!ps.line.empty)
+        {
+            if (ps.line[0] == ' ' || ps.line[0] == '\n')
+            {
+                ps.line = ps.line[1..$];
+            }
+            else break;
+        }
+
+        if (ps.line.startsWith(ps.dot))
+        {
+            ps.line = ps.line[ps.dot.length .. $];
+            if (ps.line.startsWith(ps.dot))
+            {
+                ps.line = ps.line[ps.dot.length .. $];
+            }
+            return ps.line.startsWith(ps.parentheses.begin) || ps.line.startsWith(ps.braces.begin);
+        }
+        return false;
+    }
+
+    enum Label
+    {
+        Arguments = 0,
+        Post,
+        End
+    }
+
+    void calcIndent(long t = 0)
+    {
+        indent = 0;
+        if (texts[t][0].length > 0)
+        {
+            foreach(dchar chr; texts[t][0][$-1])
+            {
+                if (chr == ' ')
+                    indent++;
+                else if (chr == '\t')
+                    indent += 8;
+                else break;
+            }
+        }
+        //writefln("IND %s %s = %s", this, texts[t], indent);
+    }
+
+    void calcIndentRecursive(long t = 0)
+    {
+        calcIndent(t);
+
+        foreach (ind, arg; arguments)
+        {
+            arg.calcIndentRecursive(t);
+        }
+
+        if (postop)
+        {
+            postop.calcIndentRecursive(t);
+        }
+    }
+
+    void cutIndent(long t = 0)
+    {
+        Expression[] pp = [];
+        {
+            Expression p = this;
+            while (p)
+            {
+                pp ~= p;
+                Expression q;
+                do
+                {
+                    q = p;
+                    p = p.parent;
+                }
+                while (p && (q.index == PostfixType.Prefix || q.index == PostfixType.Postfix));
+            }
+        }
+
+        foreach_reverse(par; pp[1..$])
+        {
+            if (indent >= par.indent)
+                indent -= par.indent;
+        }
+
+        void handle_texts(long te)
+        {
+            foreach_reverse(par; pp)
+            {
+                foreach(i, ref line; texts[t][te])
+                {
+                    string li = line;
+                    int sin = 0;
+                    if (i > 0)
+                    {
+                        foreach(dchar chr; line)
+                        {
+                            if (sin >= par.indent)
+                                break;
+                            if (chr == ' ')
+                            {
+                                li = li[1..$];
+                                sin++;
+                            }
+                            else if (chr == '\t')
+                            {
+                                li = li[1..$];
+                                sin += 8;
+                            }
+                            else break;
+                        }
+                        //writefln("%s/%s[%s]: %s (%s)", this, par, te, [line, li, line[0..li.ptr - line.ptr]], par.indent);
+                        par.indents[t] ~= line[0..li.ptr - line.ptr];
+                    }
+
+                    line = li;
+                }
+            }
+        }
+
+        if (index >= 0)
+        {
+            auto p = this;
+            while (p.postop)
+            {
+                p = p.postop;
+            }
+
+            while (p.index < 0)
+            {
+                if (p.index == PostfixType.Prefix) p.cutIndent(t);
+                p = p.parent;
+            }
+        }
+
+        handle_texts(0);
+
+        if (index >= 0)
+        {
+            auto p = postop;
+            while (p)
+            {
+                if (p.index == PostfixType.InBrace) p.cutIndent(t);
+                p = p.postop;
+            }
+        }
+
+        foreach (ind, arg; arguments)
+        {
+            arg.cutIndent(t);
+        }
+
+        handle_texts(1);
+
+        if (index >= 0)
+        {
+            auto p = postop;
+            while (p)
+            {
+                if (p.index == PostfixType.Postfix) p.cutIndent(t);
+                p = p.postop;
+            }
+        }
+
+        /*if (!indents[t].empty)
+        {
+            writefln("%s. texts: %s", this, texts[t]);
+            writefln("indent: %s", indent);
+            writefln("indents: %s:%s", indents[t].length, indents[t]);
+        }*/
+    }
+
+    void nextLine(ref ParserState ps, long t, long te, bool middle, string Debug)
+    {
+        auto lstr = ps.nline[0 .. ps.line.ptr - ps.nline.ptr].idup;
+
+        auto nl = lstr.find("\n");
+        assert(nl.empty || nl == "\n");
+
+        if (texts[t][te].empty && ps.nline is ps.newline)
+            texts[t][te] ~= ["", lstr];
+        else if (texts[t][te].empty || texts[t][te].back.endsWith("\n"))
+            texts[t][te] ~= [lstr];
+        else
+            texts[t][te].back ~= lstr;
+
+        ps.nline = ps.line;
+        if (lstr.endsWith("\n"))
+            ps.numline++;
+        if (!middle || lstr.endsWith("\n"))
+            ps.newline = ps.line;
+        //writefln("%s: %s. %s %% %s %s", Debug, this, [lstr], te, texts[t][te]);
+    }
+
+    static string[] concatTexts(string[] text, string[] add)
+    {
+        if (text.empty) return add;
+        if (add.empty) return text;
+
+        text.back ~= add.front;
+        text ~= add[1..$];
+
+        return text;
+    }
+
+    this(ref string file, ParserState ps, Expression parent = null, bool nofile = false)
+    {
+        ps.line = file;
+        ps.nline = file;
+        ps.newline = file;
+
+        this(ps, parent, nofile);
+        cutIndent();
+        assert(ps.line.empty);
+    }
+
+    this(ref ParserState ps, Expression parent = null, bool nofile = false)
+    {
+        this.parent = parent;
+        string sline = ps.line;
+
         if (parent is null)
         {
             if (!nofile)
             {
                 bt = BlockType.File;
-                while (!line.empty)
+                while (!ps.line.empty)
                 {
-                    auto ne = new Expression(line, ps, this);
-                    ne.parent = this;
+                    auto ne = new Expression(ps, this);
                     ne.index = arguments.length;
                     arguments ~= ne;
                 }
@@ -306,25 +489,26 @@ class Expression
             else
             {
                 ps.comments = [BlockBE("/*", "*/")];
-                ps.strings = [BlockBE("\"", "\"", "\\"), BlockBE("'", "'", "\\")];
+                ps.strings = [BlockBE("\"", "\"", "\\"), BlockBE("'", "'", "\\"), BlockBE("`", "`")];
             }
         }
         else
         {
-            nl1 = parent.nl2;
+            texts[0][0] = parent.texts[0][1];
         }
 
         if (ps.comments.empty)
         {
-            char[] sline = line;
-
-            while (!line.empty)
+            while (!ps.line.empty)
             {
-                if ( line.startsWith(ps.brackets.begin) )
+                if ( ps.line.startsWith(ps.parentheses.begin) || ps.line.startsWith(ps.braces.begin) )
                 {
-                    if (line !is sline)
+                    if (ps.line !is sline)
                     {
-                        operator = sline[0 .. line.ptr - sline.ptr].idup;
+                        operator = sline[0 .. ps.line.ptr - sline.ptr].idup;
+                        if (texts[0][0].empty && ps.nline is ps.newline) texts[0][0] ~= "";
+                        texts[0][0] ~= ps.nline[0 .. ps.line.ptr - ps.nline.ptr].idup;
+                        calcIndent();
                         bt = BlockType.Comment;
                         return;
                     }
@@ -332,45 +516,62 @@ class Expression
                 }
                 else
                 {
-                    while (!line.empty && !line.startsWith("\n"))
+                    while (!ps.line.empty && !ps.line.startsWith("\n"))
                     {
-                        line.decodeFront();
+                        ps.line.decodeFront();
                     }
 
-                    if (!line.empty)
+                    if (!ps.line.empty)
                     {
-                        line.decodeFront();
+                        ps.line.decodeFront();
                     }
-                    nl1++;
+
+                    nextLine(ps, 0, 0, false, "comment");
                 }
             }
         }
 
         Init:
-        while (!line.empty && (line[0] == ' ' || line[0] == '\n'))
+        while (startsWithDelimiter(ps))
         {
-            if (line[0] == '\n')
-                nl1++;
-            line = line[1..$];
+            bool nl = ps.line.startsWith("\n");
+            ps.line.decodeFront();
+            if (nl)
+            {
+                nextLine(ps, 0, 0, false, "init skip spaces");
+            }
         }
 
         foreach(be; ps.comments)
         {
-            if ( line.startsWith(be.begin) )
+            if ( ps.line.startsWith(be.begin) )
             {
-                operator = getBlock(line, be);
+                operator = getBlock(ps, be);
                 bt = BlockType.Comment;
+                calcIndent();
                 return;
             }
         }
 
         bool in_brackets;
-        BlockBE brackets = ps.brackets;
+        BlockBE brackets = ps.parentheses;
 
-        if ( line.startsWith(ps.brackets.begin) )
+        if ( ps.line.startsWith(ps.parentheses.begin) )
         {
-            line = line[ps.brackets.begin.length .. $];
             in_brackets = true;
+            brackets = ps.parentheses;
+            parentheses = true;
+        }
+        else if ( ps.line.startsWith(ps.braces.begin) )
+        {
+            in_brackets = true;
+            brackets = ps.braces;
+            parentheses = false;
+        }
+
+        if (in_brackets)
+        {
+            ps.line = ps.line[brackets.begin.length .. $];
             arguments = [null];
             arguments.length = 0;
             assert(arguments !is null);
@@ -378,139 +579,160 @@ class Expression
 
         foreach(be; ps.strings)
         {
-            if ( line.startsWith(be.begin) )
+            if ( ps.line.startsWith(be.begin) )
             {
-                operator = getBlock(line, be);
+                operator = getBlock(ps, be);
                 bt = BlockType.String;
 
-                if (line.startsWith(ps.sharp))
+                if (ps.line.startsWith(ps.sharp))
                 {
-                    line = line[ps.sharp.length .. $];
+                    ps.line = ps.line[ps.sharp.length .. $];
                     goto Sharp;
                 }
-                else if (line.startsWith(ps.at))
+                else if (ps.line.startsWith(ps.at))
                 {
-                    line = line[ps.at.length .. $];
+                    ps.line = ps.line[ps.at.length .. $];
                     goto At;
                 }
                 else goto Arguments;
             }
         }
 
-        while (!line.empty)
+        while (!ps.line.empty)
         {
-            if (line.startsWith(ps.brackets.begin))
+            if (ps.line.startsWith(ps.parentheses.begin) || ps.line.startsWith(ps.braces.begin))
             {
                 goto Arguments;
             }
-            else if (line.startsWith(ps.brackets.escape))
+            else if (ps.line.startsWith(ps.braces.escape))
             {
-                line = line[ps.brackets.escape.length .. $];
-                dchar c = line.decodeFront();
+                ps.line = ps.line[ps.braces.escape.length .. $];
+                dchar c = ps.line.decodeFront();
                 operator ~= getEscape(c);
             }
-            else if (line[0] == ' ' || line[0] == '\n')
+            else if (startsWithDelimiter(ps))
             {
                 goto Arguments;
             }
-            else if (line.startsWith(ps.brackets.end))
+            else if (ps.line.startsWith(ps.parentheses.end) || ps.line.startsWith(ps.braces.end))
             {
-                if (in_brackets)
+                if (in_brackets && ps.line.startsWith(brackets.end))
                 {
-                    line = line[ps.brackets.end.length .. $];
+                    if (ps.nline !is ps.line)
+                    {
+                        nextLine(ps, 0, 0, true, "operator");
+                    }
+                    ps.line = ps.line[brackets.end.length .. $];
                     goto Post;
                 }
                 goto End;
             }
-            else if (!in_brackets && startsWithDotBracket(line, ps))
+            else if (startsWithDotBracket(ps))
             {
-                goto Post;
+                if (in_brackets)
+                    goto Arguments;
+                else
+                    goto Post;
             }
-            else if (line.startsWith(ps.sharp))
+            else if (ps.line.startsWith(ps.sharp))
             {
-                line = line[ps.sharp.length .. $];
+                ps.line = ps.line[ps.sharp.length .. $];
                 goto Sharp;
             }
-            else if (line.startsWith(ps.at))
+            else if (ps.line.startsWith(ps.at))
             {
-                line = line[ps.at.length .. $];
+                ps.line = ps.line[ps.at.length .. $];
                 goto At;
             }
             else
-                operator ~= line.decodeFront();
+                operator ~= ps.line.decodeFront();
         }
 
         Sharp:
-        while (!line.empty)
+        while (!ps.line.empty)
         {
-            if (line.startsWith(ps.brackets.begin))
+            if (ps.line.startsWith(ps.parentheses.begin) || ps.line.startsWith(ps.braces.begin))
             {
                 goto Arguments;
             }
-            else if (line.startsWith(ps.brackets.escape))
+            else if (ps.line.startsWith(ps.braces.escape))
             {
-                line = line[ps.brackets.escape.length .. $];
-                dchar c = line.decodeFront();
+                ps.line = ps.line[ps.braces.escape.length .. $];
+                dchar c = ps.line.decodeFront();
                 type ~= getEscape(c);
             }
-            else if (line[0] == ' ' || line[0] == '\n')
+            else if (startsWithDelimiter(ps))
             {
                 goto Arguments;
             }
-            else if (line.startsWith(ps.brackets.end))
+            else if (ps.line.startsWith(ps.parentheses.end) || ps.line.startsWith(ps.braces.end))
             {
-                if (in_brackets)
+                if (in_brackets && ps.line.startsWith(brackets.end))
                 {
-                    line = line[ps.brackets.end.length .. $];
+                    if (ps.nline !is ps.line)
+                    {
+                        nextLine(ps, 0, 0, true, "type");
+                    }
+                    ps.line = ps.line[brackets.end.length .. $];
                     goto Post;
                 }
                 goto End;
             }
-            else if (!in_brackets && startsWithDotBracket(line, ps))
+            else if (startsWithDotBracket(ps))
             {
-                goto Post;
+                if (in_brackets)
+                    goto Arguments;
+                else
+                    goto Post;
             }
-            else if (line.startsWith(ps.at))
+            else if (ps.line.startsWith(ps.at))
             {
-                line = line[ps.at.length .. $];
+                ps.line = ps.line[ps.at.length .. $];
                 goto At;
             }
             else
-                type ~= line.decodeFront();
+                type ~= ps.line.decodeFront();
         }
 
         At:
-        while (!line.empty)
+        while (!ps.line.empty)
         {
-            if (line.startsWith(ps.brackets.end))
+            if (ps.line.startsWith(ps.parentheses.end) || ps.line.startsWith(ps.braces.end))
             {
-                if (in_brackets)
+                if (in_brackets && ps.line.startsWith(brackets.end))
                 {
-                    line = line[ps.brackets.end.length .. $];
+                    if (ps.nline !is ps.line)
+                    {
+                        nextLine(ps, 0, 0, true, "label");
+                    }
+                    ps.line = ps.line[brackets.end.length .. $];
                     goto Post;
                 }
                 goto End;
             }
-            else if (line.startsWith(ps.brackets.escape))
+            else if (ps.line.startsWith(ps.braces.escape))
             {
-                line = line[ps.brackets.escape.length .. $];
-                dchar c = line.decodeFront();
+                ps.line = ps.line[ps.braces.escape.length .. $];
+                dchar c = ps.line.decodeFront();
                 label ~= getEscape(c);
             }
-            else if (line.startsWith(ps.brackets.begin))
+            else if (ps.line.startsWith(ps.parentheses.begin) || ps.line.startsWith(ps.braces.begin))
             {
                 goto Arguments;
             }
-            else if (line[0] == ' ' || line[0] == '\n')
+            else if (startsWithDelimiter(ps))
             {
                 goto Arguments;
             }
-            else if (!in_brackets && startsWithDotBracket(line, ps))
+            else if (startsWithDotBracket(ps))
             {
-                goto Post;
+                if (in_brackets)
+                    goto Arguments;
+                else
+                    goto Post;
             }
             else
-                label ~= line.decodeFront();
+                label ~= ps.line.decodeFront();
         }
 
         Arguments:
@@ -521,98 +743,151 @@ class Expression
                 case "D":
                 case "Lexer":
                     ps.comments = [BlockBE("//", "\n"), BlockBE("/*", "*/"), BlockBE("/+", "+/", null, true)];
-                    ps.strings = [BlockBE("\"", "\"", "\\"), BlockBE("'", "'", "\\")];
+                    ps.strings = [BlockBE("\"", "\"", "\\"), BlockBE("'", "'", "\\"), BlockBE("`", "`")];
                     break;
                 default:
                     break;
             }
         }
 
+        if (!in_brackets && ps.nline !is ps.line)
+        {
+            nextLine(ps, 0, 0, true, "before arguments");
+        }
+
+        if ( startsWithDelimitersNL(ps) )
+        {
+            while (startsWithDelimiter(ps))
+            {
+                bool nl = ps.line.startsWith("\n");
+                ps.line.decodeFront();
+                if (nl) break;
+            }
+        }
+
+        if (ps.nline !is ps.line)
+        {
+            nextLine(ps, 0, in_brackets ? 0 : 1, true, "before arguments");
+        }
+
         if (in_brackets)
         {
-            while (!line.empty)
+            if (startsWithDotBracket(ps))
             {
-                if ( line.startsWith(ps.brackets.end) )
+                auto savetext = texts[0][1];
+                texts[0][1] = [];
+
+                while (!ps.line.empty)
                 {
-                    line = line[ps.brackets.end.length .. $];
+                    if (startsWithDelimiter(ps))
+                    {
+                        bool nl = ps.line.startsWith("\n");
+                        ps.line.decodeFront();
+                        if (nl)
+                        {
+                            nextLine(ps, 0, 1, false, "post in arguments");
+                        }
+                    }
+                    else break;
+                }
+
+                assert(ps.line.startsWith(ps.dot));
+
+                ps.line = ps.line[ps.dot.length .. $];
+                auto ne = new Expression(ps, this, nofile);
+                texts[0][1] = savetext;
+
+                ne.index = PostfixType.InBrace;
+                addPosts([ne]);
+            }
+
+            while (!ps.line.empty)
+            {
+                if ( ps.line.startsWith(brackets.end) )
+                {
+                    ps.line = ps.line[brackets.end.length .. $];
                     goto Post;
                 }
-                else if (line[0] == ' ' || line[0] == '\n')
+                else if (startsWithDelimiter(ps))
                 {
-                    if (line[0] == '\n') nl2++;
-                    line = line[1..$];
+                    bool nl = ps.line.startsWith("\n");
+                    ps.line.decodeFront();
+                    if (nl)
+                    {
+                        nextLine(ps, 0, 1, false, "arguments");
+                    }
                 }
                 else
                 {
-                    auto ne = new Expression(line, ps, this);
+                    auto ne = new Expression(ps, this, nofile);
 
-                    if (ne.operator == ps.dot && !ne.arguments.empty)
+                    if (ne.operator == ps.dot && ne.arguments.empty)
                     {
-                        foreach(arg; ne.arguments)
-                        {
-                            arg.parent = this;
-                            arg.index += arguments.length;
-                        }
-
-                        arguments ~= ne.arguments;
-
-                        if (ne.postop !is null)
-                        {
-                            if (ne.postop.prefix)
-                            {
-                                ne.postop.parent = arguments[$-ne.arguments.length];
-                            }
-                            else
-                            {
-                                ne.postop.parent = arguments[$-1];
-                            }
-
-                            ne.postop.index = -ne.arguments.length;
-                        }
-
-                        if (ne.postop.prefix)
-                        {
-                            arguments[$-ne.arguments.length].postop = ne.postop;
-                        }
-                        else
-                        {
-                            arguments[$-1].postop = ne.postop;
-                        }
+                        ne.operator = "";
                     }
-                    else
-                    {
-                        ne.parent = this;
-                        ne.index = arguments.length;
-                        arguments ~= ne;
-                    }
+                    ne.index = arguments.length;
+                    arguments ~= ne;
 
-                    nl2 = 0;
+                    texts[0][1] = [];
                 }
             }
             assert(0, "Not closed bracket");
         }
 
-        Post:
-        if (startsWithDotBracket(line, ps))
+        if (ps.nline !is ps.line)
         {
-            while (!line.empty)
+            nextLine(ps, 0, 1, true, "after arguments");
+        }
+
+        Post:
+        if ( startsWithDelimitersNL(ps) )
+        {
+            while (startsWithDelimiter(ps))
             {
-                if (line[0] == ' ' || line[0] == '\n')
+                bool nl = ps.line.startsWith("\n");
+                ps.line.decodeFront();
+                if (nl) break;
+            }
+        }
+
+        if (ps.nline !is ps.line)
+        {
+            nextLine(ps, 0, in_brackets ? 1 : 0, true, "before post");
+        }
+
+        if (startsWithDotBracket(ps))
+        {
+            auto savetext = texts[0][1];
+            texts[0][1] = [];
+
+            while (!ps.line.empty)
+            {
+                if (startsWithDelimiter(ps))
                 {
-                    if (line[0] == '\n') nl2++;
-                    line = line[1..$];
+                    bool nl = ps.line.startsWith("\n");
+                    ps.line.decodeFront();
+                    if (nl)
+                    {
+                        nextLine(ps, 0, 1, false, "post");
+                    }
                 }
                 else break;
             }
 
-            line = line[ps.dot.length .. $];
+            assert(ps.line.startsWith(ps.dot));
+
+            ps.line = ps.line[ps.dot.length .. $];
             bool prefix;
-            if (line.startsWith(ps.dot))
+            if (ps.line.startsWith(ps.dot))
             {
                 prefix = true;
-                line = line[ps.dot.length .. $];
+                ps.line = ps.line[ps.dot.length .. $];
             }
-            auto ne = new Expression(line, ps, this);
+            auto ne = new Expression(ps, this, nofile);
+            texts[0][1] = savetext;
+
+            //writefln("this: %s %s", this.texts[0][0], this.texts[0][1]);
+            //writefln("postop: %s %s", ne.texts[0][0], ne.texts[0][1]);
             if (prefix)
             {
                 auto o = ne.operator;
@@ -620,44 +895,96 @@ class Expression
                 auto l = ne.label;
                 auto a = ne.arguments;
                 auto p = ne.postop;
+                auto q = this.postop;
+                auto par = ne.parentheses;
+                auto t1 = ne.texts[0][0];
+                auto t2 = ne.texts[0][1];
 
                 ne.operator = this.operator;
                 ne.type = this.type;
                 ne.label = this.label;
                 ne.arguments = this.arguments;
                 ne.postop = this.postop;
+                ne.parentheses = this.parentheses;
+                ne.texts[0][0] = this.texts[0][0];
+                ne.texts[0][1] = this.texts[0][1];
+                ne.calcIndent();
 
                 this.operator = o;
                 this.type = t;
                 this.label = l;
                 this.arguments = a;
                 this.postop = p;
+                this.parentheses = par;
+                if (p) p.parent = this;
+                if (q) q.parent = ne;
+                this.texts[0][0] = t1;
+                this.texts[0][1] = t2;
+
+                foreach(arg; this.arguments)
+                {
+                    arg.parent = this;
+                }
+
+                foreach(arg; ne.arguments)
+                {
+                    arg.parent = ne;
+                }
             }
-            ne.parent = this;
-            ne.index = -1;
-            ne.prefix = prefix;
-            postop = ne;
-            nl2 = 0;
+
+            ne.index = (prefix ? PostfixType.Prefix : PostfixType.Postfix);
+            addPosts([ne]);
         }
 
         End:
-        auto eline = line;
+        if (ps.nline !is ps.line)
+        {
+            nextLine(ps, 0, in_brackets ? 1 : 0, true, "before end");
+        }
+
+        auto eline = ps.line;
         while (!eline.empty && (eline[0] == ' ' || eline[0] == '\n'))
         {
+            bool nl = (eline[0] == '\n');
             eline = eline[1..$];
+            if (nl)
+            {
+                nextLine(ps, 0, 1, true, "end nl");
+                ps.line = eline;
+            }
         }
-        if (eline.empty) line = eline;
+        if (eline.empty) ps.line = eline;
+        else if (operator.empty && type.empty && label.empty && arguments.empty)
+        {
+            auto handled_line = sline[0..ps.line.ptr - sline.ptr];
+            writefln("%s (Line %s)", !handled_line.empty ? handled_line : (ps.line.length > 32 ? ps.line[0..32] : ps.line),
+                    ps.numline);
+            assert(0, "Empty operator");
+        }
+
+        if (ps.nline !is ps.line)
+        {
+            nextLine(ps, 0, 1, true, "end");
+        }
+
+        if (nofile)
+        {
+            texts[0] = [null, null];
+        }
+        else
+        {
+            calcIndent();
+        }
     }
 
     this(string line, bool nofile = false)
     {
-        char[] l = line.dup;
-        this(l, ParserState.init, null, nofile);
-        assert(l.empty);
+        this(line, ParserState.init, null, nofile);
     }
 
     void addChild(Expression c)
     {
+        assert(c !is this);
         c.parent = this;
         c.index = arguments.length;
         arguments ~= c;
@@ -677,9 +1004,14 @@ class Expression
     void addPosts(Expression[] cc)
     {
         Expression pp = this;
-        while (pp.postop !is null) pp = pp.postop;
+        while (pp.postop !is null)
+        {
+            assert(pp.postop.parent is pp);
+            pp = pp.postop;
+        }
         foreach(i, c; cc)
         {
+            assert(c !is pp);
             pp.postop = c;
             c.parent = pp;
             if (c.index >= 0) c.index = -1;
@@ -709,6 +1041,7 @@ class Expression
     void fixParents(Expression p = null, long i = 0)
     {
         parent = p;
+        writefln("FIX %s, parent of %s. i = %s, index = %s", this, p, i, index);
         assert(i >= 0 && index >= 0 || i < 0 && index <= 0);
         if (index >= -1)
             index = i;
@@ -763,324 +1096,502 @@ class Expression
         return res;
     }
 
-    string save()
+    string saveText(long ti = 0, bool fix = false)
+    {
+        long thi;
+        string savestr, line, indstr;
+        return saveText(savestr, line, indstr, thi, ti, [], fix);
+    }
+
+    string saveText(ref string savestr, ref string line, ref string indstr, out long thi, long ti, string[][] inds = [], bool fix = false)
+    {
+        long othi;
+
+        string[][] indc = inds;
+            
+        if (index >= 0)
+        {
+            auto p = this;
+            while (p.postop)
+            {
+                p = p.postop;
+            }
+
+            while (p.index < 0)
+            {
+                if (p.index == PostfixType.Prefix) 
+                {
+                    long oi;
+                    p.saveText(savestr, line, indstr, oi, ti, indc, fix);
+                    indc = indc[oi..$];
+                    othi += oi;
+                }
+                p = p.parent;
+            }
+        }
+
+        foreach(i, ind; indents[ti])
+        {
+            if (indc.length <= i) indc ~= (string[]).init;
+            indc[i] ~= ind;
+        }
+
+        //writefln("%s, %s", texts[ti], indc);
+
+        void handle_text(long te)
+        {
+            foreach (i, t; texts[ti][te])
+            {
+                if (i > 0)
+                {
+                    if (!indc.empty)
+                    {
+                        foreach(ind; indc[0])
+                        {
+                            if (fix)
+                            {
+                                if (ind.length > 1)
+                                {
+                                    indstr ~= ind;
+                                }
+                                else
+                                {
+                                    line ~= ind;
+                                }
+                            }
+                            else
+                            {
+                                savestr ~= ind;
+                            }
+                        }
+                        indc = indc[1..$];
+                    }
+                    thi++;
+                }
+                if (fix)
+                {
+                    line ~= t;
+                    if (line.endsWith("\n"))
+                    {
+                        savestr ~= indstr ~ line;
+                        indstr = "";
+                        line = "";
+                    }
+                }
+                else
+                {
+                    savestr ~= t;
+                }
+            }
+        }
+
+        handle_text(0);
+
+        if (index >= 0)
+        {
+            auto p = postop;
+            while (p)
+            {
+                if (p.index == PostfixType.InBrace)
+                {
+                    long oi;
+                    p.saveText(savestr, line, indstr, oi, ti, indc, fix);
+                    indc = indc[oi..$];
+                    thi += oi;
+                }
+                p = p.postop;
+            }
+        }
+
+        foreach (arg; arguments)
+        {
+            long oi;
+            arg.saveText(savestr, line, indstr, oi, ti, indc, fix);
+            writefln("%s. %s: %s %s", this, arg, texts[ti], indents[ti]);
+            indc = indc[oi..$];
+            thi += oi;
+        }
+
+        handle_text(1);
+        
+        if (index >= 0)
+        {
+            auto p = postop;
+            while (p)
+            {
+                if (p.index == PostfixType.Postfix) 
+                {
+                    long oi;
+                    p.saveText(savestr, line, indstr, oi, ti, indc, fix);
+                    indc = indc[oi..$];
+                    othi += oi;
+                }
+                p = p.postop;
+            }
+        }
+
+        //writefln("%s %s %s/%s", this, texts[ti], indents[ti], thi);
+        assert(indents[ti].length == thi, "Not used "~ (cast(long)indents[ti].length-thi).text ~" indent");
+
+        thi += othi;
+
+        return savestr;
+    }
+
+    int getNL(string[] texts)
+    {
+        int nl;
+        foreach(t; texts)
+        {
+            if (t.endsWith("\n"))
+            {
+                nl++;
+            }
+        }
+        return nl;
+    }
+    
+    long getPayload(ref string[] texts)
+    {
+        long r;
+        string[] nt;
+        foreach(i, t; texts)
+        {
+            if (t == "" || t == "\n")
+            {
+                nt ~= t;
+            }
+            else if (t.endsWith("\n"))
+            {
+                nt ~= "\n";
+                r = i; 
+            }
+            else
+            {
+                nt ~= "";
+                r = i; 
+            }
+        }
+
+        texts = nt;
+
+        return r;
+    }
+
+    string getNLStr(string[] texts)
+    {
+        return '\n'.repeat(getNL(texts)).array;
+    }
+
+    static string[] splitNL(string str)
+    {
+        string[] ret = [""];
+        
+        foreach(dchar chr; str)
+        {
+            ret[$-1] ~= chr;
+            if (chr == '\n')
+                ret ~= string.init;
+        }
+
+        if (ret[$-1].empty) ret = ret[0 .. $-1];
+
+        return ret;
+    }
+
+    void save()
     {
         ParserState ps;
         return save(ps);
     }
 
-    string save(ref ParserState ps, int tab = 0, long[] cbr1 = null, long[] cbr2 = null, bool force_brackets = false)
+    void save(ref ParserState ps, long t = 0)
     {
+        if (texts[0][0].empty)
+        {
+            texts[0][0] = texts[1][0];
+            texts[0][1] = texts[1][1];
+            indents[0] = indents[1];
+        }
+
         string op = operator;
-        string savestr;
+        string savestr, endstr;
+        long pl1 = getPayload(texts[t][0]);
+        long pl2 = getPayload(texts[t][1]);
+        //writefln("BEG %s: %s", this, texts[t]);
+        bool pnl2 = texts[t][1].length <= 1 ? false : texts[t][1].front.endsWith("\n");
 
         if (bt == BlockType.File)
         {            
         }
         else if (bt == BlockType.Comment)
         {
-            return (nl1 > 0 ? '\n'.repeat(nl1).array ~ ' '.repeat(tab*4).array : "").idup ~ op;
+            auto nls = splitNL(op);
+            long off = texts[t][0].length - nls.length;
+            foreach(i, nl; nls)
+            {
+                texts[t][0][i+off] = nl;
+            }
+            //writefln("END %s: %s", this, texts[t]);
+            return;
         }
         else if (bt == BlockType.String)
         {
-            savestr ~= op;
+            auto bbe = parentheses ? ps.parentheses : ps.braces;
+            savestr ~= op ~ (this.type.empty ? "" : ps.sharp ~ escape(type, bbe)) ~ (this.label.empty ? "" : ps.at ~ escape(label, bbe));
         }
         else
         {
-            auto bbe = ps.brackets;
+            auto bbe = parentheses ? ps.parentheses : ps.braces;
             op = escape(op, bbe);
             savestr ~= op ~ (this.type.empty ? "" : ps.sharp ~ escape(type, bbe)) ~ (this.label.empty ? "" : ps.at ~ escape(label, bbe));
         }
 
         if (savestr.empty && bt != BlockType.File)
-            savestr = ps.dot;
+            savestr = "#";
 
         if (!this.arguments.empty)
         {
-            long[] a, b, c;
-            Expression[] ce;
             foreach(i, arg; this.arguments)
             {
-                auto arg2 = arg.postop;
-                long j;
-                while (arg2 !is null)
-                {
-                    if (arg2.index < -1)
-                    {
-                        if (arg2.prefix)
-                        {
-                            a ~= i;
-                            b ~= i-arg2.index-1;
-                        }
-                        else
-                        {
-                            a ~= i+arg2.index+1;
-                            b ~= i;
-                        }
-                        c ~= j;
-                        ce ~= arg2;
-                    }
-
-                    arg2 = arg2.postop;
-                    j++;
-                }
-            }
-
-            foreach(i, arg; this.arguments)
-            {
-                long[] br1, br2;
-                foreach(j, m; a)
-                {
-                    if (m == i)
-                    {
-                        if (ce[j].prefix)
-                        {
-                            br1 ~= c[j];
-                        }
-                        else
-                        {
-                            savestr ~= " " ~ ps.brackets.begin ~ ps.dot;
-                        }
-                    }
-                }
-
-                foreach(j, m; b)
-                {
-                    if (m == i)
-                    {
-                        if (!ce[j].prefix)
-                        {
-                            br2 ~= c[j];
-                        }
-                    }
-                }
-
-                if (bt == BlockType.File)
-                    savestr ~= arg.save(ps, 0, br1, br2, false);
-                else
-                {
-                    auto as = arg.save(ps, tab+1, br1, br2, false);
-                    if (as.startsWith(" ") || as.startsWith("\n"))
-                        savestr ~= as;
-                    else
-                        savestr ~= " " ~ as;
-                }
-
-                foreach(j, m; b)
-                {
-                    if (m == i)
-                    {
-                        if (ce[j].prefix)
-                        {
-                            savestr ~= ps.brackets.end;
-                        }
-                    }
-                }
+                arg.save(ps, t);
             }
 
             if (bt != BlockType.File)
             {
-                savestr = (index < 0 && !prefix ? ps.dot : "") ~ ps.brackets.begin ~ savestr ~ 
-                    (nl2 > 0 ? '\n'.repeat(nl2).array ~ ' '.repeat(tab*4).array : "").idup ~
-                    ps.brackets.end ~ (index < 0 && prefix ? ps.dot ~ ps.dot : "");
+                savestr = (indents[t].empty ? " " : "") ~
+                    (index == PostfixType.Postfix || index == PostfixType.InBrace ? ps.dot : "") ~ 
+                    (parentheses ? ps.parentheses.begin : ps.braces.begin) ~ savestr;
+                endstr ~= (parentheses ? ps.parentheses.end : ps.braces.end) ~ 
+                    (index == PostfixType.Prefix ? ps.dot ~ ps.dot : "");
             }
         }
-        else if (force_brackets || arguments !is null)
+        else if (arguments !is null || parentheses || index < 0)
         {
-            savestr = (index < 0 && !prefix ? ps.dot : "") ~ ps.brackets.begin ~ savestr ~
-                (nl2 > 0 ? '\n'.repeat(nl2).array ~ ' '.repeat(tab*4).array : "").idup ~
-                ps.brackets.end ~ (index < 0 && prefix ? ps.dot ~ ps.dot : "");
+            savestr = (indents[t].empty ? " " : "") ~
+                (index == PostfixType.Postfix || index == PostfixType.InBrace ? ps.dot : "") ~
+                (parentheses ? ps.parentheses.begin : ps.braces.begin) ~ savestr;
+            endstr ~=
+                (parentheses ? ps.parentheses.end : ps.braces.end) ~ 
+                (index == PostfixType.Prefix ? ps.dot ~ ps.dot : "");
         }
-        else if (nl2 > 0)
+        else
         {
-            savestr ~= ('\n'.repeat(nl2).array ~ ' '.repeat(tab*4).array).idup;
+            savestr = (indents[t].empty ? " " : "") ~
+                savestr;
         }
-
-        savestr = (nl1 > 0 ? '\n'.repeat(nl1).array ~ ' '.repeat(tab*4).array : "").idup ~ savestr;
 
         if (index >= 0)
         {
-            long cj1 = 0;
-            long cj2 = 0;
-
             auto arg = postop;
-            long j;
             while (arg !is null)
             {
-                if (cj1 < cbr1.length && cbr1[cj1] == j)
-                {
-                    savestr = ps.brackets.begin ~ ps.dot ~ " " ~ savestr;
-                    cj1++;
-                }
-
-                if (cj2 < cbr2.length && cbr2[cj2] == j)
-                {
-                    savestr ~= ps.brackets.end;
-                    cj2++;
-                }
-
-                if (arg.prefix)
-                {
-                    savestr = arg.save(ps, tab, null, null, true) ~ savestr;
-                }
-                else
-                {
-                    savestr ~= arg.save(ps, tab, null, null, true);
-                }
-
+                arg.save(ps, t);
                 arg = arg.postop;
-                j++;
             }
         }
 
-        return savestr;
-    }
-
-    string wrapWithSpaces(string str, string tabstr)
-    {
-        return (nl1 > 0 ? '\n'.repeat(nl1).array ~ tabstr : "").idup ~ str ~ (nl2 > 0 ? '\n'.repeat(nl2).array : "").idup;
-    }
-
-    string beforeSpaces(string tabstr)
-    {
-        return (nl1 > 0 ? '\n'.repeat(nl1).array ~ tabstr : "").idup;
-    }
-
-    string afterSpaces()
-    {
-        return (nl2 > 0 ? '\n'.repeat(nl2).array : "").idup;
-    }
-
-    string saveD(int tab = 0, Expression[] post = null, string ptype = null, string inner = null)
-    {
-        string savestr;
-        string tabstr = "";
-        bool negtab;
-        if (tab < 0)
+        if (!texts[t][0].empty)
         {
-            negtab = true;
-            tab = -tab;
+            texts[t][0][pl1] = savestr ~ texts[t][0][pl1];
+        }
+        else
+        {
+            texts[t][0] = [savestr];
         }
 
-        if (tab > 0) tabstr = ' '.repeat(tab*4).array;
+        if (!texts[t][1].empty)
+        {
+            texts[t][1][pl2] = endstr ~ texts[t][1][pl2];
+        }
+        else
+        {
+            texts[t][1] = [endstr];
+        }
+
+        //writefln("END %s: %s", this, texts[t]);
+        return;
+    }
+
+    struct DParms
+    {
+        int tab;
+        string ptype,
+               inner,
+               prefix,
+               postfix,
+               ppostfix;
+
+        string* instead,
+               endinstead;
+    }
+
+    void saveD(DParms dp = DParms.init)
+    {
+        if (texts[1][0].empty && texts[1][1].empty && indents[1].empty)
+        {
+            texts[1][0] = texts[0][0];
+            texts[1][1] = texts[0][1];
+            indents[1] = indents[0];
+        }
+
+        //writefln("SD %s ptype=%s", this, dp.ptype);
+        auto savetexts = texts[1];
+        long pl1 = getPayload(texts[1][0]);
+        long pl2 = getPayload(texts[1][1]);
+
+        pl2 = 0;
+        if (texts[1][1].length > 1 && texts[1][1][0].empty) pl2 = 1;
+
+        string savestr;
+        string endstr;
+
+        string tabstr = "";
+        bool negtab;
+        if (dp.tab < 0)
+        {
+            negtab = true;
+            dp.tab = -dp.tab;
+        }
+
+        if (dp.tab > 0) tabstr = ' '.repeat(dp.tab*4).array;
 
         bool handled = true;
-        switch(ptype)
+        switch(dp.ptype)
         {
             case "struct":
             case "module":
             case "class":
             case "function":
             case "ctype":
-                if (!this.type.empty && this.type != "constructor")
+            case "body":
+                if (dp.ptype == "body" ? this.operator != "." : !this.type.empty && this.type != "constructor")
                 {
                     handled = false;
                     break;
                 }
 
-                foreach(i, arg; this.arguments)
-                {
-                    if (ptype == "function")
-                    {
-                        savestr = arg.saveD(-tab-1) ~ " " ~ savestr;
-                    }
-                    else
-                    {
-                        savestr ~= arg.saveD(-tab-1) ~ " ";
-                    }
-                }
+                savestr ~= " " ~ this.operator;
 
-                string poststr = "";
-                if (parent !is null && index >= 0 && parent.arguments.length > index)
+                if (operator == ".")
                 {
-                    foreach(i, arg; parent.arguments[index..$])
+                    savestr = "";
+                    auto ap = postop;
+                    while (ap !is null)
                     {
-                        auto ap = arg.postop;
-                        while (ap !is null)
+                        if (ap.operator == "[]")
                         {
-                            //writefln("%s -- %s (%s == %s)", this, ap.index, arg.index + ap.index + 1, this.index);
-                            if (ap.prefix ? arg.index == this.index : arg.index + ap.index + 1 == this.index)
+                            DParms dp1 = {dp.tab};
+                            ap.saveD(dp1);
+
+                            foreach(i3, arg3; arguments)
                             {
-                                if (ap.operator == "[]")
-                                {
-                                    savestr =  savestr ~ ap.saveD(tab);
-
-                                    foreach(i3, arg3; parent.arguments[index+1..arg.index+1])
-                                    {
-                                        poststr ~= ", " ~ arg3.saveD(-tab-1, null, "ctype");
-                                    }
-                                }
-                                else if (ap.type == "init")
-                                {
-                                }
-                                else
-                                {
-                                    savestr = ap.saveD(-tab-1) ~ " " ~ savestr;
-                                    //writefln("%s -- %s-%s", savestr, index, arg.index);
-
-                                    foreach(i3, arg3; parent.arguments[index+1..arg.index+1])
-                                    {
-                                        poststr ~= ", " ~ arg3.saveD(-tab-1, null, "ctype");
-                                    }
-                                }
+                                DParms dp2 = {-dp.tab-1, ptype: "ctype", prefix: i3 > 0 ? ", " : ""};
+                                arg3.saveD(dp2);
                             }
-                            else if (ptype != "ctype" && 
-                                    (ap.prefix ? this.index <= arg.index && this.index > arg.index + ap.index + 1
-                                               : this.index <= arg.index - ap.index - 1 && this.index > arg.index))
-                                return "";
-
-                            ap = ap.postop;
                         }
-                    }
-                }
-                else
-                foreach(arg; post ~ (postop is null ? [] : [postop]))
-                {
-                    if (arg.index == -1)
-                    {
-                        if (arg.operator == "[]")
+                        else if (ap.operator == "=")
                         {
-                            savestr =  savestr ~ arg.saveD(tab);
-                        }
-                        else if (arg.type == "init")
-                        {
+                            DParms dp1 = {-dp.tab-1};
+                            ap.saveD(dp1);
                         }
                         else
                         {
-                            savestr = arg.saveD(-tab-1) ~ " " ~ savestr;
+                            DParms dp1 = {-dp.tab-1};
+                            ap.saveD(dp1);
+                            //writefln("%s -- %s-%s", savestr, index, arg.index);
+                            if (ap.index < -1)
+                                negtab = true;
+
+                            DParms dp2 = {-dp.tab-1, ptype: "ctype"};
+                            foreach(i3, arg3; arguments)
+                            {
+                                if (i3 == arguments.length - 1)
+                                    dp2.postfix = ";";
+                                else
+                                    dp2.postfix = ",";
+
+                                arg3.saveD(dp2);
+                            }
                         }
+
+                        ap = ap.postop;
                     }
                 }
-
-                savestr ~= this.operator;
-
-                foreach(arg; post ~ (postop is null ? [] : [postop]))
+                else
                 {
-                    if (arg.index == -1)
+                    if (index >= 0)
                     {
-                        if (arg.type == "init")
+                        auto ap = postop;
+                        while (ap !is null)
                         {
-                            savestr = savestr ~ arg.saveD(tab);
+                            if (ap.index < 0)
+                            {
+                                if (ap.operator == "[]")
+                                {
+                                    ap.saveD(DParms(dp.tab));
+                                }
+                                else if (ap.operator == "=")
+                                {
+                                    DParms dp1 = {-dp.tab-1};
+                                    dp1.ppostfix = dp.postfix;
+                                    if (dp.ptype != "function" && (index == parent.arguments.length-1 || parent.operator != "."))
+                                    {
+                                        dp1.ppostfix = ";";
+                                    }
+                                    ap.saveD(dp1);
+                                    dp.postfix = "";
+                                    negtab = true;
+                                }
+                                else
+                                {
+                                    ap.saveD(DParms(-dp.tab-1));
+                                }
+                            }
+                            ap = ap.postop;
+                        }
+                    }
+
+                    foreach(i, arg; this.arguments)
+                    {
+                        DParms dp1 = {-dp.tab-1};
+                        if (dp.ptype == "function")
+                        {
+                            dp1.instead = &savestr;
+                            dp1.endinstead = &endstr;
+                            arg.saveD(dp1);
+                        }
+                        else
+                        {
+                            if (i == arguments.length - 1)
+                                dp1.postfix = ";";
+                            else
+                                dp1.postfix = ",";
+
+                            arg.saveD(dp1);
                         }
                     }
                 }
-
-                savestr ~= poststr;
 
                 if (!negtab)
                 {
-                    savestr = savestr ~ ";";
+                    endstr = ";";
                 }
-                savestr = wrapWithSpaces(savestr, tabstr);
                 break;
 
             case "enum":
-                savestr ~= beforeSpaces(tabstr) ~ this.operator;
-                foreach(i, arg; post ~ (postop is null ? [] : [postop]))
+                savestr ~= this.operator;
+                if (index >= 0)
                 {
-                    savestr =  savestr ~ arg.saveD(tab);
+                    auto arg = postop;
+                    while (arg !is null)
+                    {
+                        DParms dp1 = {dp.tab+1, ptype: this.type, postfix: dp.postfix};
+                        arg.saveD(dp1);
+                        dp.postfix = "";
+                        arg = arg.postop;
+                    }
                 }
-                savestr ~= afterSpaces();
                 break;
 
             case "var":
@@ -1088,16 +1599,23 @@ class Expression
                     handled = false;
                 else
                 {
-                    savestr ~= this.operator;
+                    savestr ~= " " ~ this.operator;
                     if (!this.arguments.empty)
-                        savestr = this.arguments[0].saveD(-tab-1) ~ " " ~ savestr;
-
-                    if (postop !is null)
                     {
-                        savestr = postop.saveD(tab, null, this.type) ~ " " ~ savestr;
+                        DParms dp1 = {-dp.tab-1, postfix: " ", instead: &savestr, endinstead: &endstr};
+                        this.arguments[0].saveD(dp1);
+                    }
+
+                    if (index >= 0 && postop !is null)
+                    {
+                        DParms dp1 = {dp.tab, ptype: this.type};
+                        postop.saveD(dp1);
                     }
                 }
-                savestr = wrapWithSpaces(savestr, tabstr);
+                break;
+
+            case "import":
+                savestr ~= this.operator;
                 break;
 
             default:
@@ -1105,7 +1623,8 @@ class Expression
                 {            
                     foreach(i, arg; this.arguments)
                     {
-                        savestr ~= arg.saveD(tab, null, this.type);
+                        DParms dp1 = {dp.tab, ptype: this.type};
+                        arg.saveD(dp1);
                     }
                 }
                 else handled = false;
@@ -1116,18 +1635,24 @@ class Expression
         {
             if (bt == BlockType.Comment)
             {
-                savestr ~= this.operator;
-                savestr = wrapWithSpaces(savestr, tabstr);
+                auto nls = splitNL(this.operator);
+                long off = texts[1][0].length - nls.length;
+                foreach(i, nl; nls)
+                {
+                    texts[1][0][i+off] = nl;
+                }
+                //writefln("END %s: %s", this, texts[t]);
+                return;
             }
             else switch(this.type)
             {
                 case "module":
-                    savestr ~= beforeSpaces(tabstr) ~ "module "~this.operator~";";
+                    savestr ~= "module "~this.operator~";";
                     foreach(i, arg; this.arguments)
                     {
-                        savestr ~= arg.saveD(tab, null, this.type);
+                        DParms dp1 = {dp.tab, ptype: this.type};
+                        arg.saveD(dp1);
                     }
-                    savestr ~= afterSpaces();
                     break;
 
                 case "import":
@@ -1137,25 +1662,29 @@ class Expression
                         impstr ~= ": ";
                         foreach (i, arg; arguments[0].arguments)
                         {
-                            if (i > 0) impstr ~= ", ";
-                            impstr ~= arg.operator;
-                            if (arg.postop !is null)
+                            DParms dp1 = {dp.tab, ptype: this.type};
+                            if (i > 0) dp1.prefix = ", ";
+                            arg.saveD(dp1);
+
+                            if (index >= 0 && arg.postop !is null)
                             {
-                                impstr ~= " = " ~ arg.postop.operator;
+                                DParms dp2 = {dp.tab, ptype: this.type, dp1.prefix = " = "};
+                                arg.postop.saveD(dp2);
                             }
                         }
                     }
-                    impstr ~= ";";
-                    savestr ~= wrapWithSpaces(impstr, tabstr);
+                    savestr = impstr;
+                    endstr = ";";
                     break;
 
                 case "enum":
-                    savestr ~= beforeSpaces(tabstr) ~ "enum "~this.operator~" {";
+                    savestr ~= "enum "~this.operator~" {";
                     foreach(i, arg; this.arguments)
                     {
-                        savestr ~= arg.saveD(tab+1, null, this.type) ~ ( i < this.arguments.length-1 ? ", " : "" );
+                        DParms dp1 = {dp.tab+1, ptype: this.type, postfix: ( i < this.arguments.length-1 ? ", " : "" )};
+                        arg.saveD(dp1);
                     }
-                    savestr ~= tabstr ~ "}" ~ afterSpaces();
+                    endstr ~= "}";
                     break;
 
                 case "init":
@@ -1163,112 +1692,110 @@ class Expression
 
                     foreach(i, arg; this.arguments)
                     {
-                        savestr ~= arg.saveD(-tab-1, null, this.type);
+                        DParms dp1 = {-dp.tab-1, ptype: this.type};
+                        arg.saveD(dp1);
                     }
                     break;
 
                 case ":":
                     foreach(i, arg; this.arguments)
                     {
-                        savestr ~= arg.saveD(-tab-1, null, this.type);
+                        DParms dp1 = {-dp.tab-1, ptype: this.type};
+                        arg.saveD(dp1);
                     }
                     savestr ~= this.type;
-                    savestr = wrapWithSpaces(savestr, tabstr);
                     break;
 
                 case "*":
                     foreach(i, arg; this.arguments)
                     {
-                        savestr ~= arg.saveD(-tab-1, null, this.type);
+                        DParms dp1 = {-dp.tab-1, ptype: this.type};
+                        arg.saveD(dp1);
                     }
                     savestr ~= this.type;
-                    savestr = wrapWithSpaces(savestr, tabstr);
                     break;
 
                 case "struct":
-                    savestr ~= beforeSpaces(tabstr) ~ "struct "~this.operator~" {";
+                    savestr ~= "struct "~this.operator~" {";
                     foreach(i, arg; this.arguments)
                     {
-                        savestr ~= arg.saveD(tab+1, null, this.type);
+                        DParms dp1 = {dp.tab+1, ptype: this.type};
+                        arg.saveD(dp1);
                     }
-                    savestr ~= afterSpaces() ~ tabstr ~ "}";
+                    endstr = "}";
                     break;
 
                 case "class":
-                    savestr ~= beforeSpaces(tabstr) ~ "class "~this.operator;
+                    savestr ~= "class "~this.operator;
                     if (arguments[0].type == "superclass")
-                        savestr ~= " : " ~ arguments[0].saveD(-tab-1, null, this.type);
+                    {
+                        DParms dp1 = {-dp.tab-1, ptype: this.type, prefix: " : "};
+                        arguments[0].saveD(dp1);
+                    }
                     savestr ~= " {";
 
                     foreach(i, arg; this.arguments)
                     {
                         if (arg.type != "superclass")
-                            savestr ~= arg.saveD(tab+1, null, this.type);
+                        {
+                            DParms dp1 = {dp.tab+1, ptype: this.type};
+                            arg.saveD(dp1);
+                        }
                     }
-                    savestr ~= afterSpaces() ~ tabstr ~ "}";
+                    endstr = "}";
                     break;
 
                 case "function":
-                    savestr ~= beforeSpaces(tabstr) ~ this.arguments[0].saveD(-tab-1, null, this.type) ~" "~(this.operator.empty?"function":this.operator)~"(";
+                    savestr ~=  " "~(this.operator.empty?"function":this.operator)~"(";
 
-                    long[] a, b, c;
-                    foreach(i, arg; this.arguments)
+                    DParms dp1 = {-dp.tab-1, ptype: this.type};
+                    this.postop.saveD(dp1);
+
+                    auto post = postop.postop;
+                    if (post !is null)
                     {
-                        if (arg.postop !is null)
+                        endstr ~= ")";
+                        DParms dp2 = {-dp.tab-1, ptype: this.type, ppostfix: " "};
+                        post.saveD(dp2);
+
+                        post = post.postop;
+                        while (post !is null)
                         {
-                            if (arg.postop.index < -1)
-                            {
-                                a ~= i+arg.postop.index+1;
-                                b ~= i;
-                                c ~= 0;
-                            }
+                            post.saveD(dp2);
+                            post = post.postop;
                         }
-                    }
-
-                    Expression[] getPost(long i)
-                    {
-                        Expression[] e;
-                        
-                        foreach(j, f; a)
-                        {
-                            if (i >= f && i < b[j])
-                                e ~= this.arguments[b[j]].postop;
-                        }
-
-                        return e;
-                    }
-
-                    if (this.arguments.length > 1)
-                        savestr ~= this.arguments[1].saveD(-tab-1, getPost(1), this.type);
-                    if (this.arguments.length > 2)
-                    {
-                        foreach(i, arg; this.arguments[2..$])
-                        {
-                            savestr ~= ", " ~ arg.saveD(-tab-1, getPost(i+2), this.type);
-                        }
-                    }
-                    if (postop !is null)
-                    {
-                        savestr ~= ")";
-                        savestr ~= postop.saveD(tab, null, this.type);
                     }
                     else if (!negtab)
                     {
-                        savestr ~= ");";
+                        endstr = ");";
                     }
                     else
                     {
-                        savestr ~= ")";
+                        endstr = ")";
                     }
+
+                    {
+                        foreach(i, arg; this.arguments)
+                        {
+                            DParms dp2 = {-dp.tab-1, this.type};
+                            if (i < arguments.length - 1)
+                                dp2.postfix = ", ";
+                            arg.saveD(dp2);
+                        }
+                    }
+
                     break;
 
                 case "body":
-                    savestr ~= beforeSpaces(tabstr) ~ "{";
+                    if (parentheses)
+                        savestr ~= "{";
                     foreach(i, arg; this.arguments)
                     {
-                        savestr ~= arg.saveD(tab+1, null, this.type);
+                        DParms dp1 = {dp.tab+1, ptype: this.type};
+                        arg.saveD(dp1);
                     }
-                    savestr ~= afterSpaces() ~ tabstr ~ "}";
+                    if (parentheses)
+                        endstr = "}";
                     break;
 
                 case "return":
@@ -1278,378 +1805,393 @@ class Expression
                     savestr ~= this.type;
                     if (!this.arguments.empty)
                     {
-                        savestr ~= " " ~ this.arguments[0].saveD(-tab-1, null, this.type);
-                        foreach(i, arg; this.arguments[1..$])
+                        savestr ~= " ";
+                        foreach(i, arg; this.arguments)
                         {
-                            savestr ~= ", " ~ arg.saveD(-tab-1, null, this.type);
+                            DParms dp1 = {-dp.tab-1, ptype: this.type};
+                            if (i < arguments.length - 1)
+                                dp1.postfix = ", ";
+                            arg.saveD(dp1);
                         }
                     }
 
                     if (!negtab)
                     {
-                        savestr = savestr ~ ";";
+                        if (!this.arguments.empty)
+                            endstr = ";";
+                        else
+                            savestr ~= ";";
                     }
-                    savestr = wrapWithSpaces(savestr, tabstr);
                     break;
 
                 case "for":
-                    savestr ~= beforeSpaces(tabstr) ~ this.type;
-                    savestr ~= " (" ~ this.arguments[0].saveD(-tab-1, null, this.type);
-                    savestr ~= "; " ~ this.arguments[1].saveD(-tab-1, null, this.type);
-                    savestr ~= "; " ~ this.arguments[2].saveD(-tab-1, null, this.type) ~ ") ";
-                    if (postop !is null)
+                    savestr ~= this.type;
+                    DParms dp1 = {-dp.tab-1, ptype: this.type, prefix: " (", ppostfix: "; "};
+                    DParms dp2 = {-dp.tab-1, ptype: this.type, prefix: "", ppostfix: "; "};
+                    DParms dp3 = {-dp.tab-1, ptype: this.type, prefix: "", ppostfix: ") "};
+                    this.arguments[0].saveD(dp1);
+                    this.arguments[1].saveD(dp2);
+                    this.arguments[2].saveD(dp3);
+                    if (index >= 0 && postop !is null)
                     {
-                        savestr ~= postop.saveD(tab);
+                        postop.saveD(DParms(dp.tab));
                     }
-                    savestr ~= afterSpaces();
                     break;
 
                 case "while":
-                    savestr ~= beforeSpaces(tabstr) ~ this.type;
-                    savestr ~= " (" ~ this.arguments[0].saveD(-tab-1, null, this.type) ~ ") ";
-                    if (postop !is null)
+                    savestr ~= this.type;
+                    DParms dp1 = {-dp.tab-1, ptype: this.type, prefix: " (", ppostfix: ") "};
+                    this.arguments[0].saveD(dp1);
+                    if (index >= 0 && postop !is null)
                     {
-                        savestr ~= postop.saveD(tab);
+                        postop.saveD(DParms(dp.tab));
                     }
-                    savestr ~= afterSpaces();
                     break;
 
                 case "do":
-                    savestr ~= beforeSpaces(tabstr) ~ this.type;
-                    if (postop !is null)
+                    savestr ~= this.type;
+                    foreach(i, arg; this.arguments)
                     {
-                        savestr ~= postop.saveD(tab);
+                        DParms dp1 = {-dp.tab-1, ptype: this.type, prefix: "while (", ppostfix: ");"};
+                        arg.saveD(dp1);
                     }
-                    savestr ~= "while (" ~ this.arguments[0].saveD(-tab-1, null, this.type) ~ ");" ~ afterSpaces();
+
+                    if (index >= 0 && postop !is null)
+                    {
+                        DParms dp1 = {dp.tab+1, ptype: this.type};
+                        postop.saveD(dp1);
+                    }
                     break;
 
+                case "foreach_reverse":
                 case "foreach":
-                    savestr ~= beforeSpaces(tabstr) ~ this.type ~ " (";
-                    if (!this.arguments[0].operator.empty)
-                        savestr ~= this.arguments[0].saveD(-tab-1, null, this.type) ~ ", ";
-                    savestr ~= this.arguments[1].saveD(-tab-1, null, this.type) ~ "; ";
-                    savestr ~= this.arguments[2].saveD(-tab-1, null, this.type) ~ ")";
-                    if (postop !is null)
+                    savestr ~= this.type ~ " (";
+                    DParms dp1 = {-dp.tab-1, ptype: "foreach", prefix: "", ppostfix: ", "};
+                    DParms dp2 = {-dp.tab-1, ptype: "foreach", prefix: "", ppostfix: "; "};
+                    DParms dp3 = {-dp.tab-1, ptype: "foreach", prefix: "", ppostfix: ")"};
+                    if (arguments[0].operator.empty)
+                        dp1.ppostfix = "";
+                    this.arguments[0].saveD(dp1);
+                    this.arguments[1].saveD(dp2);
+                    this.arguments[2].saveD(dp3);
+                    if (index >= 0 && postop !is null)
                     {
-                        savestr ~= postop.saveD(tab, null, this.type);
+                        DParms dp4 = {dp.tab, ptype: "foreach"};
+                        postop.saveD(dp4);
                     }
-                    savestr ~= afterSpaces();
                     break;
 
                 case "if":
-                    savestr ~= beforeSpaces(tabstr) ~ arguments[0].beforeSpaces(tabstr) ~ "if (" ~ (!operator.empty ? operator~" == " : "") ~ this.arguments[0].saveD(tab, null, this.type) ~ arguments[0].afterSpaces();
                     bool or_need = arguments[0].postop is null;
+                    DParms dp1 = {dp.tab, ptype: this.type, prefix: "if (" ~ (!operator.empty ? operator~" == " : ""), ppostfix: or_need ? "" : ")"};
+                    this.arguments[0].saveD(dp1);
                     foreach(i, arg; this.arguments[1..$])
                     {
                         if (arg.bt == BlockType.Comment)
                         {
-                            savestr ~= arg.beforeSpaces(tabstr) ~ arg.saveD(tab, null, this.type) ~ arg.afterSpaces();
+                            DParms dp2 = {dp.tab, ptype: this.type};
+                            arg.saveD(dp2);
                         }
                         else if (arg.type == "else")
                         {
-                            savestr ~= arg.beforeSpaces(tabstr) ~ "else " ~ arg.saveD(tab, null, "else") ~ arg.afterSpaces();
+                            DParms dp2 = {dp.tab, ptype: "else", prefix: "else "};
+                            arg.saveD(dp2);
                             or_need = false;
                         }
                         else if (or_need)
                         {
-                            savestr ~= arg.beforeSpaces(tabstr) ~ " || " ~ (!operator.empty ? operator~" == " : "") ~ arg.saveD(tab, null, this.type) ~ arg.afterSpaces();
                             or_need = arg.postop is null;
+                            DParms dp2 = {dp.tab, ptype: this.type, prefix: " || " ~ (!operator.empty ? operator~" == " : ""), ppostfix: or_need ? "" : ")"};
+                            arg.saveD(dp2);
                         }
                         else
                         {
-                            savestr ~= arg.beforeSpaces(tabstr) ~ "else if (" ~ (!operator.empty ? operator~" == " : "") ~ arg.saveD(tab, null, this.type) ~ arg.afterSpaces();
                             or_need = arg.postop is null;
+                            DParms dp2 = {dp.tab, ptype: this.type, prefix: "else if (" ~ (!operator.empty ? operator~" == " : ""), ppostfix: or_need ? "" : ")"};
+                            arg.saveD(dp2);
                         }
                     }
-                    savestr ~= afterSpaces();
                     break;
 
                 case "switch":
-                    savestr ~= beforeSpaces(tabstr) ~ "switch (" ~ (!operator.empty ? operator : inner) ~ ")";
+                    savestr ~= "switch (" ~ (!operator.empty ? operator : dp.inner) ~ ")";
                     savestr ~= " {";
                     foreach(i, arg; this.arguments)
                     {
                         if (arg.type == "default")
-                            savestr ~= arg.beforeSpaces(tabstr) ~ "    default" ~ arg.saveD(tab+1, null, "case") ~ arg.afterSpaces();
+                        {
+                            DParms dp1 = {dp.tab+1, ptype: "case", prefix: "default"};
+                            arg.saveD(dp1);
+                        }
                         else
-                            savestr ~= arg.beforeSpaces(tabstr) ~ "    case " ~ arg.saveD(tab+1, null, "case") ~ arg.afterSpaces();
+                        {
+                            DParms dp1 = {dp.tab+1, ptype: "case", prefix: "case "};
+                            arg.saveD(dp1);
+                        }
                     }
-                    savestr ~= afterSpaces() ~ tabstr ~ "}";
+                    endstr ~= "}";
                     break;
 
                 case "var":
-                    foreach(i, arg; this.arguments)
-                    {
-                        savestr ~= arg.saveD(-tab-1) ~ " ";
-                    }
+                    savestr ~= " " ~ this.operator;
 
-                    string poststr = "";
-                    if (parent !is null && index >= 0 && parent.arguments.length > index)
+                    if (index >= 0)
                     {
-                        foreach(i, arg; parent.arguments[index..$])
+                        auto ap = postop;
+                        while (ap !is null)
                         {
-                            if (arg.postop !is null)
+                            //writefln("SD3 this=\"%s\", ap=\"%s\"", this, ap);
+                            if (ap.operator == "[]")
                             {
-                                //writefln("%s -- %s (%s == %s)", this, arg2.app_args, arg.index - arg2.app_args + 1, this.index);
-                                if (arg.index + arg.postop.index + 1 == this.index)
-                                {
-                                    if (arg.postop.operator == "[]")
-                                    {
-                                        savestr =  savestr ~ arg.postop.saveD(tab);
-
-                                        foreach(i3, arg3; parent.arguments[index+1..arg.index+1])
-                                        {
-                                            poststr ~= ", " ~ arg3.saveD(-tab-1, null, "ctype");
-                                        }
-                                    }
-                                    else if (arg.postop.type == "init")
-                                    {
-                                    }
-                                    else
-                                    {
-                                        savestr = arg.postop.saveD(-tab-1) ~ " " ~ savestr;
-
-                                        foreach(i3, arg3; parent.arguments[index+1..arg.index+1])
-                                        {
-                                            poststr ~= ", " ~ arg3.saveD(-tab-1, null, "ctype");
-                                        }
-                                    }
-                                }
-                                else if (ptype != "ctype" && this.index <= arg.index && this.index > arg.index + arg.postop.index + 1)
-                                    return "";
+                                ap.saveD(DParms(dp.tab));
                             }
-                        }
-                    }
-                    else
-                    if (postop !is null)
-                    {
-                        if (postop.index == -1)
-                        {
-                            if (postop.operator == "[]")
+                            else if (ap.type == "init")
                             {
-                                savestr =  savestr ~ postop.saveD(tab);
+                                ap.saveD(DParms(dp.tab));
                             }
-                            else if (postop.type == "init")
+                            else if (ap.operator == "=")
                             {
+                                negtab = true;
+                                DParms dp1 = {dp.tab, ppostfix: ";"};
+                                ap.saveD(dp1);
                             }
                             else
                             {
-                                savestr = postop.saveD(-tab-1) ~ " " ~ savestr;
+                                DParms dp1 = {-dp.tab-1, ppostfix: " "};
+                                ap.saveD(dp1);
                             }
+                            ap = ap.postop;
                         }
                     }
 
-                    savestr ~= " " ~ this.operator;
-
-                    foreach(i, arg; post ~ (postop is null ? [] : [postop]))
+                    foreach(i, arg; this.arguments)
                     {
-                        if (arg.index == -1)
-                        {
-                            if (arg.type == "init")
-                            {
-                                savestr = savestr ~ arg.saveD(tab);
-                            }
-                        }
+                        DParms dp1 = {-dp.tab-1, ppostfix: " "};
+                        arg.saveD(dp1);
                     }
-
-                    savestr ~= poststr;
 
                     if (!negtab)
                     {
-                        savestr = savestr ~ ";";
+                        endstr = ";";
                     }
-                    savestr = wrapWithSpaces(savestr, tabstr);
+                    break;
+
+                case "alias":
+                    savestr ~= this.type ~ " " ~ this.operator ~ " = ";
+
+                    foreach(i, arg; this.arguments)
+                    {
+                        DParms dp1 = {-dp.tab-1, ppostfix: " "};
+                        arg.saveD(dp1);
+                    }
+
+                    if (!negtab)
+                    {
+                        endstr = ";";
+                    }
                     break;
 
                 case "default":
                     savestr ~= ":";
-                    if (postop !is null)
+                    if (index >= 0 && postop !is null)
                     {
-                        savestr ~= postop.saveD(tab, null, "op");
+                        DParms dp1 = {dp.tab, ptype: "op"};
+                        postop.saveD(dp1);
                     }
                     break;
 
                 case ".":
                     if (!arguments.empty)
                     {
-                        savestr ~= this.arguments[0].saveD(-tab-1, null, "op");
-                        foreach(i, arg; this.arguments[1..$])
+                        foreach(i, arg; this.arguments)
                         {
-                            auto next = arg.saveD(-tab-1, null, "op");
-                            if (next[0] == '[')
-                                savestr ~= next;
-                            else if (next == "init")
-                                savestr = "(" ~ savestr ~ ")" ~ this.type ~ next;
-                            else
-                                savestr ~= this.type ~ next;
+                            string catchstr, ecatchstr;
+                            DParms dp2 = {-dp.tab-1, ptype: "op", prefix: (i > 0) ? this.type : ""};
+                            if (postop !is null && postop.type == "switch")
+                            {
+                                dp2.instead = &catchstr;
+                                dp2.endinstead = &ecatchstr;
+                            }
+                            if (arg.type == "[")
+                            {
+                                dp2.prefix = "";
+                            }
+                            else if (arg.operator == "init")
+                                savestr = "(" ~ savestr ~ ")";
+                            arg.saveD(dp2);
+                            if (postop !is null && postop.type == "switch")
+                            {
+                                savestr ~= catchstr;
+                                endstr ~= ecatchstr;
+                            }
                         }
                     }
 
-                    if (ptype == "if" && postop !is null)
-                    {
-                        savestr ~= ") ";
-                    }
-                    else if (ptype == "case")
+                    if (dp.ptype == "case")
                     {
                         savestr ~= ":";
                     }
 
-                    if (postop !is null)
+                    if (index >= 0 && postop !is null)
                     {
                         if (postop.type == "switch")
-                            savestr = postop.saveD(tab, null, "op", savestr);
+                        {
+                            DParms dp1 = {dp.tab, ptype: "op", inner: savestr};
+                            postop.saveD(dp1);
+                            savestr = "";
+                        }
                         else
-                            savestr ~= postop.saveD(tab, null, "op");
+                        {
+                            DParms dp1 = {dp.tab, ptype: "op"};
+                            postop.saveD(dp1);
+                        }
                     }
 
-                    if (ptype != "if" && ptype != "case" && !negtab && postop is null)
+                    if (dp.ptype != "if" && dp.ptype != "case" && !negtab && postop is null)
                     {
-                        savestr = savestr ~ ";";
+                        endstr = ";";
                     }
-                    if (ptype != "if" && ptype != "else" && ptype != "case")
-                        savestr = wrapWithSpaces(savestr, tabstr);
                     break;
 
                 case "[":
                     savestr ~= "[";
                     if (!arguments.empty)
                     {
-                        savestr ~= this.arguments[0].saveD(-tab-1, null, "op");
                         string sep = ", ";
-                        foreach(i, arg; this.arguments[1..$])
+                        if (arguments.length >= 3 && arguments[1].operator == "..") sep = "";
+                        foreach(i, arg; this.arguments)
                         {
-                            if (arg.operator == "..") sep = "";
-                            savestr ~= sep ~ arg.saveD(-tab-1, null, "op");
+                            DParms dp2 = {-dp.tab-1, ptype: "op"};
+                            if (i < arguments.length-1)
+                                dp2.postfix = sep;
+                            arg.saveD(dp2);
                         }
                     }
-                    savestr ~= "]";
+                    endstr ~= "]";
 
-                    if (ptype == "if" && postop !is null)
+                    if (index >= 0 && postop !is null)
                     {
-                        savestr ~= ") ";
+                        DParms dp1 = {dp.tab, ptype: "op"};
+                        postop.saveD(dp1);
                     }
 
-                    if (postop !is null)
+                    if (dp.ptype != "if" && !negtab && postop is null)
                     {
-                        savestr ~= postop.saveD(tab, null, "op");
+                        endstr ~= ";";
                     }
-
-                    if (ptype != "if" && !negtab && postop is null)
-                    {
-                        savestr = savestr ~ ";";
-                    }
-                    if (ptype != "if" && ptype != "else")
-                        savestr = wrapWithSpaces(savestr, tabstr);
                     break;
 
                 case "\"":
-                    savestr ~= "\"" ~ this.arguments[0].saveD(-tab-1, null, "op");
-                    string sep = " ";
-                    foreach(i, arg; this.arguments[1..$])
-                    {
-                        savestr ~= sep ~ arg.saveD(-tab-1, null, "op");
-                    }
                     savestr ~= "\"";
-
-                    if (ptype == "if" && postop !is null)
+                    string sep = " ";
+                    foreach(i, arg; this.arguments)
                     {
-                        savestr ~= ") ";
+                        DParms dp2 = {-dp.tab-1, ptype: "op"};
+                        if (i < arguments.length-1)
+                            dp2.postfix = sep;
+                        arg.saveD(dp2);
+                    }
+                    endstr ~= "\"";
+
+                    if (index >= 0 && postop !is null)
+                    {
+                        DParms dp2 = {dp.tab, ptype: "op"};
+                        postop.saveD(dp2);
                     }
 
-                    if (postop !is null)
+                    if (dp.ptype != "if" && !negtab && postop is null)
                     {
-                        savestr ~= postop.saveD(tab, null, "op");
+                        endstr ~= ";";
                     }
-
-                    if (ptype != "if" && !negtab && postop is null)
-                    {
-                        savestr = savestr ~ ";";
-                    }
-                    if (ptype != "if" && ptype != "else")
-                        savestr = wrapWithSpaces(savestr, tabstr);
                     break;
 
                 case "new":
                     savestr ~= this.type;
                     if (!this.arguments.empty)
                     {
-                        savestr ~= " " ~ this.arguments[0].saveD(-tab-1, null, this.type);
-                        foreach(i, arg; this.arguments[1..$])
+                        foreach(i, arg; this.arguments)
                         {
-                            savestr ~= ", " ~ arg.saveD(-tab-1, null, this.type);
+                            DParms dp2 = {-dp.tab-1, ptype: this.type};
+                            if (i < arguments.length-1)
+                                dp2.postfix = ", ";
+                            arg.saveD(dp2);
                         }
                     }
 
-                    if (postop !is null)
+                    if (index >= 0 && postop !is null)
                     {
-                        savestr ~= (postop.operator != "[]"?".":"") ~ postop.saveD(-tab-1, null, this.type);
+                        DParms dp1 = {-dp.tab-1, ptype: this.type, prefix: (postop.operator != "[]"?".":"")};
+                        postop.saveD(dp1);
                     }
 
                     if (!negtab)
                     {
-                        savestr = savestr ~ ";";
+                        endstr = ";";
                     }
-                    savestr = wrapWithSpaces(savestr, tabstr);
                     break;
 
                 case "cast":
                     savestr ~= "(" ~ this.type;
                     if (!this.arguments.empty)
                     {
-                        savestr ~= "(" ~ this.arguments[0].saveD(-tab-1, null, this.type);
+                        DParms dp1 = {-dp.tab-1, ptype: this.type, prefix: "("};
+                        this.arguments[0].saveD(dp1);
                         foreach(i, arg; this.arguments[1..$])
                         {
-                            savestr ~= ") (" ~ arg.saveD(-tab-1, null, this.type);
+                            DParms dp2 = {-dp.tab-1, ptype: this.type, prefix: ") ("};
+                            arg.saveD(dp2);
                         }
-                        savestr ~= "))";
+                        endstr = "))";
                     }
 
-                    if (ptype == "if" && postop !is null)
+                    if (dp.ptype == "case")
                     {
-                        savestr ~= ") ";
-                    }
-                    else if (ptype == "case")
-                    {
-                        savestr ~= ":";
+                        endstr ~= ":";
                     }
 
                     bool body_;
-                    if (postop !is null)
+                    if (index >= 0 && postop !is null)
                     {
                         if (postop.type == "body")
                         {
-                            savestr ~= postop.saveD(tab, null, this.type);
+                            DParms dp1 = {dp.tab, ptype: this.type};
+                            postop.saveD(dp1);
                             body_ = true;
                         }
                         else if (postop.type == "switch")
                         {
-                            savestr = postop.saveD(tab, null, "postop", savestr);
+                            DParms dp1 = {dp.tab, ptype: this.type, inner: savestr};
+                            postop.saveD(dp1);
+                            savestr = "";
                             body_ = true;
                         }
                         else
-                            savestr ~= (postop.operator != "[]"?".":"") ~ postop.saveD(-tab-1, null, this.type);
+                        {
+                            DParms dp1 = {-dp.tab-1, ptype: this.type, prefix: (postop.operator != "[]"?".":"")};
+                            postop.saveD(dp1);
+                        }
                     }
 
-                    if (ptype != "if" && ptype != "case" && !negtab && !body_)
+                    if (dp.ptype != "if" && dp.ptype != "case" && !negtab && !body_)
                     {
-                        savestr = savestr ~ ";";
+                        endstr ~= ";";
                     }
-                    if (ptype != "if" && ptype != "else" && ptype != "case")
-                        savestr = wrapWithSpaces(savestr, tabstr);
                     break;
 
                 case "noop":
                     savestr ~= "{}";
-                    if (!negtab)
-                    {
-                        savestr = wrapWithSpaces(savestr, tabstr);
-                    }
                     break;
 
                 case "?":
                     if (arguments.length >= 3)
                     {
-                        savestr ~= "(" ~ arguments[0].saveD(-tab-1, null, "op") ~ " ? " ~ arguments[1].saveD(-tab-1, null, "op") ~ " : " ~ arguments[2].saveD(-tab-1, null, "op") ~ ")";
+                        DParms dp1 = {-dp.tab-1, ptype: "op", prefix: "("};
+                        DParms dp2 = {-dp.tab-1, ptype: "op", prefix: "?"};
+                        DParms dp3 = {-dp.tab-1, ptype: "op", prefix: ":", postfix: ")"};
+
+                        arguments[0].saveD(dp1);
+                        arguments[1].saveD(dp2);
+                        arguments[2].saveD(dp3);
                     }
                     break;
                 
@@ -1686,127 +2228,155 @@ class Expression
                         case "!in":
                             if (!arguments.empty)
                             {
-                                if (type == "unary")
-                                    savestr ~= this.operator;
-                                savestr ~= this.arguments[0].saveD(-tab-1, null, this.operator == "=" && arguments[0].type != "unary"?"var":"op");
+                                if (arguments.length == 1)
+                                    savestr ~= " "~this.operator~" ";
+                                DParms dp1 = {-dp.tab-1, ptype: this.operator == "=" && arguments.length == 2?"var":"op"};
+                                this.arguments[0].saveD(dp1);
                                 foreach(i, arg; this.arguments[1..$])
                                 {
-                                    savestr ~= " " ~ this.operator ~ " " ~ arg.saveD(-tab-1, null, "op");
+                                    DParms dp2 = {-dp.tab-1, ptype: "op", prefix: " " ~ this.operator ~ " "};
+                                    arg.saveD(dp2);
                                 }
                                 if (type == "type")
                                     savestr ~= this.operator;
                             }
 
-                            if (!(!negtab && postop is null) && ptype == "op")
+                            if (parentheses)
                             {
-                                savestr = "(" ~ savestr ~ ")";
+                                savestr = "(" ~ savestr;
+                                endstr = ")";
                             }
 
-                            if (ptype == "if" && postop !is null)
-                            {
-                                savestr ~= ") ";
-                            }
-
-                            if (postop !is null)
+                            if (index >= 0 && postop !is null)
                             {
                                 if (postop.type == "switch")
-                                    savestr = postop.saveD(tab, null, "postop", savestr);
+                                {
+                                    DParms dp1 = {dp.tab, ptype: "postop", inner: savestr};
+                                    postop.saveD(dp1);
+                                    savestr = "";
+                                }
                                 else
-                                    savestr ~= postop.saveD(tab, null, "postop");
+                                {
+                                    DParms dp1 = {dp.tab, ptype: "postop"};
+                                    postop.saveD(dp1);
+                                }
                             }
 
-                            if (ptype != "if" && !negtab && postop is null)
+                            if (dp.ptype != "if" && !negtab && postop is null)
                             {
-                                savestr = savestr ~ ";";
+                                endstr = ";";
                             }
-                            if (ptype != "if" && ptype != "else")
-                                savestr = wrapWithSpaces(savestr, tabstr);
                             break;
 
                         case "++":
                         case "--":
                             if (type == "post")
                             {
-                                savestr = arguments[0].saveD(-tab-1, null, "op") ~ operator;
+                                DParms dp1 = {-dp.tab-1, ptype: "op", postfix: operator};
+                                arguments[0].saveD(dp1);
                             }
                             else
                             {
-                                savestr = operator ~ arguments[0].saveD(-tab-1, null, "op");
+                                DParms dp1 = {-dp.tab-1, ptype: "op", prefix: operator};
+                                arguments[0].saveD(dp1);
                             }
 
-                            if (ptype != "if" && !negtab && postop is null)
+                            if (dp.ptype != "if" && !negtab && postop is null)
                             {
-                                savestr = savestr ~ ";";
+                                endstr = ";";
                             }
-                            if (ptype != "if" && ptype != "else")
-                                savestr = wrapWithSpaces(savestr, tabstr);
                             break;
 
                         case "!":
                             savestr ~= this.operator;
                             if (!arguments.empty)
-                                savestr ~= " " ~ this.arguments[0].saveD(-tab-1, null, "op");
-
-                            if (!(!negtab && postop is null) && ptype == "op")
                             {
-                                savestr = "(" ~ savestr ~ ")";
+                                DParms dp1 = {-dp.tab-1, ptype: "op"};
+                                this.arguments[0].saveD(dp1);
                             }
 
-                            if (ptype == "if" && postop !is null)
+                            if (parentheses)
                             {
-                                savestr ~= ") ";
+                                savestr = "(" ~ savestr;
+                                endstr = ")";
                             }
 
-                            if (postop !is null)
+                            if (index >= 0 && postop !is null)
                             {
                                 if (postop.type == "switch")
-                                    savestr = postop.saveD(tab, null, "postop", savestr);
+                                {
+                                    DParms dp1 = {dp.tab, ptype: "postop", inner: savestr};
+                                    postop.saveD(dp1);
+                                    savestr = "";
+                                }
                                 else
-                                    savestr ~= postop.saveD(tab, null, "postop");
+                                {
+                                    DParms dp1 = {dp.tab, ptype: "postop"};
+                                    postop.saveD(dp1);
+                                }
                             }
 
-                            if (ptype != "if" && !negtab && postop is null)
+                            if (dp.ptype != "if" && !negtab && postop is null)
                             {
-                                savestr = savestr ~ ";";
+                                endstr = ";";
                             }
-                            if (ptype != "if" && ptype != "else")
-                                savestr = wrapWithSpaces(savestr, tabstr);
                             break;
 
                         case "[]":
 
                             if (!this.arguments.empty)
                             {
-                                savestr ~= this.arguments[0].saveD(-tab-1, null, this.type);
                                 if (type == "type")
                                 {
-                                    string of = "";
+                                    string of = "", ofe = "";
+                                    string el = "", oel = "";
+                                    DParms dp1 = {-dp.tab-1, ptype: this.type, instead: &of, endinstead: &ofe};
+                                    this.arguments[0].saveD(dp1);
                                     if (this.arguments.length >= 2)
-                                        of = this.arguments[1].saveD(-tab-1, null, this.type);
-                                    savestr ~= "["~of~"]";
+                                    {
+                                        DParms dp2 = {-dp.tab-1, ptype: this.type, instead: &el, endinstead: &oel};
+                                        this.arguments[1].saveD(dp2);
+                                    }
+                                    savestr ~= el~"["~of~"]";
                                 }
                                 else
                                 {
                                     string sep = ", ";
-                                    foreach(i, arg; this.arguments[1..$])
+                                    if (arguments.length >= 3 && arguments[1].operator == "..") sep = "";
+                                    foreach(i, arg; this.arguments)
                                     {
-                                        if (arg.operator == "..") sep = "";
-                                        savestr ~= sep ~ arg.saveD(-tab-1, null, this.type);
+                                        DParms dp2 = {-dp.tab-1, ptype: this.type};
+                                        if (i < arguments.length-1)
+                                            dp2.postfix = sep;
+                                        arg.saveD(dp2);
                                     }
                                 }
                             }
 
                             if (type != "type")
-                                savestr = "[" ~ savestr ~ "]";
+                            {
+                                savestr = "[" ~ savestr;
+                                endstr = "]";
+                            }
 
-                            if (postop !is null)
+                            if (index >= 0 && postop !is null)
                             {
                                 if (postop.type == "switch")
-                                    savestr = postop.saveD(tab, null, "postop", savestr);
+                                {
+                                    DParms dp1 = {dp.tab, ptype: "postop", inner: savestr};
+                                    postop.saveD(dp1);
+                                    savestr = "";
+                                }
                                 else if (type == "type")
-                                    savestr = postop.saveD(tab, null, "op") ~ " " ~ savestr;
+                                {
+                                    DParms dp1 = {dp.tab, ptype: "op", postfix: " " ~ savestr};
+                                    postop.saveD(dp1);
+                                }
                                 else
-                                    savestr ~= postop.saveD(tab, null, "postop");
+                                {
+                                    DParms dp1 = {dp.tab, ptype: "postop"};
+                                    postop.saveD(dp1);
+                                }
                             }
 
                             break;
@@ -1815,97 +2385,106 @@ class Expression
                         case "true":
                             savestr ~= this.operator;
 
-                            if (ptype == "if" && postop !is null)
+                            if (index >= 0 && postop !is null)
                             {
-                                savestr ~= ") ";
-                            }
-
-                            if (postop !is null)
-                            {
-                                if (postop.type == "switch")
-                                    savestr = postop.saveD(tab, null, "postop", savestr);
+                                if (index >= 0 && postop.type == "switch")
+                                {
+                                    DParms dp1 = {dp.tab, ptype: "postop", inner: savestr};
+                                    postop.saveD(dp1);
+                                    savestr = "";
+                                }
                                 else
-                                    savestr ~= postop.saveD(tab, null, "postop");
+                                {
+                                    DParms dp1 = {dp.tab, ptype: "postop"};
+                                    postop.saveD(dp1);
+                                }
                             }
                             break;
 
                         default:
-                            if (ptype == "postop") savestr ~= ".";
+                            if (dp.ptype == "postop") savestr ~= ".";
 
                             savestr ~= this.operator;
+                            if (index < 0) savestr ~= " ";
                             if (!this.arguments.empty)
                             {
-                                bool first = true;
-                                auto f = this.arguments[0].saveD(-tab-1, null, this.type);
+                                DParms dp1 = {-dp.tab-1, ptype: this.type};
+                                if (arguments.length > 1)
+                                    dp1.ppostfix = ", ";
+                                this.arguments[0].saveD(dp1);
                                 
-                                if (f == "!")
+                                if (arguments[0].operator == "!")
                                     savestr ~= "!(";
                                 else
                                 {
-                                    savestr ~= "(" ~ f;
-                                    first = false;
+                                    savestr ~= "(";
                                 }
 
                                 foreach(i, arg; this.arguments[1..$])
                                 {
+                                    DParms dp2 = {-dp.tab-1, ptype: this.type};
                                     if (arg.type == "!")
                                     {
                                         if (i+2 < arguments.length)
-                                        {
-                                            first = false;
                                             savestr ~= ")(";
-                                        }
                                         continue;
                                     }
-                                    else if (first)
-                                        first = false;
-                                    else
-                                        savestr ~= ", ";
-                                    savestr ~= arg.saveD(-tab-1, null, this.type);
+                                    else if (i < arguments.length-2)
+                                        dp2.ppostfix = ", ";
+                                    arg.saveD(dp2);
                                 }
-                                savestr ~= ")";
+                                endstr ~= ")";
                             }
-                            else if (arguments !is null)
+                            else if (parentheses)
                             {
                                 savestr ~= "()";
                             }
 
-                            if (ptype == "if" && postop !is null)
-                            {
-                                savestr ~= ") ";
-                            }
-                            else if (ptype == "case")
+                            if (dp.ptype == "case")
                             {
                                 savestr ~= ":";
                             }
+                            //writefln("SD2 %s \"%s\"", this, savestr);
 
-                            bool body_;
-                            if (postop !is null)
+                            auto ap = postop;
+                            if (index >= 0)
                             {
-                                if (postop.type == "body")
+                                while (ap !is null)
                                 {
-                                    savestr ~= postop.saveD(tab, null, this.type);
-                                    body_ = true;
+                                    if (ap.type == "body")
+                                    {
+                                        DParms dp1 = {dp.tab, ptype: this.type};
+                                        ap.saveD(dp1);
+                                        negtab = true;
+                                    }
+                                    else if (ap.type == "switch")
+                                    {
+                                        DParms dp1 = {dp.tab, ptype: "ap", inner: savestr};
+                                        ap.saveD(dp1);
+                                        savestr = "";
+                                        negtab = true;
+                                    }
+                                    else if (dp.ptype == "foreach")
+                                    {
+                                        DParms dp1 = {-dp.tab-1, ptype: this.type};
+                                        ap.saveD(dp1);
+                                    }
+                                    else
+                                    {
+                                        DParms dp1 = {-dp.tab-1, ptype: this.type, prefix: (ap.operator != "[]"?".":"")};
+                                        if (dp.ptype != "if" && dp.ptype != "case" && !negtab)
+                                            dp1.postfix = ";";
+                                        ap.saveD(dp1);
+                                        negtab = true;
+                                    }
+                                    ap = ap.postop;
                                 }
-                                else if (postop.type == "switch")
-                                {
-                                    savestr = postop.saveD(tab, null, "postop", savestr);
-                                    body_ = true;
-                                }
-                                else if (ptype == "foreach")
-                                {
-                                    savestr = postop.saveD(-tab-1, null, this.type) ~ " " ~ savestr;
-                                }
-                                else
-                                    savestr ~= (postop.operator != "[]"?".":"") ~ postop.saveD(-tab-1, null, this.type);
                             }
 
-                            if (ptype != "if" && ptype != "case" && !negtab && !body_)
+                            if (dp.ptype != "if" && dp.ptype != "case" && !negtab)
                             {
-                                savestr = savestr ~ ";";
+                                endstr ~= ";";
                             }
-                            if (ptype != "if" && ptype != "else" && ptype != "case")
-                                savestr = wrapWithSpaces(savestr, tabstr);
                             break;
                     }
                     break;
@@ -1915,59 +2494,148 @@ class Expression
         if (type != "module" && !this.label.empty)
             savestr = this.label ~ ": " ~ savestr;
 
-        return savestr;
+        exit:
+
+        savestr = dp.prefix ~ savestr ~ dp.postfix;
+        endstr ~= dp.ppostfix;
+
+        if (dp.instead && dp.endinstead)
+        {
+            swap(savestr, *dp.instead);
+            swap(endstr, *dp.endinstead);
+        }
+        
+        if (!texts[1][0].empty)
+        {
+            texts[1][0][pl1] = savestr ~ texts[1][0][pl1];
+        }
+        else
+        {
+            texts[1][0] = [savestr];
+        }
+
+        if (!texts[1][1].empty)
+        {
+            texts[1][1][pl2] = endstr ~ texts[1][1][pl2];
+        }
+        else
+        {
+            texts[1][1] = [endstr];
+        }
+
+        writefln("OK %s %s (WAS %s) ptype=%s prefix=\"%s\" postfix=\"%s\" tab=%s",
+                this, texts[1], savetexts, dp.ptype, dp.prefix, dp.postfix, dp.tab);
+        return;
     }
 
-    void fixIndent()
+    int fixIndent(long t = 0)
     {
-        if (type == "body")
+        if (type == "module" || bt == BlockType.File)
+            indent = 0;
+        else if (index < 0)
+            indent = 0;
+        else
+            indent = 4;
+
+        auto tabstr = ' '.repeat(indent).array.idup;
+        int ret;
+
+        if (texts[t][0].empty && texts[t][1].empty)
         {
-            nl1 = 1;
-            nl2 = 1;
-        }
-        else if (parent !is null && (parent.type == "body" || parent.type == "module" || parent.type == "class" || parent.type == "struct" || parent.type == "if" || parent.type == "switch" || parent.type == "enum" || parent.bt == BlockType.File))
-        {
-            if (type == "module")
+            if (type == "body" || type == "do")
             {
-                nl1 = 0;
-                nl2 = 0;
+                texts[t] = [["\n", tabstr], ["\n", tabstr]];
+                ret += 2;
             }
-            else if (type == "class" || type == "struct")
+            else if (parent !is null && (parent.type == "body" || index >= 0 && parent.type == "do" || parent.type == "module" || parent.type == "class" || parent.type == "struct" || parent.type == "if" || parent.type == "switch" || parent.type == "enum" || parent.bt == BlockType.File))
             {
-                nl1 = 2;
-                nl2 = 1;
-            }
-            else if (type == "function")
-            {
-                nl1 = 2;
-                nl2 = 0;
-            }
-            else if (type == "switch")
-            {
-                nl1 = 1;
-                nl2 = 1;
+                if (type == "module")
+                {
+                    texts[t] = [[" "], []];
+                }
+                else if (type == "class" || type == "struct")
+                {
+                    texts[t] = [["\n", "\n", tabstr], ["\n", tabstr]];
+                    ret += 3;
+                }
+                else if (type == "function")
+                {
+                    texts[t] = [["\n", "\n", tabstr], []];
+                    ret += 2;
+                }
+                else if (type == "switch")
+                {
+                    texts[t] = [["\n", tabstr], ["\n", tabstr]];
+                    ret += 2;
+                }
+                else
+                {
+                    texts[t] = [["\n", tabstr], []];
+                    ret += 1;
+                }
             }
             else
             {
-                nl1 = 1;
-                nl2 = 0;
+                texts[t] = [[" "], []];
             }
         }
         else
         {
-            nl1 = 0;
-            nl2 = 0;
+            if (texts[t][0].length > 1)
+                ret += texts[t][0].length-1;
+            if (texts[t][1].length > 1)
+                ret += texts[t][1].length-1;
+        }
+
+        if (index >= 0)
+        {
+            auto p = this;
+            while (p.postop)
+            {
+                p = p.postop;
+            }
+
+            while (p.index < 0)
+            {
+                if (p.index == PostfixType.Prefix) ret += p.fixIndent(t);
+                p = p.parent;
+            }
+        }
+
+        if (index >= 0)
+        {
+            auto p = postop;
+            while (p)
+            {
+                if (p.index == PostfixType.InBrace) ret += p.fixIndent(t);
+                p = p.postop;
+            }
         }
 
         foreach (arg; arguments)
         {
-            arg.fixIndent();
+            ret += arg.fixIndent(t);
         }
 
-        if (postop !is null)
+        if (indents[t].length != ret)
+            indents[t] = tabstr.repeat(ret).array;
+
+        if (index >= 0)
         {
-            postop.fixIndent();
+            auto p = postop;
+            while (p)
+            {
+                if (p.index == PostfixType.Postfix) ret += postop.fixIndent(t);
+                p = p.postop;
+            }
         }
+
+        return ret;
+
+        /*if (!(type == "body" || parent !is null && (parent.type == "body" || parent.type == "module" || parent.type == "class" || parent.type == "struct" || parent.type == "if" || parent.type == "switch" || parent.type == "enum" || parent.bt == BlockType.File)))
+        {
+            indent = 1;
+        }*/
     }
 
     void findBlocks (ref Expression code, ref Expression lexemTypes, ref Expression lexer)
@@ -2040,7 +2708,11 @@ class Expression
             Expression ne = new Expression("(="~(!label.empty?"@"~label:"")~" this back2)", true);
             code.addChild(ne);
         }
-        else if (type == "switch")
+        else if (operator == "nextChr")
+        {
+            code.addChild(this);
+        }
+        else if (type == "switch" && operator.empty)
         {
             Expression ne = new Expression("(="~(!label.empty?"@"~label:"")~" back this)", true);
             code.addChild(ne);
@@ -2054,7 +2726,7 @@ class Expression
             code = ne;
             assert(code !is null);
         } 
-        else if (parent.type == "switch")
+        else if (parent.type == "switch" && parent.operator.empty)
         {
             Expression ne;
             if (operator.startsWith("is"))
@@ -2116,6 +2788,33 @@ class Expression
                 assert(code !is null);
             }
         }
+        else if (type == "switch")
+        {
+            Expression ne = new Expression;
+            ne.operator = operator;
+            ne.type = type;
+
+            code.addChild(ne);
+            
+            code = ne;
+        }
+        else if (parent.type == "switch")
+        {
+            Expression ne;
+            if (postop)
+            {
+                ne = new Expression(operator~(!type.empty ? "#"~type : "")~".(#body)", true);
+                ne.postop.index = postop.index;
+            }
+            else
+            {
+                ne = new Expression();
+                ne.operator = operator;
+            }
+
+            code.addChild(ne);
+            code = ne.postop;
+        }
         else if (type == "while")
         {
             Expression ne;
@@ -2126,7 +2825,7 @@ class Expression
             {
                 if (arguments[0].operator == "!")
                 {
-                    ne = new Expression("(#do"~(!label.empty?"@"~label:"")~" !).(#body (= back this) nextChr)", true);
+                    ne = new Expression("(#do"~(!label.empty?"@"~label:"")~".(#body (= back this) nextChr) !)", true);
                     code.addChild(ne);
                     code.addChild(back);
                     
@@ -2134,7 +2833,7 @@ class Expression
                 }
                 else
                 {
-                    ne = new Expression("(#do).(#body (= back this) nextChr)", true);
+                    ne = new Expression("(#do.(#body (= back this) nextChr))", true);
                     code.addChild(ne);
                     code.addChild(back);
                     
@@ -2143,7 +2842,7 @@ class Expression
             }
             else
             {
-                ne = new Expression("(#do ||).(#body (= back this) nextChr)", true);
+                ne = new Expression("(#do.(#body (= back this) nextChr) ||)", true);
                 code.addChild(ne);
                 code.addChild(back);
                 
@@ -2197,6 +2896,12 @@ class Expression
             }
 
             ne = new Expression("(#return)", true);
+            code.addChild(ne);
+        }
+        else if (type == "break")
+        {
+            Expression ne;
+            ne = new Expression("#break", true);
             code.addChild(ne);
         }
         else if (operator == "--" || operator == "++")
@@ -2292,29 +2997,6 @@ class Expression
         return ret;
     }
 
-    static char[] readFile(string filename)
-    {
-        auto file = File(filename);
-        char[] mod;
-        foreach(line; file.byLine())
-        {
-            line = strip(line);
-            if ( !mod.empty && mod[$-1] != ' ')
-            {
-                mod ~= ' ';
-            }
-
-            if (line == ".")
-            {
-                line = ". ".dup;
-            }
-
-            mod ~= line;
-        }
-
-        return mod;
-    }
-
     Expression deepcopy()
     {
         Expression copy = new Expression();
@@ -2372,5 +3054,17 @@ class Expression
     override string toString()
     {
         return operator ~ (!type.empty ? "#" ~ type : "") ~ (!label.empty ? "@" ~ label : "");
+    }
+
+    string toParentsString()
+    {
+        string ret = this.text();
+        auto p = parent;
+        while (p)
+        {
+            ret ~= " <== " ~ p.text();
+            p = p.parent;
+        }
+        return ret;
     }
 }

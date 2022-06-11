@@ -25,6 +25,7 @@ import std.algorithm;
 import std.uni;
 import std.file;
 import expression;
+import node;
 import lexer;
 import parser;
 
@@ -105,24 +106,29 @@ class MyWindow : ApplicationWindow
             }
             else if (unicode == 'c')
             {
-                //write('C', unicode);
+                //write('^c', unicode);
                 IFACE.copy();
             }
             else if (unicode == 'x')
             {
-                //write('C', unicode);
+                //write('^x', unicode);
                 IFACE.copy();
                 IFACE.del();
             }
             else if (unicode == 'v')
             {
-                //write('C', unicode);
+                //write('^v', unicode);
                 IFACE.insert();
             }
             else if (unicode == 'l')
             {
-                //write('C', unicode);
+                //write('^l', unicode);
                 IFACE.toLexer();
+            }
+            else if (unicode == 'w')
+            {
+                //write('^w', unicode);
+                IFACE.changeView();
             }
             else if (unicode == '=')
             {
@@ -251,6 +257,7 @@ int main(string[] args)
         else if (args[1] == "-c" && args.length == 4)
         {
             Expression expr;
+            Node node;
             if (args[2].endsWith(".d"))
             {
                 Lexer lex;
@@ -259,11 +266,14 @@ int main(string[] args)
                 pars.lexer = lex;
                 expr = pars.parse();
                 expr.fixParents();
+                expr.calcIndentRecursive(1);
+                expr.cutIndent(1);
             }
             else if (args[2].endsWith(".np"))
             {
                 string mod = readText(args[2]);
-                expr = new Expression(mod);
+                //expr = new Expression(mod.idup);
+                node = new Node(mod.idup, args[2]);
             }
             else
             {
@@ -275,11 +285,19 @@ int main(string[] args)
 
             if (args[3].endsWith(".d"))
             {
-                savestr = expr.saveD;
+                //if (args[2].endsWith(".np"))
+                node.Debug();
+                node.genDText();
+                node.Debug(1);
+                savestr = node.toText(1);
             }
             else if (args[3].endsWith(".np"))
             {
-                savestr = expr.save;
+                //expr.save();
+                //savestr = expr.saveText(0, true);
+                node.Debug();
+                node.genText();
+                savestr = node.toText(0);
             }
             else
             {
@@ -288,7 +306,7 @@ int main(string[] args)
             }
 
             auto file = File(args[3], "w");
-            file.writeln(savestr);
+            file.write(savestr);
             return 0;
         }
     }

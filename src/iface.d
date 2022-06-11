@@ -32,6 +32,7 @@ import gdk.Window;
 import gdk.Cairo;
 
 import expression;
+import color;
 
 enum Mode
 {
@@ -120,6 +121,7 @@ class Iface : DrawingArea
     bool click_processed = true;
     bool edit;
     bool post_edit;
+    bool carousel_view;
 
 public:
 	this(Expression _expression)
@@ -318,7 +320,7 @@ public:
         else
         {
             auto f = parentOfFun(root);
-            if (f !is null && f.postop !is null)
+            if (f && f.postop)
             {
                 ret = f.postop;
             }
@@ -437,6 +439,14 @@ public:
             updateView();
             post_edit = false;
         }
+    }
+
+    void changeView()
+    {
+        carousel_view = !carousel_view;
+        sizes_invalid = 2;
+        getSize([root_expr], DrawState.init);
+        updateView();
     }
 
     void left()
@@ -696,7 +706,7 @@ public:
             selected.postop = ne;
             selected = ne;
 
-            if (ne.parent.type == "function" || ne.parent.type == "for" || ne.parent.type == "while" || ne.parent.type == "do" || ne.parent.type == "foreach" || ne.parent.parent.type == "if" || ne.parent.parent.type == "switch")
+            if (ne.parent.type == "function" || ne.parent.type == "for" || ne.parent.type == "while" || ne.parent.type == "foreach" || ne.parent.parent.type == "if" || ne.parent.parent.type == "switch")
             {
                 ne.type = "body";
                 comma();
@@ -948,7 +958,9 @@ public:
         if (efile.type == "*")
         {
             efile.type = "";
-            string savestr = efile.save();
+            efile.fixIndent(0);
+            efile.save();
+            string savestr = efile.saveText(0);
             auto file = File(efile.operator, "w");
             file.writeln(savestr);
         }
@@ -965,7 +977,8 @@ public:
 
         if (mod.label == "D")
         {
-            string savestr = efile.saveD();
+            efile.saveD();
+            string savestr = efile.saveText(1);
             auto file = File(filename~".d", "w");
             file.writeln(savestr);
         }
@@ -1336,6 +1349,59 @@ protected:
         }
     }
 
+	void drawRoof(ref Scoped!Context cr, real x, real y, real r, real k1, real k2, real k3, Color c, bool inv = false)
+	{
+        auto x1 = x - r;
+        auto x2 = x + r;
+        auto y1 = y - 30;
+        auto y2 = y + 30;
+
+        auto y3 = y2*(1.0-k1) + y1*k1;
+        auto x3 = x1*(1.0-k2) + x2*k2;
+        auto y4 = y2*(1.0-k3) + y1*k3;
+
+        auto Cx = ((y3-y1)*y4^^2+((-y3^^2)+y1^^2+x3^^2-x1^^2)*y4+y1*
+                y3^^2+((-y1^^2)-x3^^2+x2^^2)*y3+(x1^^2-x2^^2)*y1)/((2*x3-2*x1)*
+                y4+(2*x2-2*x3)*y3+(2*x1-2*x2)*y1);
+        auto Cy = ((x3-x1)*y4^^2+(x2-x3)*y3^^2+
+                (x1-x2)*y1^^2+(x1-x2)*x3^^2+(x2^^2-x1^^2)*x3-x1*x2^^2+x1^^2*x2)/
+            ((2*x3-2*x1)*y4+(2*x2-2*x3)*y3+(2*x1-2*x2)*y1);
+        auto x4 = Cx + (Cx-x3);
+        if (x4 < x3) swap(x3, x4);
+
+        auto R = sqrt((x1-Cx)^^2 + (y3-Cy)^^2);
+
+        auto al1 = atan2(y3-Cy, x1-Cx);
+        auto al2 = atan2(y1-Cy, x3-Cx);
+        auto al3 = atan2(y1-Cy, x4-Cx);
+        auto al4 = atan2(y4-Cy, x2-Cx);
+
+        //writefln("C=(%s, %s); R=%s; a1=%s, a2=%s, a3=%s, a4=%s;", Cx, Cy, R, al1*180/PI, al2*180/PI, al3*180/PI, al4*180/PI);
+
+        if (inv) c = c.invert();
+        cr.setSourceRgba(c.r, c.g, c.b, c.a);
+        cr.moveTo(x1, y2);
+        cr.arc(Cx, Cy, R, al1, al2);
+        cr.lineTo(x4, y1);
+        cr.arc(Cx, Cy, R, al3, al4);
+        cr.lineTo(x2, y2);
+        cr.closePath();
+        cr.fill();
+
+        cr.setLineWidth(m_lineWidth);
+        Color black = Color(0, 0, 0.0, 1.0);
+        if (inv) black = black.invert();
+        cr.setSourceRgba(black.r, black.g, black.b, black.a);
+
+        cr.moveTo(x1, y2);
+        cr.arc(Cx, Cy, R, al1, al2);
+        cr.lineTo(x4, y1);
+        cr.arc(Cx, Cy, R, al3, al4);
+        cr.lineTo(x2, y2);
+        cr.closePath();
+        cr.stroke();
+    }
+
 	void drawArc(ref Scoped!Context cr, real a_from, real a_to, real p1, real p2, real d1, real d2,
             real X, real Y, Color c, bool inv = false, bool lines = true)
 	{
@@ -1425,7 +1491,8 @@ protected:
                     }
                     ds.line = 0;
                 }
-                else if (expr.parent.type == "body" && expr.index == 0)
+                else if (expr.parent.type == "body" && expr.index == 0 ||
+                         expr.parent !is null && (expr.parent.type == "module" || expr.parent.bt == BlockType.File) && expr.index == 0)
                 {
                     ds.line++;
                     if (rlines.length < ds.line+1) rlines ~= 0.0;
@@ -1476,16 +1543,21 @@ protected:
                 expr.pw[1] = width;
                 expr.r3 = width/(2*PI);
                 int levels = *ds2.blocks;
-                //writefln("%s#%s levels %s", expr.operator, expr.type, levels);
+                //writefln("%s#%s levels %s (%s)", expr.operator, expr.type, levels, expr.center.levels);
 
                 expr.center.levels = max(expr.center.levels, levels);
                 //writefln("%s. %s#%s r3=%s, levels=%s", ds.block, expr.operator, expr.type, expr.r3, expr.center.levels);
 
                 //if (expr.r3 < expr.center.levels*30)
-                    expr.r3 = expr.center.levels*30;
+                expr.r3 = expr.center.levels*30;
+
+                if (carousel_view)
+                {
+                    expr.r3 = min(expr.r3, sx2/2);
+                }
 
                 if (!ds.force)
-                    rlines[ds.line] = max(rlines[ds.line], expr.r3);
+                    rlines[ds.line] = max(rlines[ds.line], expr.center.levels*30);
             }
 
             if (!expressions.empty)
@@ -1511,13 +1583,17 @@ protected:
 
             if (ds.llimit >= 0)
             {
-                //writefln("%s. %s#%s", ds.llimit, expr.operator, expr.type);
+                //writefln("+%s. %s, Par Type %s, Par Index %s, Index %s", ds.llimit, expr, expr.parent ? expr.parent.type : "null",
+                //        expr.parent ? expr.parent.index : -100, expr.index);
                 if (expr.parent !is null && (expr.parent.type == "root" || expr.parent.type == "module" || expr.parent.bt == BlockType.File || expr.parent.type == "body"))
                     continue;
 
                 auto ds2 = ds;
                 if (expr.parent is null || expr.parent.index >= 0 || expr.parent.type == "body" || expr.parent.type == "module" || expr.parent.bt == BlockType.File)
+                {
                     ds2.level++;
+                    //writefln("%s. %s", ds2.level, expr);
+                }
 
                 string text = (expr.index < 0 ? "." : "") ~ (expr.operator.empty ? expr.type : expr.operator);
                 if (text.empty) text = ".";
@@ -1535,18 +1611,20 @@ protected:
                     expr.pw[1] = expr.pw[0];
                 }
 
-                auto par = expr.parent;
-                if (par.index >= 0) par.pw[1] += expr.pw[1];
+                if (expr.index >= 0) expr.parent.pw[1] += expr.pw[1];
+                auto par = expr;
+                //if (par.index < 0) writefln("== %s. %s", expr, expr.pw);
                 while (par.index < 0)
                 {
                     par = par.parent;
+                    //writefln("++ %s. %s", par, par.pw);
                     par.pw[1] += expr.pw[1];
                 }
-                //writefln("l%s. %s#%s <= %s#%s (%s <=== %s)", ds.llimit, par.operator, par.type,
+                //writefln("l%s. %s#%s <= %s#%s (%s <=== %s)", ds.level, par.operator, par.type,
                 //        expr.operator, expr.type, par.pw[1], expr.pw[1]);
 
                 //writefln("%s", ds.level);
-                (*ds.blocks) = max((*ds.blocks), ds.level);
+                (*ds.blocks) = max((*ds.blocks), ds2.level);
 
                 if (expr.index < 0)
                     ds.level++;
@@ -1565,7 +1643,7 @@ protected:
                         assert(ep.parent.postop is ep);
                         ep = ep.parent;
                     }
-                    //writefln("%s/%s. %s. %s..%s", expr.operator, ep.operator, ep.parent.arguments.length, ep.index+expr.index+1, ep.index+1);
+                    //writefln("%s/%s/%s. %s. %s..%s", expr, expr.parent, ep, ep.parent.arguments.length, ep.index+expr.index+1, ep.index+1);
                     assert(ep.parent.arguments[ep.index] is ep);
 
                     if (ds.mode == Mode.Circle && ep.index+expr.index+1 > 0 && ep.parent.arguments.length > ep.index)
@@ -1620,7 +1698,8 @@ protected:
                 to = ds.f + (ds.t-ds.f) * (sumpw + w) / parentw;
 
                 real a = 180 - (to - fr)/2;
-                real b = 180 - (expr.pw[0]/(ds.r+15) * 180/PI)/2;
+                //real b = 180 - (expr.pw[0]/(ds.r+15) * 180/PI)/2;
+                real b = 180 - (expr.pw[0]/(30) * 180/PI)/2;
                 real rw = log(b/180)/log(a/180);
                 if (expr.center.mw.length < ds.level+1) expr.center.mw ~= 1.0;
                 expr.center.mw[ds.level] = max(expr.center.mw[ds.level], rw);
@@ -1636,7 +1715,7 @@ protected:
                         to - fr,
                         expr.pw[0]/(ds.r+15) * 180/PI,
                         rw, w, sumpw, parentw);*/
-                //writefln("    %s-%s (%s/%s)", fr, to, sumpw, parentw);
+                //writefln("%s. %s-%s (%s/%s)", expr, fr, to, sumpw, parentw);
                 assert(to >= fr);
                 assert(sumpw <= parentw);
 
@@ -1701,7 +1780,9 @@ protected:
                 ds2 = getSize(cast(Expression[]) expr.arguments, ds2);
                 ds2.post_dir = 1;
                 if (expr.postop !is null)
+                {
                     ds2 = getSize(cast(Expression[]) [expr.postop], ds2);
+                }
 
                 if (expr.index < 0)
                 {
@@ -1794,7 +1875,7 @@ protected:
                 ret ~= inExpressions(arg.postop.arguments[$-1]);
             }
         }
-        else if (expr.type == "for" || expr.type == "foreach" || expr.type == "while" || expr.type == "do")
+        else if (expr.type == "for" || expr.type == "foreach" || expr.type == "while")
         {
             assert(expr.arguments[$-1].postop.type == "body");
             ret ~= expr;
@@ -1841,7 +1922,9 @@ protected:
         Expression ret = expr;
         while (ret !is null)
         {
-            if (ret.type == "root" || ret.type == "module" || ret.bt == BlockType.File || ret.type == "function" || ret.type == "for" || ret.type == "foreach" || ret.type == "while" || ret.type == "do" || ret.parent !is null && (ret.parent.type == "if" || ret.parent.type == "switch"))
+            if (ret.type == "root" || ret.type == "module" || ret.bt == BlockType.File ||
+                    ret.type == "function" || ret.type == "for" || ret.type == "foreach" ||
+                    ret.type == "while" || ret.type == "do" || ret.parent !is null && (ret.parent.type == "if" || ret.parent.type == "switch"))
             {
                 if (ret.parent !is null && ret.index >= 0 && (ret.postop is null || ret.postop.type != "body"))
                 {
@@ -2024,8 +2107,15 @@ protected:
 
             if (!ds.force)
             {
+                auto ox = expr.x;
+                auto oy = expr.y;
                 expr.x = ds.x + dx[ds.line];
                 expr.y = ds.y + dy;
+                if (ox != expr.x || oy != expr.y)
+                {
+                    sizes_invalid = 2;
+                    redraw();
+                }
             }
             else
             {
@@ -2291,16 +2381,92 @@ protected:
                             //writefln("%s#%s", expr.operator, expr.type);
                         }
 
-                        drawArc(cr, 360-a2, 360-a1, expr.r1, expr.r2, expr.d1, expr.d2, expr.x, expr.y, expr.c, invert, lines);
-                        real r = (expr.r1+expr.r2+expr.d1+expr.d2)/4;
-                        real dr1 = (expr.r2-expr.r1);
-                        real dr2 = (expr.d2-expr.d1);
-                        assert(r > 0);
-                        assert(dr1 > 0);
-                        assert(dr2 > 0);
-                        real Y = expr.y + (expr.r1+expr.r2-expr.d1-expr.d2)/4;
-                        if (a2 > a1+5)
-                            drawArcText(cr, text, 360-a1, 360-a2, r, dr1, dr2, expr.x, Y, col, invert, colors);
+                        if (carousel_view)
+                        {
+                            if (expr.r1 == 0)
+                            {
+                                real k = 0.5-rot/360;
+                                if (k > 1.0) k -= 1.0;
+                                if (k < 0.0) k += 1.0;
+                                real k1 = (k < 0.5 ? 2*(0.5-k) : 0);
+                                real k2 = (k > 0.5 ? 2*(k-0.5) : 0);
+                                if (k > 0.9) k = 0.9;
+                                if (k < 0.1) k = 0.1;
+                                //writefln("%s: rot=%s; k=%s, k1=%s, k2=%s", expr, rot, k, k1, k2);
+                                drawRoof(cr, expr.x, expr.y, expr.r3, k1, k, k2, expr.c, invert);
+                                drawText(cr, text, expr.x, expr.y, 2*expr.r3, col, invert, colors);
+                            }
+                            else
+                            {
+                                if (abs(A2-A1) < 1 || abs(A2-A1-360) < 1)
+                                {
+                                    A1 = 0;
+                                    A2 = 360;
+                                }
+
+                                auto xx1 = expr.x - expr.center.r3;
+                                auto xx2 = expr.x + expr.center.r3;
+                                auto x1 = xx1 * (1.0-A1/360) + xx2*A1/360;
+                                auto x2 = xx1 * (1.0-A2/360) + xx2*A2/360;
+                                auto y1 = expr.y + expr.r1;
+                                auto y2 = expr.y + expr.r2;
+
+                                //writefln("%s: A %s - %s; X %s - %s; Y %s - %s; R3 %s", expr, A1, A2, x1, x2, y1, y2, expr.r3);
+
+                                if (x2 > x1)
+                                {
+                                    auto c = expr.c;
+                                    if (invert) c = c.invert();
+                                    cr.setSourceRgba(c.r, c.g, c.b, c.a);
+                                    cr.rectangle(x1, y1, x2-x1, y2-y1);
+                                    cr.fill();
+
+                                    Color black = Color(0, 0, 0.0, 1.0);
+                                    if (invert) black = black.invert();
+                                    cr.setSourceRgba(black.r, black.g, black.b, black.a);
+                                    cr.rectangle(x1, y1, x2-x1, y2-y1);
+                                    cr.stroke();
+
+                                    if (a2 > a1+5)
+                                        drawText(cr, text, (x1+x2)/2, (y1+y2)/2, x2-x1, col, invert, colors);
+                                }
+                                else
+                                {
+                                    auto c = expr.c;
+                                    if (invert) c = c.invert();
+                                    cr.setSourceRgba(c.r, c.g, c.b, c.a);
+                                    cr.rectangle(xx1, y1, x2-xx1, y2-y1);
+                                    cr.fill();
+
+                                    Color black = Color(0, 0, 0.0, 1.0);
+                                    if (invert) black = black.invert();
+                                    cr.setSourceRgba(black.r, black.g, black.b, black.a);
+                                    cr.rectangle(xx1, y1, x2-xx1, y2-y1);
+                                    cr.stroke();
+
+                                    cr.setSourceRgba(c.r, c.g, c.b, c.a);
+                                    cr.rectangle(x1, y1, xx2-x1, y2-y1);
+                                    cr.fill();
+
+                                    cr.setSourceRgba(black.r, black.g, black.b, black.a);
+                                    cr.rectangle(x1, y1, xx2-x1, y2-y1);
+                                    cr.stroke();
+                                }
+                            }
+                        }
+                        else
+                        {
+                            drawArc(cr, 360-a2, 360-a1, expr.r1, expr.r2, expr.d1, expr.d2, expr.x, expr.y, expr.c, invert, lines);
+                            real r = (expr.r1+expr.r2+expr.d1+expr.d2)/4;
+                            real dr1 = (expr.r2-expr.r1);
+                            real dr2 = (expr.d2-expr.d1);
+                            assert(r > 0);
+                            assert(dr1 > 0);
+                            assert(dr2 > 0);
+                            real Y = expr.y + (expr.r1+expr.r2-expr.d1-expr.d2)/4;
+                            if (a2 > a1+5)
+                                drawArcText(cr, text, 360-a1, 360-a2, r, dr1, dr2, expr.x, Y, col, invert, colors);
+                        }
                     }
 
                     if (expr.r1 == 0 && !expr.label.empty)
@@ -2320,7 +2486,9 @@ protected:
 
             ds2 = drawAll(cr, cast(Expression[]) expr.arguments, ds2);
             if (expr.postop !is null)
+            {
                 ds2 = drawAll(cr, cast(Expression[]) [expr.postop], ds2);
+            }
 
             if (ds2.hide)
                 ds.hide = ret.hide = true;
@@ -2356,7 +2524,8 @@ protected:
         {
             foreach (ex; expr.parent.arguments)
             {
-                if (!ex.operator.empty && ex.arguments.length >= 1)
+                if (ex.arguments.empty) continue;
+                if (!ex.operator.empty)
                 {
                     if (ex.type == "struct" || ex.type == "class" || ex.type == "root" || ex.type == "module" || ex.bt == BlockType.File || ex.type == "enum")
                         ret ~= Button(ex.operator, typeColor(ex.type), ex.type, ex);
@@ -2632,15 +2801,15 @@ protected:
                 redraw_need = true;
             }
 
-            if (selected.x < 150)
+            if (selected.x < selected.center.r3)
             {
                 redraw_need = true;
-                dx[selected.line] += 150 - selected.x;
+                dx[selected.line] += selected.center.r3 - selected.x;
             }
-            else if (selected.x > sx2-150)
+            else if (selected.x > sx2-selected.center.r3)
             {
                 redraw_need = true;
-                dx[selected.line] -= selected.x - (sx2-150);
+                dx[selected.line] -= selected.x - (sx2-selected.center.r3);
             }
 
             if (selected.y < 150)
