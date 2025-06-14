@@ -15,17 +15,8 @@ import std.math;
 import std.algorithm;
 import std.uni;
 import std.file;
-
-enum Style
-{
-    Unknown,
-    C,
-    CPP,
-    D,
-    Java,
-    Rust,
-    Python
-}
+import common;
+import parser;
 
 Style[string] name2style = ["C": Style.C, "C++": Style.CPP, "D": Style.D, "Java": Style.Java, "Rust": Style.Rust, "Python": Style.Python];
 
@@ -85,7 +76,7 @@ int main(string[] args)
     }
     else //if (output.endsWith(".np"))
     {
-        writefln("OK. Here we will convert %s with %s style to %s neparsy-file", input, style, output);
+        return convert2neparsy(input, output, style);
     }
 
     return 0;
