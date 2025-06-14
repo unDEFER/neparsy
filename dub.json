@@ -1,15 +1,12 @@
 {
-    "description": "Neparsy -- parsing result representation language",
+    "description": "Neparsy -- generalized Abstract Syntax Tree",
     "targetName": "neparsy",
     "authors": [
-        "Nikolay (unDEFER) Krivchenkov"
+        "Nikolay (unDEFER) Krivchenkow"
     ],
     "name": "neparsy",
-    "copyright": "Copyright © 2022, Nikolay (unDEFER) Krivchenkov",
+    "copyright": "Copyright © 2025, Nikolay (unDEFER) Krivchenkow",
     "license": "GPLv3",
     "sourcePaths": ["src"],
-    "targetPath": ".",
-    "dependencies": {
-        "gtk-d:gtkd": "~>3.9.0"
-    }
+    "targetPath": "."
 }
