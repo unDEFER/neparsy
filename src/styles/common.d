@@ -16,7 +16,7 @@ enum TokenType
 struct Token
 {
     TokenType type;
-    string fieldname;
+    string name;
     string separator;
 }
 

@@ -1,6 +1,7 @@
 module parser;
 import std.stdio;
 import std.string;
+import std.range;
 import std.algorithm;
 import styles.common;
 import common;
@@ -43,11 +44,15 @@ int convert2neparsy(string input, string output, Style style)
 {
     auto file = File(input); // Open for reading
     auto lines = file.byLine()            // Read lines
-                 .map!parseIndent();
-
-    writefln("%s", lines);
+                 .map!parseIndent().array;
 
     StateEntry[] state;
+
+    size_t row; // current line
+    size_t col; // current byte in line
+
+    IndentedLine iline = lines[row];
+    char[] lsplice = iline.line[col..$];
 
     for(Style s = Style.Unknown; s < Style.LastStyle; s++)
     {
@@ -58,9 +63,22 @@ int convert2neparsy(string input, string output, Style style)
         {
             Rule rule = styledef.rules[r];
 
-            for(size_t t = 0; t < rule.tokens.length; t++)
+            size_t t = 0;
+            Token token = rule.tokens[t];
+
+            switch(token.type)
             {
-                Token token = rule.tokens[t];
+                case TokenType.Keyword:
+                case TokenType.Symbol:
+                    
+                    if ( lsplice.startsWith(token.name) )
+                    {
+                        //StateEntry(s, r, t);
+                    }
+
+                    break;
+                default:
+                    break;
             }
         }
     }
