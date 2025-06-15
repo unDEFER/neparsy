@@ -8,6 +8,7 @@ enum Style
     D,
     Java,
     Rust,
-    Python
+    Python,
+    LastStyle
 }
 

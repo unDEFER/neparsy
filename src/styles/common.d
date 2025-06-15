@@ -65,4 +65,4 @@ struct StyleDefinition
     bool disabled;
 }
 
-StyleDefinition[Style] styles;
+StyleDefinition[Style] styledefs;

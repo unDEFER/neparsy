@@ -44,3 +44,8 @@ StyleDefinition DDefinition = StyleDefinition(Style.D,
 [
     OperatorMapEntry("+", "+")
 ]);
+
+static this()
+{
+    styledefs[Style.D] = DDefinition;
+}
