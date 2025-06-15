@@ -50,11 +50,18 @@ struct TypeMapEntry
     string[string] params; 
 }
 
+struct OperatorMapEntry
+{
+    string langOp;
+    string nikaOp;
+}
+
 struct StyleDefinition
 {
     Style style;
     Rule[] rules;
     TypeMapEntry[] typemap;
+    OperatorMapEntry[] opmap;
     bool disabled;
 }
 

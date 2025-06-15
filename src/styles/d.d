@@ -30,6 +30,17 @@ StyleDefinition DDefinition = StyleDefinition(Style.D,
     TypeMapEntry("float", NikaType.Scalar,
                 ["base": "2",
                  "precision": "23",
-                 "point_min": "-128",
-                 "point_max": "127"])
+                 "exp_min": "-126",
+                 "exp_max": "127",
+                 "denormalization": "true"]),
+
+    TypeMapEntry("double", NikaType.Scalar,
+                ["base": "2",
+                 "precision": "52",
+                 "exp_min": "-1022",
+                 "exp_max": "1023",
+                 "denormalization": "true"])
+],
+[
+    OperatorMapEntry("+", "+")
 ]);
