@@ -64,5 +64,3 @@ struct StyleDefinition
     OperatorMapEntry[] opmap;
     bool disabled;
 }
-
-StyleDefinition[Style] styledefs;

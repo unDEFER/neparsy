@@ -4,7 +4,7 @@ import std.variant;
 import styles.common;
 import common;
 
-StyleDefinition DDefinition = StyleDefinition(Style.D,
+enum ClikeRules = 
 [
     Rule("for",
     [
@@ -18,7 +18,10 @@ StyleDefinition DDefinition = StyleDefinition(Style.D,
         Token(TokenType.Symbol, ")"),
         Token(TokenType.Statement, "body"),
     ])
-],
+];
+
+enum DDefinition = StyleDefinition(Style.D,
+    ClikeRules,
 [
     TypeMapEntry("short", NikaType.Number,
                 ["range_min": "-32768",
@@ -44,8 +47,3 @@ StyleDefinition DDefinition = StyleDefinition(Style.D,
 [
     OperatorMapEntry("+", "+")
 ]);
-
-static this()
-{
-    styledefs[Style.D] = DDefinition;
-}
