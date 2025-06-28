@@ -18,7 +18,7 @@ import std.file;
 import common;
 import parser;
 
-Style[string] name2style = ["C": Style.C, "C++": Style.CPP, "D": Style.D, "Java": Style.Java, "Rust": Style.Rust, "Python": Style.Python];
+Style[string] name2style = ["C": Style.C, "C++": Style.CPP, "D": Style.D, "Java": Style.Java, "C#": Style.CSharp, "JavaScript": Style.JavaScript, "Python": Style.Python];
 
 void usage(string execname)
 {

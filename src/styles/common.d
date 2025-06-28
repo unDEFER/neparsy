@@ -9,8 +9,10 @@ enum TokenType
     Variable,
     Expression,
     Statement,
-    Id,
-    Symbol
+    Id, // not Type, not Variable, not Keyword, but what ???
+    Symbol,
+    TokenGroupBegin,
+    TokenGroupEnd
 }
 
 struct Token
@@ -18,11 +20,24 @@ struct Token
     TokenType type;
     string name;
     string separator;
+    int mincount;
+    int maxcount;
+}
+
+enum RuleType
+{
+    For,
+    Foreach,
+    While,
+    DoWhile,
+    Enum,
+    Function,
+    IfElse
 }
 
 struct Rule
 {
-    string type;
+    RuleType type;
     Token[] tokens;
 }
 
@@ -56,11 +71,35 @@ struct OperatorMapEntry
     string nikaOp;
 }
 
+enum Arity
+{
+    Unary,
+    Binary,
+    Ternary
+}
+
+enum Associativity
+{
+    Left,
+    Right,
+    None
+}
+
+struct OperatorPrecedenceEntry
+{
+    string op;
+    Arity arity;
+    Associativity assoc;
+    int priority;
+    string pair;
+}
+
 struct StyleDefinition
 {
     Style style;
     Rule[] rules;
     TypeMapEntry[] typemap;
     OperatorMapEntry[] opmap;
+    OperatorPrecedenceEntry[] opprec;
     bool disabled;
 }

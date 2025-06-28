@@ -2,26 +2,11 @@ module styles.d;
 
 import std.variant;
 import styles.common;
+import styles.c;
 import common;
 
-enum ClikeRules = 
-[
-    Rule("for",
-    [
-        Token(TokenType.Keyword, "for"),
-        Token(TokenType.Symbol, "("),
-        Token(TokenType.Expression, "init"),
-        Token(TokenType.Symbol, ";"),
-        Token(TokenType.Expression, "cond"),
-        Token(TokenType.Symbol, ";"),
-        Token(TokenType.Expression, "incr"),
-        Token(TokenType.Symbol, ")"),
-        Token(TokenType.Statement, "body"),
-    ])
-];
-
 enum DDefinition = StyleDefinition(Style.D,
-    ClikeRules,
+    [ClikeFor],
 [
     TypeMapEntry("short", NikaType.Number,
                 ["range_min": "-32768",
@@ -46,4 +31,7 @@ enum DDefinition = StyleDefinition(Style.D,
 ],
 [
     OperatorMapEntry("+", "+")
+],
+[
+    OperatorPrecedenceEntry("+", Arity.Binary, Associativity.Left, 0)
 ]);

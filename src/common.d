@@ -7,7 +7,8 @@ enum Style
     CPP,
     D,
     Java,
-    Rust,
+    CSharp,
+    JavaScript,
     Python,
     LastStyle
 }
