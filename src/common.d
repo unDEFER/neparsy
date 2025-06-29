@@ -2,7 +2,6 @@ module common;
 
 enum Style
 {
-    Unknown,
     C,
     CPP,
     D,
@@ -10,6 +9,6 @@ enum Style
     CSharp,
     JavaScript,
     Python,
-    LastStyle
+    Unknown,
 }
 
