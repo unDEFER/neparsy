@@ -82,18 +82,29 @@ int convert2neparsy(string input, string output, Style style)
             size_t t = 0;
             Token token = rule.tokens[t];
 
-            switch(token.type)
+            final switch(token.type)
             {
                 case TokenType.Keyword:
                 case TokenType.Symbol:
-                    
                     if ( lsplice.startsWith(token.name) )
                     {
                         //StateEntry(s, r, t);
                     }
-
                     break;
-                default:
+
+                case TokenType.Type:
+                case TokenType.Variable:
+                case TokenType.Id:
+                    break;
+
+                case TokenType.Expression:
+                    break;
+
+                case TokenType.Statement:
+                    break;
+
+                case TokenType.TokenGroupBegin:
+                case TokenType.TokenGroupEnd:
                     break;
             }
         }
