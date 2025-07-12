@@ -33,7 +33,7 @@ char[] get_id(char[] line)
     return line;
 }
 
-char[] get_token(char[] lsplice, Token token)
+char[] get_token(char[] lsplice, Token token, size_t t)
 {
     if (lsplice.length == 0) return null;
 
@@ -56,19 +56,19 @@ char[] get_token(char[] lsplice, Token token)
             break;
 
         case TokenType.Expression:
-            assert(false, "Expression parsing not implemented");
+            assert(t == 0, "Expression parsing not implemented");
             break;
 
         case TokenType.Statement:
-            assert(false, "Statement parsing not implemented");
+            assert(t == 0, "Statement parsing not implemented");
             break;
 
         case TokenType.TokenGroupBegin:
-            assert(false, "TokenGroupBegin parsing not implemented");
+            assert(t == 0, "TokenGroupBegin parsing not implemented");
             break;
 
         case TokenType.TokenGroupEnd:
-            assert(false, "TokenGroupEnd parsing not implemented");
+            assert(t == 0, "TokenGroupEnd parsing not implemented");
             break;
     }
 
@@ -90,6 +90,18 @@ IndentedLine parseIndent(char[] line)
     return il;
 }
 
+bool check_eof(ref char[] lsplice, IndentedLine[] lines, size_t row)
+{
+    while (lsplice.empty)
+    {
+        if (row >= lines.length)
+            return true;
+        lsplice = lines[++row].line;
+    }
+
+    return false;
+}
+
 struct StateEntry
 {
     Style style;
@@ -98,6 +110,7 @@ struct StateEntry
     size_t number; // for repeating tokens
     char[][] tokens;
     char[] rest_of_line;
+    size_t row;
 }
 
 StateEntry[] state;
@@ -121,10 +134,9 @@ int convert2neparsy(string input, string output, Style style)
     StateEntry[] state;
 
     size_t row; // current line
-    size_t col; // current byte in line
-
-    IndentedLine iline = lines[row];
-    char[] lsplice = iline.line[col..$];
+    char[] lsplice = lines[row].line;
+    StateEntry statement;
+    StateEntry[] state_candidates_update;
 
     for(Style s = Style.C; s < Style.Unknown; s++)
     {
@@ -138,34 +150,61 @@ int convert2neparsy(string input, string output, Style style)
 
             size_t t = 0;
             Token token = rule.tokens[t];
-            char[] token_string = get_token(lsplice, token);
+            if (check_eof(lsplice, lines, row)) continue;
+            char[] token_string = get_token(lsplice, token, t);
                         
-            if (token_string !is null)
+            if (!token_string.empty)
             {
-                new_state_candidates ~= StateEntry(s, r, t+1, 0, [token_string], strip(lsplice[token_string.length..$]));
+                auto se = StateEntry(s, r, t+1, 0, [token_string], strip(lsplice[token_string.length..$]), row);
+                if (se.token >= rule.tokens.length)
+                {
+                    statement = se;
+                    goto StatementEnded;
+                }
+                new_state_candidates ~= se;
             }
         }
     }
 
-    foreach(ref nsc; new_state_candidates)
+    while (!new_state_candidates.empty)
     {
-        StyleDefinition styledef = styledefs[nsc.style];
-        Rule rule = styledef.rules[nsc.rule];
-
-        lsplice = nsc.rest_of_line;
-        size_t t = nsc.token;
-        Token token = rule.tokens[t];
-        char[] token_string = get_token(lsplice, token);
-
-        if (token_string !is null)
+        foreach(ref nsc; new_state_candidates)
         {
-            nsc.token++;
-            nsc.tokens ~= token_string;
-            nsc.rest_of_line = strip(lsplice[token_string.length..$]);
+            StyleDefinition styledef = styledefs[nsc.style];
+            Rule rule = styledef.rules[nsc.rule];
+
+            lsplice = nsc.rest_of_line;
+            row = nsc.row;
+            size_t t = nsc.token;
+            Token token = rule.tokens[t];
+            if (check_eof(lsplice, lines, row)) continue;
+            char[] token_string = get_token(lsplice, token, t);
+
+            if (!token_string.empty)
+            {
+                nsc.token++;
+                nsc.tokens ~= token_string;
+                nsc.rest_of_line = strip(lsplice[token_string.length..$]);
+                nsc.row = row;
+                state_candidates_update ~= nsc;
+
+                if (nsc.token >= rule.tokens.length)
+                {
+                    statement = nsc;
+                    goto StatementEnded;
+                }
+            }
         }
+
+        swap(state_candidates_update, new_state_candidates);
+        state_candidates_update.length = 0;
     }
 
-    writefln("new_state_candidates=%s", new_state_candidates);
+    assert(false, "Statement not parsed");
+
+StatementEnded:
+    
+    writefln("parsed statement=%s", statement);
 
     return 0;
 }
