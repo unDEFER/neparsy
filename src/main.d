@@ -37,7 +37,7 @@ int main(string[] args)
         return 1;
     }
 
-    Style style;
+    Style style = Style.Unknown;
 
     if (args[1] == "-s" || args[1] == "--style")
     {

@@ -6,7 +6,14 @@ import styles.c;
 import common;
 
 enum DDefinition = StyleDefinition(Style.D,
-    [ClikeFor],
+[
+    Rule(RuleType.Module,
+    [
+        Token(TokenType.Keyword, "module"),
+        Token(TokenType.Id),
+    ]),
+    ClikeFor
+],
 [
     TypeMapEntry("short", NikaType.Number,
                 ["range_min": "-32768",

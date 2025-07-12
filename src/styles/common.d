@@ -32,7 +32,8 @@ enum RuleType
     DoWhile,
     Enum,
     Function,
-    IfElse
+    IfElse,
+    Module
 }
 
 struct Rule
