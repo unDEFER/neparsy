@@ -33,6 +33,48 @@ char[] get_id(char[] line)
     return line;
 }
 
+char[] get_token(char[] lsplice, Token token)
+{
+    if (lsplice.length == 0) return null;
+
+    char[] token_string;
+
+    final switch(token.type)
+    {
+        case TokenType.Keyword:
+        case TokenType.Symbol:
+            if ( lsplice.startsWith(token.name) )
+            {
+                token_string = lsplice[0..token.name.length];
+            }
+            break;
+
+        case TokenType.Type:
+        case TokenType.Variable:
+        case TokenType.Id:
+            token_string = get_id(lsplice);
+            break;
+
+        case TokenType.Expression:
+            assert(false, "Expression parsing not implemented");
+            break;
+
+        case TokenType.Statement:
+            assert(false, "Statement parsing not implemented");
+            break;
+
+        case TokenType.TokenGroupBegin:
+            assert(false, "TokenGroupBegin parsing not implemented");
+            break;
+
+        case TokenType.TokenGroupEnd:
+            assert(false, "TokenGroupEnd parsing not implemented");
+            break;
+    }
+
+    return token_string;
+}
+
 IndentedLine parseIndent(char[] line)
 {
     IndentedLine il;
@@ -55,6 +97,7 @@ struct StateEntry
     size_t token;
     size_t number; // for repeating tokens
     char[][] tokens;
+    char[] rest_of_line;
 }
 
 StateEntry[] state;
@@ -95,46 +138,30 @@ int convert2neparsy(string input, string output, Style style)
 
             size_t t = 0;
             Token token = rule.tokens[t];
-            size_t token_len;
-
-            final switch(token.type)
-            {
-                case TokenType.Keyword:
-                case TokenType.Symbol:
-                    if ( lsplice.startsWith(token.name) )
-                    {
-                        token_len = token.name.length;
-                    }
-                    break;
-
-                case TokenType.Type:
-                case TokenType.Variable:
-                case TokenType.Id:
-                    char[] id = get_id(lsplice);
-                    token_len = id.length;
-                    break;
-
-                case TokenType.Expression:
-                    assert(false, "Expression parsing not implemented");
-                    break;
-
-                case TokenType.Statement:
-                    assert(false, "Statement parsing not implemented");
-                    break;
-
-                case TokenType.TokenGroupBegin:
-                    assert(false, "TokenGroupBegin parsing not implemented");
-                    break;
-
-                case TokenType.TokenGroupEnd:
-                    assert(false, "TokenGroupEnd parsing not implemented");
-                    break;
-            }
+            char[] token_string = get_token(lsplice, token);
                         
-            if (token_len > 0)
+            if (token_string !is null)
             {
-                new_state_candidates ~= StateEntry(s, r, t+1, 0, [lsplice[0..token_len]]);
+                new_state_candidates ~= StateEntry(s, r, t+1, 0, [token_string], strip(lsplice[token_string.length..$]));
             }
+        }
+    }
+
+    foreach(ref nsc; new_state_candidates)
+    {
+        StyleDefinition styledef = styledefs[nsc.style];
+        Rule rule = styledef.rules[nsc.rule];
+
+        lsplice = nsc.rest_of_line;
+        size_t t = nsc.token;
+        Token token = rule.tokens[t];
+        char[] token_string = get_token(lsplice, token);
+
+        if (token_string !is null)
+        {
+            nsc.token++;
+            nsc.tokens ~= token_string;
+            nsc.rest_of_line = strip(lsplice[token_string.length..$]);
         }
     }
 
