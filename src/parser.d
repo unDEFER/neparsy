@@ -5,6 +5,7 @@ import std.range;
 import std.algorithm;
 import styles.all;
 import styles.common;
+import styles.bitmaps;
 import std.bitmanip;
 import std.uni;
 import common;
@@ -104,7 +105,6 @@ bool check_eof(ref char[] lsplice, IndentedLine[] lines, size_t row)
 
 struct StateEntry
 {
-    Style style;
     size_t rule;
     size_t token;
     size_t number; // for repeating tokens
@@ -138,31 +138,25 @@ int convert2neparsy(string input, string output, Style style)
     StateEntry statement;
     StateEntry[] state_candidates_update;
 
-    for(Style s = Style.C; s < Style.Unknown; s++)
+    for(size_t r = 0; r < rules.length; r++)
     {
-        if (s !in styledefs) continue;
-        if (!style_hypothesis[s]) continue;
-        StyleDefinition styledef = styledefs[s];
+        if ((style_hypothesis & style_rules[r]).bitsSet.empty) continue;
+        Rule rule = rules[r];
 
-        for(size_t r = 0; r < styledef.rules.length; r++)
+        size_t t = 0;
+        Token token = rule.tokens[t];
+        if (check_eof(lsplice, lines, row)) continue;
+        char[] token_string = get_token(lsplice, token, t);
+
+        if (!token_string.empty)
         {
-            Rule rule = styledef.rules[r];
-
-            size_t t = 0;
-            Token token = rule.tokens[t];
-            if (check_eof(lsplice, lines, row)) continue;
-            char[] token_string = get_token(lsplice, token, t);
-                        
-            if (!token_string.empty)
+            auto se = StateEntry(r, t+1, 0, [token_string], strip(lsplice[token_string.length..$]), row);
+            if (se.token >= rule.tokens.length)
             {
-                auto se = StateEntry(s, r, t+1, 0, [token_string], strip(lsplice[token_string.length..$]), row);
-                if (se.token >= rule.tokens.length)
-                {
-                    statement = se;
-                    goto StatementEnded;
-                }
-                new_state_candidates ~= se;
+                statement = se;
+                goto StatementEnded;
             }
+            new_state_candidates ~= se;
         }
     }
 
@@ -170,8 +164,7 @@ int convert2neparsy(string input, string output, Style style)
     {
         foreach(ref nsc; new_state_candidates)
         {
-            StyleDefinition styledef = styledefs[nsc.style];
-            Rule rule = styledef.rules[nsc.rule];
+            Rule rule = rules[nsc.rule];
 
             lsplice = nsc.rest_of_line;
             row = nsc.row;
@@ -204,7 +197,8 @@ int convert2neparsy(string input, string output, Style style)
 
 StatementEnded:
     
-    writefln("parsed statement=%s", statement);
+    style_hypothesis &= style_rules[statement.rule];
+    writefln("parsed statement=%s, style_hypothesis=%s", statement, style_hypothesis);
 
     return 0;
 }

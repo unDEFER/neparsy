@@ -15,6 +15,7 @@ import std.math;
 import std.algorithm;
 import std.uni;
 import std.file;
+import styles.bitmaps;
 import common;
 import parser;
 
@@ -59,6 +60,8 @@ int main(string[] args)
 
         args = args[2..$];
     }
+
+    init_maps();
 
     string input = args[1];
     string output = args[2];

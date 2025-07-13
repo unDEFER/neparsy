@@ -2,17 +2,18 @@ module styles.d;
 
 import std.variant;
 import styles.common;
-import styles.c;
 import common;
 
-enum DDefinition = StyleDefinition(Style.D,
-[
-    Rule(RuleType.Module,
+enum Rule DModule = Rule(RuleKind.Module,
     [
         Token(TokenType.Keyword, "module"),
         Token(TokenType.Id),
-    ]),
-    ClikeFor
+    ]);
+
+shared StyleDefinition DDefinition = StyleDefinition(Style.D,
+[
+    RuleType.DModule,
+    RuleType.ClikeFor,
 ],
 [
     TypeMapEntry("short", NikaType.Number,

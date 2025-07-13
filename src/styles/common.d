@@ -1,5 +1,6 @@
 module styles.common;
 
+import std.bitmanip;
 import common;
 
 enum TokenType
@@ -24,7 +25,7 @@ struct Token
     int maxcount;
 }
 
-enum RuleType
+enum RuleKind
 {
     For,
     Foreach,
@@ -38,7 +39,7 @@ enum RuleType
 
 struct Rule
 {
-    RuleType type;
+    RuleKind kind;
     Token[] tokens;
 }
 
@@ -95,12 +96,108 @@ struct OperatorPrecedenceEntry
     string pair;
 }
 
+struct TextSpan
+{
+    string begin;
+    string end;
+    string escape;
+    bool nesting;
+}
+
+enum CommentType
+{
+    COneLine,
+    CMultiLine,
+}
+
+enum TextSpan[] comments =
+[
+    TextSpan("//", "\n", null, false),
+    TextSpan("/*", "*/", null, false),
+];
+
+enum StringLiteralType
+{
+    DoubleQuotes,
+}
+
+enum TextSpan[] string_literals =
+[
+    TextSpan("\"", "\"", "\\", false),
+];
+
+enum ArgumentDelimiterType
+{
+    Comma
+}
+
+enum string[] argument_delimiters = [","];
+
+enum StatementDelimiterType
+{
+    Semicolon
+}
+
+enum string[] statement_delimiters = [";"];
+
+struct StatementBrackets
+{
+    string begin;
+    string end;
+}
+
+enum StatementBracketType
+{
+    C,
+    Pascal
+}
+
+enum StatementBrackets[] statement_brackets =
+[
+    StatementBrackets("{","}"),
+    StatementBrackets("begin","end"),
+];
+
+enum FieldAccessSymbolType
+{
+    Dot,
+    CArrow,
+}
+
+enum string[] field_access_symbols = [".", "->"];
+
+enum RuleType
+{
+    ClikeFor,
+    DModule
+}
+
 struct StyleDefinition
 {
     Style style;
-    Rule[] rules;
+    RuleType[] rules;
     TypeMapEntry[] typemap;
     OperatorMapEntry[] opmap;
     OperatorPrecedenceEntry[] opprec;
+    CommentType[] comments;
+    StringLiteralType[] string_literals;
+    ArgumentDelimiterType[] argument_delimiters;
+    StatementDelimiterType[] statement_delimiters;
+    StatementBracketType[] statement_brackets;
+    FieldAccessSymbolType[] field_access_symbols;
+
+    StyleBitmaps maps;
+
     bool disabled;
+}
+
+struct StyleBitmaps
+{
+    BitArray rules;
+    BitArray comments;
+    BitArray string_literals;
+    BitArray argument_delimiters;
+    BitArray statement_delimiters;
+    BitArray statement_brackets;
+    BitArray field_access_symbols;
 }

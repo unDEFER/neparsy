@@ -3,7 +3,7 @@ module styles.c;
 import styles.common;
 
 enum ClikeFor = 
-    Rule(RuleType.For,
+    Rule(RuleKind.For,
     [
         Token(TokenType.Keyword, "for"),
         Token(TokenType.Symbol, "("),
