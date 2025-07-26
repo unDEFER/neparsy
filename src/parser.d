@@ -200,5 +200,36 @@ StatementEnded:
     style_hypothesis &= style_rules[statement.rule];
     writefln("parsed statement=%s, style_hypothesis=%s", statement, style_hypothesis);
 
+    bool[] delimiters = new bool[statement_delimiters.length];
+    delimiters[0..$] = true;
+    BitArray delimiter_hypothesis = BitArray(delimiters);
+
+    foreach(s; style_hypothesis.bitsSet)
+    {
+        shared StyleDefinition* sd = styledefs[cast(Style) s];
+        delimiter_hypothesis &= cast() sd.maps.statement_delimiters;
+    }
+
+    string delimiter;
+    foreach(d; delimiter_hypothesis.bitsSet)
+    {
+        lsplice = statement.rest_of_line;
+        row = statement.row;
+        if (check_eof(lsplice, lines, row)) continue;
+
+        delimiter = statement_delimiters[d];
+        if ( lsplice.startsWith(delimiter) )
+        {
+            lsplice = strip(lsplice[delimiter.length..$]);
+            break;
+        }
+        delimiter = null;
+    }
+
+    if (!delimiter.empty)
+    {
+        writefln("Statement delimiter '%s' consumed successfully", delimiter);
+    }
+
     return 0;
 }

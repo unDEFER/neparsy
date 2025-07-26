@@ -42,4 +42,10 @@ shared StyleDefinition DDefinition = StyleDefinition(Style.D,
 ],
 [
     OperatorPrecedenceEntry("+", Arity.Binary, Associativity.Left, 0)
-]);
+],
+[CommentType.COneLine, CommentType.CMultiLine],
+[StringLiteralType.DoubleQuotes],
+[ArgumentDelimiterType.Comma],
+[StatementDelimiterType.Semicolon],
+[StatementBracketType.C],
+[FieldAccessSymbolType.Dot]);
