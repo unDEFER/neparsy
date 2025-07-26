@@ -114,28 +114,11 @@ struct StateEntry
 }
 
 StateEntry[] state;
-StateEntry[] new_state_candidates;
 
-int convert2neparsy(string input, string output, Style style)
+StateEntry get_statement(IndentedLine[] lines, ref BitArray style_hypothesis, ref char[] lsplice, ref size_t row)
 {
-    bool[] styles = new bool[cast(size_t) Style.Unknown];
-
-    if (style == Style.Unknown)
-        styles[0..$] = true;
-    else
-        styles[style] = true;
-
-    BitArray style_hypothesis = BitArray(styles);
-
-    auto file = File(input); // Open for reading
-    auto lines = file.byLine()            // Read lines
-                 .map!parseIndent().array;
-
-    StateEntry[] state;
-
-    size_t row; // current line
-    char[] lsplice = lines[row].line;
     StateEntry statement;
+    StateEntry[] new_state_candidates;
     StateEntry[] state_candidates_update;
 
     for(size_t r = 0; r < rules.length; r++)
@@ -193,7 +176,7 @@ int convert2neparsy(string input, string output, Style style)
         state_candidates_update.length = 0;
     }
 
-    assert(false, "Statement not parsed");
+    assert(false, "Statement not parsed. Line is: " ~ lsplice);
 
 StatementEnded:
     
@@ -229,6 +212,34 @@ StatementEnded:
     if (!delimiter.empty)
     {
         writefln("Statement delimiter '%s' consumed successfully", delimiter);
+    }
+
+    return statement;
+}
+
+int convert2neparsy(string input, string output, Style style)
+{
+    bool[] styles = new bool[cast(size_t) Style.Unknown];
+
+    if (style == Style.Unknown)
+        styles[0..$] = true;
+    else
+        styles[style] = true;
+
+    BitArray style_hypothesis = BitArray(styles);
+
+    auto file = File(input); // Open for reading
+    auto lines = file.byLine()            // Read lines
+                 .map!parseIndent().array;
+
+    StateEntry[] state;
+
+    size_t row; // current line
+    char[] lsplice = lines[row].line;
+
+    while (true)
+    {
+        StateEntry statement = get_statement(lines, style_hypothesis, lsplice, row);
     }
 
     return 0;
