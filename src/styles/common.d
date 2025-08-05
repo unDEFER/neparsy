@@ -10,7 +10,7 @@ enum TokenType
     Variable,
     Expression,
     Statement,
-    Id, // not Type, not Variable, not Keyword, but what ???
+    Id,
     Symbol,
     TokenGroupBegin,
     TokenGroupEnd
@@ -20,7 +20,7 @@ struct Token
 {
     TokenType type;
     string name;
-    string separator;
+    StatementDelimiterType delimiter;
     int mincount;
     int maxcount;
 }
@@ -126,19 +126,14 @@ enum TextSpan[] string_literals =
     TextSpan("\"", "\"", "\\", false),
 ];
 
-enum ArgumentDelimiterType
-{
-    Comma
-}
-
-enum string[] argument_delimiters = [","];
-
 enum StatementDelimiterType
 {
+    None,
+    Comma,
     Semicolon
 }
 
-enum string[] statement_delimiters = [";"];
+enum string[] statement_delimiters = [null, ",", ";"];
 
 struct StatementBrackets
 {
@@ -169,7 +164,8 @@ enum string[] field_access_symbols = [".", "->"];
 enum RuleType
 {
     ClikeFor,
-    DModule
+    DModule,
+    ClikeEnum
 }
 
 struct StyleDefinition
@@ -181,7 +177,6 @@ struct StyleDefinition
     OperatorPrecedenceEntry[] opprec;
     CommentType[] comments;
     StringLiteralType[] string_literals;
-    ArgumentDelimiterType[] argument_delimiters;
     StatementDelimiterType[] statement_delimiters;
     StatementBracketType[] statement_brackets;
     FieldAccessSymbolType[] field_access_symbols;
@@ -196,7 +191,6 @@ struct StyleBitmaps
     BitArray rules;
     BitArray comments;
     BitArray string_literals;
-    BitArray argument_delimiters;
     BitArray statement_delimiters;
     BitArray statement_brackets;
     BitArray field_access_symbols;

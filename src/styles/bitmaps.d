@@ -32,7 +32,6 @@ void init_maps()
         init_map!("rules")(def);
         init_map!("comments")(def);
         init_map!("string_literals")(def);
-        init_map!("argument_delimiters")(def);
         init_map!("statement_delimiters")(def);
         init_map!("statement_brackets")(def);
         init_map!("field_access_symbols")(def);

@@ -14,5 +14,6 @@ shared StyleDefinition*[Style] styledefs =
 enum Rule[] rules =
 [
     ClikeFor,
-    DModule
+    DModule,
+    ClikeEnum
 ];

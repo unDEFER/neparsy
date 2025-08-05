@@ -14,6 +14,7 @@ shared StyleDefinition DDefinition = StyleDefinition(Style.D,
 [
     RuleType.DModule,
     RuleType.ClikeFor,
+    RuleType.ClikeEnum,
 ],
 [
     TypeMapEntry("short", NikaType.Number,
@@ -45,7 +46,6 @@ shared StyleDefinition DDefinition = StyleDefinition(Style.D,
 ],
 [CommentType.COneLine, CommentType.CMultiLine],
 [StringLiteralType.DoubleQuotes],
-[ArgumentDelimiterType.Comma],
 [StatementDelimiterType.Semicolon],
 [StatementBracketType.C],
 [FieldAccessSymbolType.Dot]);

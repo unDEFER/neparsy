@@ -16,64 +16,297 @@ struct IndentedLine
     char[] line;
 }
 
+struct TokenGroup
+{
+    string name;
+    size_t start_token;
+    size_t mincount;
+    size_t next_token;
+    size_t counter;
+}
+
+struct StateEntry
+{
+    size_t rule;
+    size_t token;
+    size_t counter; // for repeating tokens
+    TokenGroup[] groups;
+    char[][] tokens;
+    char[] rest_of_line;
+    size_t row;
+}
+
+struct Parser
+{
+    char[] get_id(char[] line)
+    {
+        if (line.length == 0 || !isAlpha(line[0])) return null;
+
+        for (size_t i=1; i < line.length; i++)
+        {
+            if (!isAlphaNum(line[i])) return line[0..i];
+        }
+
+        return line;
+    }
+
+    char[] get_token(Token[] tokens, ref size_t t, ref TokenGroup[] groups, ref char[][] ctokens)
+    {
+        if (lsplice.length == 0) return null;
+
+        Token token;
+        char[] token_string;
+
+    Repeat:
+        token = tokens[t];
+        //if (t > 0) writefln("Token %s in %s", token.type, lsplice);
+        final switch(token.type)
+        {
+            case TokenType.Keyword:
+            case TokenType.Symbol:
+                //writefln("Symbol %s in %s", token.name, lsplice);
+                if ( lsplice.startsWith(token.name) )
+                {
+                    token_string = lsplice[0..token.name.length];
+                }
+                break;
+
+            case TokenType.Type:
+            case TokenType.Variable:
+            case TokenType.Id:
+                token_string = get_id(lsplice);
+                //writefln("ID %s=%s in %s", token.name, token_string, lsplice);
+                break;
+
+            case TokenType.Expression:
+                assert(t == 0, "Expression parsing not implemented");
+                break;
+
+            case TokenType.Statement:
+                assert(t == 0, "Statement parsing not implemented");
+                break;
+
+            case TokenType.TokenGroupBegin:
+                //writefln("begin group '%s'", token.name);
+                groups ~= TokenGroup(token.name, ++t, token.mincount);
+                goto Repeat;
+
+            case TokenType.TokenGroupEnd:
+                //writefln("end group '%s', counter %s", token.name, groups[$-1].counter);
+                if (token.maxcount == 0 || groups[$-1].counter < token.maxcount)
+                {
+                    groups[$-1].next_token = t+1;
+                    t = groups[$-1].start_token;
+
+                    if (token.delimiter == StatementDelimiterType.None)
+                        writefln("WARNING! [TokenGroupEnd] delimiter is none");
+
+                    string delimiter = statement_delimiters[token.delimiter];
+                    if ( lsplice.startsWith(delimiter) )
+                    {
+                        //writefln("Delimiter '%s' is consumed", delimiter);
+                        ctokens ~= lsplice[0..delimiter.length];
+                        consume(delimiter.length);
+                    }
+
+                    groups[$-1].counter++;
+                }
+                else
+                {
+                    groups.length--;
+                    t++;
+                }
+
+                goto Repeat;
+        }
+
+        if (token_string.empty && groups.length > 0 && groups[$-1].counter >= groups[$-1].mincount && t == groups[$-1].start_token)
+        {
+            if (groups[$-1].next_token > 0)
+            {
+                t = groups[$-1].next_token;
+            }
+            else
+            {
+                size_t sgr = 1;
+                do
+                {
+                    t++;
+                    token = tokens[t];
+
+                    if (token.type == TokenType.TokenGroupBegin)
+                    {
+                        sgr++;
+                    }
+                    else if (token.type == TokenType.TokenGroupEnd)
+                    {
+                        sgr--;
+                    }
+                } while (sgr > 0);
+                t++;
+            }
+            groups.length--;
+
+            goto Repeat;
+        }
+        //writefln("Return token: %s", token_string);
+
+        return token_string;
+    }
+
+    bool is_eof()
+    {
+        return row >= lines.length;
+    }
+
+    void check_eol()
+    {
+        while (lsplice.empty)
+        {
+            row++;
+            if (is_eof)
+                return;
+            lsplice = lines[row].line;
+        }
+    }
+
+    char[] consume(size_t nchars)
+    {
+        lsplice = strip(lsplice[nchars..$]);
+        check_eol();
+        return lsplice;
+    }
+
+    StateEntry[] state;
+
+    IndentedLine[] lines;
+    BitArray style_hypothesis;
+    char[] lsplice;
+    size_t row;
+
+    this(IndentedLine[] _lines, BitArray _style_hypothesis, char[] _lsplice, size_t _row)
+    {
+        lines = _lines;
+        style_hypothesis = _style_hypothesis;
+        lsplice = _lsplice;
+        row = _row;
+
+        check_eol();
+    }
+
+    StateEntry statement;
+
+    bool get_statement()
+    {
+        StateEntry[] new_state_candidates;
+        StateEntry[] state_candidates_update;
+        TokenGroup[] groups;
+        char[][] tokens;
+
+        for(size_t r = 0; r < rules.length; r++)
+        {
+            if ((style_hypothesis & style_rules[r]).bitsSet.empty) continue;
+            Rule rule = rules[r];
+
+            size_t t = 0;
+            char[] token_string = get_token(rule.tokens, t, groups, tokens);
+
+            if (!token_string.empty)
+            {
+                tokens ~= token_string;
+                auto se = StateEntry(r, t+1, 0, groups, tokens, strip(lsplice[token_string.length..$]), row);
+                if (se.token >= rule.tokens.length)
+                {
+                    statement = se;
+                    goto StatementEnded;
+                }
+                new_state_candidates ~= se;
+            }
+        }
+
+        //writefln("new_state_candidates: %s", new_state_candidates);
+
+        while (!new_state_candidates.empty)
+        {
+            foreach(ref nsc; new_state_candidates)
+            {
+                Rule rule = rules[nsc.rule];
+
+                lsplice = nsc.rest_of_line;
+                row = nsc.row;
+                char[] token_string = get_token(rule.tokens, nsc.token, nsc.groups, nsc.tokens);
+
+                if (!token_string.empty)
+                {
+                    nsc.token++;
+                    nsc.tokens ~= token_string;
+                    nsc.rest_of_line = consume(token_string.length);
+                    nsc.row = row;
+                    state_candidates_update ~= nsc;
+
+                    if (nsc.token >= rule.tokens.length)
+                    {
+                        statement = nsc;
+                        goto StatementEnded;
+                    }
+                }
+            }
+
+            swap(state_candidates_update, new_state_candidates);
+            state_candidates_update.length = 0;
+        }
+
+        if (is_eof)
+        {
+            writefln("End of File");
+            return false;
+        }
+
+        assert(false, "Statement not parsed. Line is: " ~ lsplice);
+
+    StatementEnded:
+        
+        style_hypothesis &= style_rules[statement.rule];
+        writefln("parsed statement=%s, style_hypothesis=%s", statement, style_hypothesis);
+
+        bool[] delimiters = new bool[statement_delimiters.length];
+        delimiters[0..$] = true;
+        BitArray delimiter_hypothesis = BitArray(delimiters);
+
+        foreach(s; style_hypothesis.bitsSet)
+        {
+            shared StyleDefinition* sd = styledefs[cast(Style) s];
+            delimiter_hypothesis &= cast() sd.maps.statement_delimiters;
+        }
+
+        string delimiter;
+        foreach(d; delimiter_hypothesis.bitsSet)
+        {
+            lsplice = statement.rest_of_line;
+            row = statement.row;
+
+            delimiter = statement_delimiters[d];
+            if ( lsplice.startsWith(delimiter) )
+            {
+                consume(delimiter.length);
+                break;
+            }
+            delimiter = null;
+        }
+
+        if (!delimiter.empty)
+        {
+            writefln("Statement delimiter '%s' consumed successfully", delimiter);
+        }
+
+        return true;
+    }
+}
+
 // return number characters to skip
 int get_num_spaces(char[] line)
 {
     return line.startsWith("    ") ? 4 : line.startsWith("\t") ? 1 : 0;
-}
-
-char[] get_id(char[] line)
-{
-    if (line.length == 0 || !isAlpha(line[0])) return null;
-
-    for (size_t i=1; i < line.length; i++)
-    {
-        if (!isAlphaNum(line[i])) return line[0..i];
-    }
-
-    return line;
-}
-
-char[] get_token(char[] lsplice, Token token, size_t t)
-{
-    if (lsplice.length == 0) return null;
-
-    char[] token_string;
-
-    final switch(token.type)
-    {
-        case TokenType.Keyword:
-        case TokenType.Symbol:
-            if ( lsplice.startsWith(token.name) )
-            {
-                token_string = lsplice[0..token.name.length];
-            }
-            break;
-
-        case TokenType.Type:
-        case TokenType.Variable:
-        case TokenType.Id:
-            token_string = get_id(lsplice);
-            break;
-
-        case TokenType.Expression:
-            assert(t == 0, "Expression parsing not implemented");
-            break;
-
-        case TokenType.Statement:
-            assert(t == 0, "Statement parsing not implemented");
-            break;
-
-        case TokenType.TokenGroupBegin:
-            assert(t == 0, "TokenGroupBegin parsing not implemented");
-            break;
-
-        case TokenType.TokenGroupEnd:
-            assert(t == 0, "TokenGroupEnd parsing not implemented");
-            break;
-    }
-
-    return token_string;
 }
 
 IndentedLine parseIndent(char[] line)
@@ -89,132 +322,6 @@ IndentedLine parseIndent(char[] line)
 
     il.line = strip(line).dup();
     return il;
-}
-
-bool check_eof(ref char[] lsplice, IndentedLine[] lines, size_t row)
-{
-    while (lsplice.empty)
-    {
-        if (row >= lines.length)
-            return true;
-        lsplice = lines[++row].line;
-    }
-
-    return false;
-}
-
-struct StateEntry
-{
-    size_t rule;
-    size_t token;
-    size_t number; // for repeating tokens
-    char[][] tokens;
-    char[] rest_of_line;
-    size_t row;
-}
-
-StateEntry[] state;
-
-StateEntry get_statement(IndentedLine[] lines, ref BitArray style_hypothesis, ref char[] lsplice, ref size_t row)
-{
-    StateEntry statement;
-    StateEntry[] new_state_candidates;
-    StateEntry[] state_candidates_update;
-
-    for(size_t r = 0; r < rules.length; r++)
-    {
-        if ((style_hypothesis & style_rules[r]).bitsSet.empty) continue;
-        Rule rule = rules[r];
-
-        size_t t = 0;
-        Token token = rule.tokens[t];
-        if (check_eof(lsplice, lines, row)) continue;
-        char[] token_string = get_token(lsplice, token, t);
-
-        if (!token_string.empty)
-        {
-            auto se = StateEntry(r, t+1, 0, [token_string], strip(lsplice[token_string.length..$]), row);
-            if (se.token >= rule.tokens.length)
-            {
-                statement = se;
-                goto StatementEnded;
-            }
-            new_state_candidates ~= se;
-        }
-    }
-
-    while (!new_state_candidates.empty)
-    {
-        foreach(ref nsc; new_state_candidates)
-        {
-            Rule rule = rules[nsc.rule];
-
-            lsplice = nsc.rest_of_line;
-            row = nsc.row;
-            size_t t = nsc.token;
-            Token token = rule.tokens[t];
-            if (check_eof(lsplice, lines, row)) continue;
-            char[] token_string = get_token(lsplice, token, t);
-
-            if (!token_string.empty)
-            {
-                nsc.token++;
-                nsc.tokens ~= token_string;
-                nsc.rest_of_line = strip(lsplice[token_string.length..$]);
-                nsc.row = row;
-                state_candidates_update ~= nsc;
-
-                if (nsc.token >= rule.tokens.length)
-                {
-                    statement = nsc;
-                    goto StatementEnded;
-                }
-            }
-        }
-
-        swap(state_candidates_update, new_state_candidates);
-        state_candidates_update.length = 0;
-    }
-
-    assert(false, "Statement not parsed. Line is: " ~ lsplice);
-
-StatementEnded:
-    
-    style_hypothesis &= style_rules[statement.rule];
-    writefln("parsed statement=%s, style_hypothesis=%s", statement, style_hypothesis);
-
-    bool[] delimiters = new bool[statement_delimiters.length];
-    delimiters[0..$] = true;
-    BitArray delimiter_hypothesis = BitArray(delimiters);
-
-    foreach(s; style_hypothesis.bitsSet)
-    {
-        shared StyleDefinition* sd = styledefs[cast(Style) s];
-        delimiter_hypothesis &= cast() sd.maps.statement_delimiters;
-    }
-
-    string delimiter;
-    foreach(d; delimiter_hypothesis.bitsSet)
-    {
-        lsplice = statement.rest_of_line;
-        row = statement.row;
-        if (check_eof(lsplice, lines, row)) continue;
-
-        delimiter = statement_delimiters[d];
-        if ( lsplice.startsWith(delimiter) )
-        {
-            lsplice = strip(lsplice[delimiter.length..$]);
-            break;
-        }
-        delimiter = null;
-    }
-
-    if (!delimiter.empty)
-    {
-        writefln("Statement delimiter '%s' consumed successfully", delimiter);
-    }
-
-    return statement;
 }
 
 int convert2neparsy(string input, string output, Style style)
@@ -237,9 +344,10 @@ int convert2neparsy(string input, string output, Style style)
     size_t row; // current line
     char[] lsplice = lines[row].line;
 
-    while (true)
+    auto parser = Parser(lines, style_hypothesis, lsplice, row);
+
+    while (parser.get_statement())
     {
-        StateEntry statement = get_statement(lines, style_hypothesis, lsplice, row);
     }
 
     return 0;
