@@ -7,7 +7,7 @@ import common;
 enum Rule DModule = Rule(RuleKind.Module,
     [
         Token(TokenType.Keyword, "module"),
-        Token(TokenType.Id),
+        Token(TokenType.Id, "name"),
     ]);
 
 shared StyleDefinition DDefinition = StyleDefinition(Style.D,

@@ -16,7 +16,7 @@ enum ClikeFor =
         Token(TokenType.Statement, "body"),
     ]);
 
-enum Rule ClikeEnum = Rule(RuleKind.Module,
+enum Rule ClikeEnum = Rule(RuleKind.Enum,
     [
         Token(TokenType.Keyword, "enum"),
         Token(TokenType.Id, "name"),

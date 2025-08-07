@@ -8,6 +8,8 @@ import styles.common;
 import styles.bitmaps;
 import std.bitmanip;
 import std.uni;
+import std.json;
+import std.conv;
 import common;
 
 struct IndentedLine
@@ -21,6 +23,7 @@ struct TokenGroup
     string name;
     size_t start_token;
     size_t mincount;
+    JSONValue *js;
     size_t next_token;
     size_t counter;
 }
@@ -34,6 +37,7 @@ struct StateEntry
     char[][] tokens;
     char[] rest_of_line;
     size_t row;
+    JSONValue js;
 }
 
 struct Parser
@@ -50,14 +54,32 @@ struct Parser
         return line;
     }
 
-    char[] get_token(Token[] tokens, ref size_t t, ref TokenGroup[] groups, ref char[][] ctokens)
+    char[] get_token(Token[] tokens, ref size_t t, ref TokenGroup[] groups, ref char[][] ctokens, ref JSONValue statement_js)
     {
         if (lsplice.length == 0) return null;
 
         Token token;
         char[] token_string;
+        JSONValue *js = &statement_js;
 
     Repeat:
+        foreach_reverse(g; groups)
+        {
+            if (g.js !is null)
+            {
+                if (g.counter >= g.js.array.length)
+                {
+                    JSONValue v;
+                    v.object = null;
+                    g.js.array ~= v;
+                }
+
+                js = &g.js.array[g.counter];
+                break;
+            }
+        }
+
+
         token = tokens[t];
         //if (t > 0) writefln("Token %s in %s", token.type, lsplice);
         final switch(token.type)
@@ -75,6 +97,10 @@ struct Parser
             case TokenType.Variable:
             case TokenType.Id:
                 token_string = get_id(lsplice);
+                if (!token.name.empty && !token_string.empty)
+                {
+                    js.object[token.name] = token_string;
+                }
                 //writefln("ID %s=%s in %s", token.name, token_string, lsplice);
                 break;
 
@@ -88,7 +114,15 @@ struct Parser
 
             case TokenType.TokenGroupBegin:
                 //writefln("begin group '%s'", token.name);
-                groups ~= TokenGroup(token.name, ++t, token.mincount);
+                JSONValue *gjs;
+                if (!token.name.empty)
+                {
+                    JSONValue v;
+                    v.array = [];
+                    js.object[token.name] = v;
+                    gjs = &js.object[token.name];
+                }
+                groups ~= TokenGroup(token.name, ++t, token.mincount, gjs);
                 goto Repeat;
 
             case TokenType.TokenGroupEnd:
@@ -145,6 +179,9 @@ struct Parser
                 } while (sgr > 0);
                 t++;
             }
+
+            if (groups[$-1].js !is null)
+                groups[$-1].js.array.length--;
             groups.length--;
 
             goto Repeat;
@@ -207,14 +244,19 @@ struct Parser
         {
             if ((style_hypothesis & style_rules[r]).bitsSet.empty) continue;
             Rule rule = rules[r];
+            JSONValue js;
+            js.object = null;
+            JSONValue v;
+            v.str = rule.kind.to!(string);
+            js.object["type"] = v;
 
             size_t t = 0;
-            char[] token_string = get_token(rule.tokens, t, groups, tokens);
+            char[] token_string = get_token(rule.tokens, t, groups, tokens, js);
 
             if (!token_string.empty)
             {
                 tokens ~= token_string;
-                auto se = StateEntry(r, t+1, 0, groups, tokens, strip(lsplice[token_string.length..$]), row);
+                auto se = StateEntry(r, t+1, 0, groups, tokens, strip(lsplice[token_string.length..$]), row, js);
                 if (se.token >= rule.tokens.length)
                 {
                     statement = se;
@@ -234,7 +276,7 @@ struct Parser
 
                 lsplice = nsc.rest_of_line;
                 row = nsc.row;
-                char[] token_string = get_token(rule.tokens, nsc.token, nsc.groups, nsc.tokens);
+                char[] token_string = get_token(rule.tokens, nsc.token, nsc.groups, nsc.tokens, nsc.js);
 
                 if (!token_string.empty)
                 {
@@ -338,6 +380,7 @@ int convert2neparsy(string input, string output, Style style)
     auto file = File(input); // Open for reading
     auto lines = file.byLine()            // Read lines
                  .map!parseIndent().array;
+    file.close();
 
     StateEntry[] state;
 
@@ -346,9 +389,30 @@ int convert2neparsy(string input, string output, Style style)
 
     auto parser = Parser(lines, style_hypothesis, lsplice, row);
 
+    JSONValue module_js;
+    module_js.array = [];
+
     while (parser.get_statement())
     {
+        module_js.array ~= parser.statement.js;
     }
+
+    if (style_hypothesis.count > 1)
+    {
+        writefln("WARNING! style_hypothesis.count > 1");
+    }
+
+    Style defined_style = cast(Style) style_hypothesis.bitsSet().front;
+    JSONValue ast_with_style;
+    ast_with_style.object = null;
+    JSONValue v;
+    v.str = defined_style.to!(string);
+    ast_with_style.object["style"] = v;
+    ast_with_style.object["ast"] = module_js;
+
+    file = File(output, "w"); // Open for writing
+    file.write(ast_with_style.toPrettyString());
+    file.close();
 
     return 0;
 }
