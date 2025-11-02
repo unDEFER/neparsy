@@ -79,7 +79,6 @@ struct Parser
             }
         }
 
-
         token = tokens[t];
         //if (t > 0) writefln("Token %s in %s", token.type, lsplice);
         final switch(token.type)
@@ -311,15 +310,7 @@ struct Parser
         style_hypothesis &= style_rules[statement.rule];
         writefln("parsed statement=%s, style_hypothesis=%s", statement, style_hypothesis);
 
-        bool[] delimiters = new bool[statement_delimiters.length];
-        delimiters[0..$] = true;
-        BitArray delimiter_hypothesis = BitArray(delimiters);
-
-        foreach(s; style_hypothesis.bitsSet)
-        {
-            shared StyleDefinition* sd = styledefs[cast(Style) s];
-            delimiter_hypothesis &= cast() sd.maps.statement_delimiters;
-        }
+        BitArray delimiter_hypothesis = get_hypothesis!("statement_delimiters")(style_hypothesis);
 
         string delimiter;
         foreach(d; delimiter_hypothesis.bitsSet)

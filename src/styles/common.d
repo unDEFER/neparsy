@@ -108,12 +108,14 @@ enum CommentType
 {
     COneLine,
     CMultiLine,
+    DMultiLine,
 }
 
 enum TextSpan[] comments =
 [
     TextSpan("//", "\n", null, false),
     TextSpan("/*", "*/", null, false),
+    TextSpan("/+", "+/", null, true),
 ];
 
 enum StringLiteralType

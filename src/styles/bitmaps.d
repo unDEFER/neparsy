@@ -48,3 +48,17 @@ void init_maps()
     }
 }
 
+BitArray get_hypothesis(string field)(BitArray style_hypothesis)
+{
+    mixin("bool[] "~field~"_ar = new bool["~field~".length];");
+    mixin(field~"_ar")[0..$] = true;
+    mixin("BitArray "~field~"_hypothesis = BitArray("~field~"_ar);");
+
+    foreach(s; style_hypothesis.bitsSet)
+    {
+        shared StyleDefinition* sd = styledefs[cast(Style) s];
+        mixin(field~"_hypothesis") &= cast() mixin("sd.maps."~field);
+    }
+
+    return mixin(field~"_hypothesis");
+}
