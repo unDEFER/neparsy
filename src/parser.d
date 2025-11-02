@@ -10,6 +10,7 @@ import std.bitmanip;
 import std.uni;
 import std.json;
 import std.conv;
+import std.utf;
 import common;
 
 struct IndentedLine
@@ -213,6 +214,64 @@ struct Parser
         return lsplice;
     }
 
+    bool consume_textspan(TextSpan textspan)
+    {
+        int nest = 0;
+        bool escape;
+
+        if ( lsplice.startsWith(textspan.begin) )
+        {
+            consume(textspan.begin.length);
+            nest++;
+            
+            do
+            {
+                while ( escape || !lsplice.startsWith(textspan.end) )
+                {
+                    if (!escape && lsplice.startsWith(textspan.escape))
+                    {
+                        consume(textspan.escape.length);
+                        escape = true;
+                    }
+                    else if (!escape && textspan.nesting && lsplice.startsWith(textspan.begin))
+                    {
+                        consume(textspan.begin.length);
+                        nest++;
+                    }
+                    else
+                    {
+                        consume(lsplice.stride);
+                        escape = false;
+                    }
+                }
+
+                consume(textspan.end.length);
+                nest--;
+            } while (nest > 0);
+
+            return true;
+        }
+
+        return false;
+    }
+
+    bool consume_comment()
+    {
+        BitArray comments_hypothesis = get_hypothesis!("comments")(style_hypothesis);
+
+        TextSpan comment;
+        foreach(d; comments_hypothesis.bitsSet)
+        {
+            comment = comments[d];
+            if (consume_textspan(comment))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     StateEntry[] state;
 
     IndentedLine[] lines;
@@ -239,6 +298,7 @@ struct Parser
         TokenGroup[] groups;
         char[][] tokens;
 
+    retry:
         for(size_t r = 0; r < rules.length; r++)
         {
             if ((style_hypothesis & style_rules[r]).bitsSet.empty) continue;
@@ -302,6 +362,8 @@ struct Parser
             writefln("End of File");
             return false;
         }
+
+        if (consume_comment()) goto retry;
 
         assert(false, "Statement not parsed. Line is: " ~ lsplice);
 

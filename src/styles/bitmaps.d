@@ -56,6 +56,7 @@ BitArray get_hypothesis(string field)(BitArray style_hypothesis)
 
     foreach(s; style_hypothesis.bitsSet)
     {
+        if (cast(Style) s !in styledefs) continue;
         shared StyleDefinition* sd = styledefs[cast(Style) s];
         mixin(field~"_hypothesis") &= cast() mixin("sd.maps."~field);
     }
