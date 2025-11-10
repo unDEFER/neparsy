@@ -214,8 +214,9 @@ struct Parser
         return lsplice;
     }
 
-    bool consume_textspan(TextSpan textspan)
+    string consume_textspan(TextSpan textspan, bool no_escape = false)
     {
+        string ret;
         int nest = 0;
         bool escape;
 
@@ -230,46 +231,59 @@ struct Parser
                 {
                     if (!escape && lsplice.startsWith(textspan.escape))
                     {
+                        if (!no_escape) ret ~= lsplice[0..textspan.escape.length];
+                        auto oldrow = row;
                         consume(textspan.escape.length);
+                        auto newlines = row - oldrow;
+                        if (newlines > 0 && !no_escape) ret ~= '\n'.repeat(newlines).array();
                         escape = true;
                     }
                     else if (!escape && textspan.nesting && lsplice.startsWith(textspan.begin))
                     {
+                        ret ~= lsplice[0..textspan.begin.length];
+                        auto oldrow = row;
                         consume(textspan.begin.length);
+                        auto newlines = row - oldrow;
+                        if (newlines > 0) ret ~= '\n'.repeat(newlines).array();
                         nest++;
                     }
                     else
                     {
-                        consume(lsplice.stride);
+                        auto chr_len = lsplice.stride;
+                        ret ~= lsplice[0..chr_len];
+                        auto oldrow = row;
+                        consume(chr_len);
+                        auto newlines = row - oldrow;
+                        if (newlines > 0) ret ~= '\n'.repeat(newlines).array();
                         escape = false;
                     }
                 }
 
+                if (nest > 1) ret ~= lsplice[0..textspan.end.length];
+                auto oldrow = row;
                 consume(textspan.end.length);
+                auto newlines = row - oldrow;
+                if (nest > 1 && newlines > 0) ret ~= '\n'.repeat(newlines).array();
                 nest--;
             } while (nest > 0);
-
-            return true;
         }
 
-        return false;
+        return ret;
     }
 
-    bool consume_comment()
+    string consume_comment()
     {
         BitArray comments_hypothesis = get_hypothesis!("comments")(style_hypothesis);
 
         TextSpan comment;
         foreach(d; comments_hypothesis.bitsSet)
         {
-            comment = comments[d];
-            if (consume_textspan(comment))
-            {
-                return true;
-            }
+            comment = .comments[d];
+            auto consumed = consume_textspan(comment);
+            if (!consumed.empty) return consumed;
         }
 
-        return false;
+        return null;
     }
 
     StateEntry[] state;
@@ -278,6 +292,7 @@ struct Parser
     BitArray style_hypothesis;
     char[] lsplice;
     size_t row;
+    string consumed;
 
     this(IndentedLine[] _lines, BitArray _style_hypothesis, char[] _lsplice, size_t _row)
     {
@@ -290,6 +305,7 @@ struct Parser
     }
 
     StateEntry statement;
+    string[] comments;
 
     bool get_statement()
     {
@@ -362,8 +378,14 @@ struct Parser
             writefln("End of File");
             return false;
         }
-
-        if (consume_comment()) goto retry;
+        
+        consumed = consume_comment();
+        if (!consumed.empty)
+        {
+            writefln("Consumed comment: %s", consumed);
+            comments ~= consumed;
+            goto retry;
+        }
 
         assert(false, "Statement not parsed. Line is: " ~ lsplice);
 
@@ -447,6 +469,27 @@ int convert2neparsy(string input, string output, Style style)
 
     while (parser.get_statement())
     {
+        if (!parser.comments.empty)
+        {
+            JSONValue comments_js;
+            comments_js.object = null;
+            JSONValue v;
+            v.str = "comment";
+            comments_js.object["type"] = v;
+
+            JSONValue comments_array_js;
+            comments_array_js.array = [];
+
+            foreach (comment; parser.comments)
+            {
+                JSONValue c;
+                c.str = comment;
+                comments_array_js.array ~= c;
+            }
+
+            comments_js.object["comments"] = comments_array_js;
+            module_js.array ~= comments_js;
+        }
         module_js.array ~= parser.statement.js;
     }
 
