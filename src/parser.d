@@ -64,6 +64,8 @@ struct Parser
         JSONValue *js = &statement_js;
 
     Repeat:
+        if (t >= tokens.length) goto End;
+
         foreach_reverse(g; groups)
         {
             if (g.js !is null)
@@ -134,6 +136,8 @@ struct Parser
 
                     if (token.delimiter == StatementDelimiterType.None)
                         writefln("WARNING! [TokenGroupEnd] delimiter is none");
+                    
+                    groups[$-1].counter++;
 
                     string delimiter = statement_delimiters[token.delimiter];
                     if ( lsplice.startsWith(delimiter) )
@@ -142,16 +146,19 @@ struct Parser
                         ctokens ~= lsplice[0..delimiter.length];
                         consume(delimiter.length);
                     }
+                    else if (token.delimiter != StatementDelimiterType.None)
+                    {
+                        t = groups[$-1].next_token;
+                        groups.length--;
+                    }
 
-                    groups[$-1].counter++;
+                    goto Repeat;
                 }
                 else
                 {
                     groups.length--;
                     t++;
                 }
-
-                goto Repeat;
         }
 
         if (token_string.empty && groups.length > 0 && groups[$-1].counter >= groups[$-1].mincount && t == groups[$-1].start_token)
@@ -188,6 +195,7 @@ struct Parser
         }
         //writefln("Return token: %s", token_string);
 
+End:
         return token_string;
     }
 
@@ -360,12 +368,12 @@ struct Parser
                     nsc.rest_of_line = consume(token_string.length);
                     nsc.row = row;
                     state_candidates_update ~= nsc;
+                }
 
-                    if (nsc.token >= rule.tokens.length)
-                    {
-                        statement = nsc;
-                        goto StatementEnded;
-                    }
+                if (nsc.token >= rule.tokens.length)
+                {
+                    statement = nsc;
+                    goto StatementEnded;
                 }
             }
 

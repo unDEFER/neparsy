@@ -34,7 +34,8 @@ enum RuleKind
     Enum,
     Function,
     IfElse,
-    Module
+    Module,
+    Import
 }
 
 struct Rule
@@ -132,10 +133,11 @@ enum StatementDelimiterType
 {
     None,
     Comma,
-    Semicolon
+    Semicolon,
+    Dot
 }
 
-enum string[] statement_delimiters = [null, ",", ";"];
+enum string[] statement_delimiters = [null, ",", ";", "."];
 
 struct StatementBrackets
 {
@@ -167,6 +169,7 @@ enum RuleType
 {
     ClikeFor,
     DModule,
+    DImport,
     ClikeEnum
 }
 
