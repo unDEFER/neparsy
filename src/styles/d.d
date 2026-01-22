@@ -24,12 +24,23 @@ enum Rule DImport = Rule(RuleKind.Import,
         Token(TokenType.TokenGroupEnd, null, StatementDelimiterType.None, 0, 1),
     ]);
 
+enum Rule DDeclaration = Rule(RuleKind.Declaration,
+    [
+        Token(TokenType.Type, "type"),
+        Token(TokenType.Id, "var"),
+        Token(TokenType.TokenGroupBegin, null, StatementDelimiterType.None, 0, 1),
+        Token(TokenType.Symbol, "="),
+        Token(TokenType.Expression, "init"),
+        Token(TokenType.TokenGroupEnd, null, StatementDelimiterType.None, 0, 1),
+    ]);
+
 shared StyleDefinition DDefinition = StyleDefinition(Style.D,
 [
     RuleType.DModule,
     RuleType.DImport,
     RuleType.ClikeFor,
     RuleType.ClikeEnum,
+    RuleType.DDeclaration,
 ],
 [
     TypeMapEntry("short", NikaType.Number,
@@ -63,4 +74,8 @@ shared StyleDefinition DDefinition = StyleDefinition(Style.D,
 [StringLiteralType.DoubleQuotes],
 [StatementDelimiterType.Semicolon],
 [StatementBracketType.C],
-[FieldAccessSymbolType.Dot]);
+[FieldAccessSymbolType.Dot],
+"immutable",
+null,
+"const",
+Mutability.Mutable);

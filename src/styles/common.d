@@ -7,7 +7,7 @@ enum TokenType
 {
     Keyword,
     Type,
-    Variable,
+    CArray,
     Expression,
     Statement,
     Id,
@@ -35,7 +35,9 @@ enum RuleKind
     Function,
     IfElse,
     Module,
-    Import
+    Import,
+    Declaration,
+    Statement
 }
 
 struct Rule
@@ -170,7 +172,15 @@ enum RuleType
     ClikeFor,
     DModule,
     DImport,
-    ClikeEnum
+    ClikeEnum,
+    DDeclaration
+}
+
+enum Mutability
+{
+    Mutable,
+    Const,
+    Immutable
 }
 
 struct StyleDefinition
@@ -185,6 +195,10 @@ struct StyleDefinition
     StatementDelimiterType[] statement_delimiters;
     StatementBracketType[] statement_brackets;
     FieldAccessSymbolType[] field_access_symbols;
+    string immutable_keyword;
+    string mutable_keyword;
+    string const_keyword;
+    Mutability default_mutability;
 
     StyleBitmaps maps;
 

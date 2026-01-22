@@ -16,5 +16,6 @@ enum Rule[] rules =
     ClikeFor,
     DModule,
     DImport,
-    ClikeEnum
+    ClikeEnum,
+    DDeclaration
 ];

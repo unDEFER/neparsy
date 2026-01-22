@@ -55,12 +55,143 @@ struct Parser
         return line;
     }
 
-    char[] get_token(Token[] tokens, ref size_t t, ref TokenGroup[] groups, ref char[][] ctokens, ref JSONValue statement_js)
+    JSONValue get_type_or_expression(ref char[][] tokens, bool ok_type, bool ok_expr, bool ok_assign, string end_token = null)
+    {
+        JSONValue v;
+
+        char[] save_lsplice = lsplice;
+        char[][] save_tokens = tokens;
+        size_t save_row = row;
+
+        Style defined_style = cast(Style) style_hypothesis.bitsSet().front;
+        shared StyleDefinition* styledef = styledefs[defined_style];
+        char[] token_string = get_id(lsplice);
+
+        writefln("id: %s", token_string);
+        if (!token_string.empty)
+        {
+            v.object = null;
+
+            Mutability mutability = styledef.default_mutability;
+            int brackets = 0;
+
+            if (styledef.immutable_keyword !is null && token_string == styledef.immutable_keyword)
+            {
+                mutability = Mutability.Immutable;
+                consume(token_string.length);
+                tokens ~= token_string;
+                token_string = get_id(lsplice);
+            }
+            else if (styledef.mutable_keyword !is null && token_string == styledef.mutable_keyword)
+            {
+                mutability = Mutability.Mutable;
+                consume(token_string.length);
+                tokens ~= token_string;
+                token_string = get_id(lsplice);
+            }
+            else if (styledef.const_keyword !is null && token_string == styledef.const_keyword)
+            {
+                mutability = Mutability.Const;
+                consume(token_string.length);
+                tokens ~= token_string;
+                token_string = get_id(lsplice);
+            }
+
+            if (token_string.empty && lsplice.startsWith("("))
+            {
+                token_string = lsplice[0..1];
+                brackets++;
+                consume(token_string.length);
+                tokens ~= token_string;
+                token_string = get_id(lsplice);
+            }
+
+            JSONValue json_ptrs;
+            json_ptrs.array = [];
+
+            if (token_string.empty)
+            {
+                lsplice = save_lsplice;
+                tokens = save_tokens;
+                row = save_row;
+                return v;
+            }
+
+            char[] type = token_string;
+
+            consume(token_string.length);
+            tokens ~= token_string;
+            token_string = get_id(lsplice);
+
+            writefln("ptrw: %s", lsplice);
+            int ptrs = 0;
+            int mutability_limit = 0;
+            string ptr_sign = "*";
+            while ( token_string.empty )
+            {
+                if (lsplice.startsWith(ptr_sign))
+                {
+                    JSONValue c;
+                    c.str = "*";
+                    json_ptrs.array ~= c;
+                    ptrs++;
+                }
+                else if (brackets > 0 && lsplice.startsWith(")"))
+                {
+                    brackets--;
+                    mutability_limit = ptrs+1;
+                }
+                else if (lsplice.startsWith("["))
+                {
+                    token_string = lsplice[0..1];
+                    consume(token_string.length);
+                    tokens ~= token_string;
+
+                    json_ptrs.array ~= get_type_or_expression(tokens, false, true, false, "]");
+                    ptrs++;
+
+                    token_string = get_id(lsplice);
+                    continue;
+                }
+                else if (lsplice.startsWith(end_token))
+                {
+                    token_string = lsplice[0..end_token.length];
+                    consume(token_string.length);
+                    tokens ~= token_string;
+                    break;
+                }
+                else
+                {
+                    tokens = null;
+
+                    lsplice = save_lsplice;
+                    tokens = save_tokens;
+                    row = save_row;
+                    return v;
+                }
+
+                token_string = lsplice[0..1];
+                consume(token_string.length);
+                tokens ~= token_string;
+                token_string = get_id(lsplice);
+            }
+
+            v.object["mutability"] = mutability;
+            v.object["type"] = type;
+            v.object["ptrs"] = json_ptrs;
+            writefln("v=%s\n", v);
+        }
+
+        return v;
+    }
+
+    char[][] get_tokens(Token[] tokens, ref size_t t, ref TokenGroup[] groups, ref JSONValue statement_js)
     {
         if (lsplice.length == 0) return null;
 
         Token token;
         char[] token_string;
+        char[][] ctokens;
         JSONValue *js = &statement_js;
 
     Repeat:
@@ -83,7 +214,8 @@ struct Parser
         }
 
         token = tokens[t];
-        //if (t > 0) writefln("Token %s in %s", token.type, lsplice);
+        if (t > 0) writefln("Token %s in %s", token.type, lsplice);
+
         final switch(token.type)
         {
             case TokenType.Keyword:
@@ -95,8 +227,6 @@ struct Parser
                 }
                 break;
 
-            case TokenType.Type:
-            case TokenType.Variable:
             case TokenType.Id:
                 token_string = get_id(lsplice);
                 if (!token.name.empty && !token_string.empty)
@@ -104,6 +234,28 @@ struct Parser
                     js.object[token.name] = token_string;
                 }
                 //writefln("ID %s=%s in %s", token.name, token_string, lsplice);
+                break;
+
+            case TokenType.Type:
+                if (style_hypothesis.count > 1)
+                {
+                    break;
+                }
+
+                char[][] ret_tokens;
+                JSONValue v = get_type_or_expression(ret_tokens, true, false, false);
+                js.object[token.name] = v;
+                writefln("ret_tokens = %s, lsplice = %s", ret_tokens, lsplice);
+                if (!ret_tokens.empty)
+                {
+                    ctokens ~= ret_tokens;
+                }
+
+                assert(t == 0, "Type parsing not implemented");
+                break;
+
+            case TokenType.CArray:
+                assert(t == 0, "CArray parsing not implemented");
                 break;
 
             case TokenType.Expression:
@@ -196,7 +348,10 @@ struct Parser
         //writefln("Return token: %s", token_string);
 
 End:
-        return token_string;
+        if (token_string.empty) return ctokens;
+
+        consume(token_string.length);
+        return ctokens ~ token_string;
     }
 
     bool is_eof()
@@ -215,11 +370,10 @@ End:
         }
     }
 
-    char[] consume(size_t nchars)
+    void consume(size_t nchars)
     {
         lsplice = strip(lsplice[nchars..$]);
         check_eol();
-        return lsplice;
     }
 
     string consume_textspan(TextSpan textspan, bool no_escape = false)
@@ -320,9 +474,13 @@ End:
         StateEntry[] new_state_candidates;
         StateEntry[] state_candidates_update;
         TokenGroup[] groups;
-        char[][] tokens;
 
     retry:
+        char[] save_lsplice = lsplice;
+        size_t save_row = row;
+
+        int finished;
+
         for(size_t r = 0; r < rules.length; r++)
         {
             if ((style_hypothesis & style_rules[r]).bitsSet.empty) continue;
@@ -333,17 +491,20 @@ End:
             v.str = rule.kind.to!(string);
             js.object["type"] = v;
 
-            size_t t = 0;
-            char[] token_string = get_token(rule.tokens, t, groups, tokens, js);
+            lsplice = save_lsplice;
+            row = save_row;
 
-            if (!token_string.empty)
+            size_t t = 0;
+            char[][] tokens = get_tokens(rule.tokens, t, groups, js);
+
+            if (!tokens.empty)
             {
-                tokens ~= token_string;
-                auto se = StateEntry(r, t+1, 0, groups, tokens, strip(lsplice[token_string.length..$]), row, js);
+                auto se = StateEntry(r, t+1, 0, groups, tokens, lsplice, row, js);
                 if (se.token >= rule.tokens.length)
                 {
                     statement = se;
-                    goto StatementEnded;
+                    finished++;
+                    continue;
                 }
                 new_state_candidates ~= se;
             }
@@ -359,13 +520,13 @@ End:
 
                 lsplice = nsc.rest_of_line;
                 row = nsc.row;
-                char[] token_string = get_token(rule.tokens, nsc.token, nsc.groups, nsc.tokens, nsc.js);
+                char[][] tokens_new = get_tokens(rule.tokens, nsc.token, nsc.groups, nsc.js);
 
-                if (!token_string.empty)
+                if (!tokens_new.empty)
                 {
                     nsc.token++;
-                    nsc.tokens ~= token_string;
-                    nsc.rest_of_line = consume(token_string.length);
+                    nsc.tokens ~= tokens_new;
+                    nsc.rest_of_line = lsplice;
                     nsc.row = row;
                     state_candidates_update ~= nsc;
                 }
@@ -373,13 +534,16 @@ End:
                 if (nsc.token >= rule.tokens.length)
                 {
                     statement = nsc;
-                    goto StatementEnded;
+                    finished++;
                 }
             }
-
+            
             swap(state_candidates_update, new_state_candidates);
             state_candidates_update.length = 0;
         }
+
+        if (finished > 0)
+            goto StatementEnded;
 
         if (is_eof)
         {
