@@ -1132,6 +1132,36 @@ class Parser {
                 assert(0);
             }
         }
+        else if (lexer == "goto")
+        {
+            Expression expr = new Expression;
+            expr.type = lexer.lexem;
+            expr.nl1 = getNL;
+            getLexem;
+
+            if (lexer == LexemType.Identifier)
+            {
+                Expression label = new Expression;
+                label.operator = lexer.lexem;
+                expr.arguments ~= label;
+                getLexem;
+
+                if (lexer == ";")
+                {
+                    return [expr];
+                }
+                else
+                {
+                    writefln("; Expected not %s", lexer);
+                    assert(0);
+                }
+            }
+            else
+            {
+                writefln("Label Expected not %s", lexer);
+                assert(0);
+            }
+        }
         else if (lexer == "return") 
         {
             Expression expr = new Expression;
