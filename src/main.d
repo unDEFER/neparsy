@@ -39,9 +39,9 @@ class MyWindow : ApplicationWindow
     {
         super(application);
         addEvents(EventMask.KEY_PRESS_MASK | EventMask.BUTTON_PRESS_MASK);
-		addOnKeyPress(&keyPressCallback);
-		addOnButtonPress(&buttonPressCallback);
-		addOnScroll(&scrollCallback);
+        addOnKeyPress(&keyPressCallback);
+        addOnButtonPress(&buttonPressCallback);
+        addOnScroll(&scrollCallback);
     }
 
     protected:
@@ -293,14 +293,14 @@ int main(string[] args)
         }
     }
 
-	Application application;
+    Application application;
 
-	void activateClock(GioApplication app)
-	{
-		MyWindow win = new MyWindow(application);
+    void activateClock(GioApplication app)
+    {
+        MyWindow win = new MyWindow(application);
 
-		win.setTitle("Neparsy");
-		win.setDefaultSize( 640, 480 );
+        win.setTitle("Neparsy");
+        win.setDefaultSize( 640, 480 );
 
         real x = 0.0;
         real y = 0.0;
@@ -343,20 +343,20 @@ int main(string[] args)
             }
         }
 
-		IFACE = new Iface(root);
-		win.add(IFACE);
-		IFACE.show();
-		win.showAll();
-	}
-
-	void handleOpen(FileIF[] files, string name, GioApplication app)
-	{
-	    activateClock(app);
+        IFACE = new Iface(root);
+        win.add(IFACE);
+        IFACE.show();
+        win.showAll();
     }
 
-	application = new Application("org.gtkd.demo.cairo.iface", GApplicationFlags.HANDLES_OPEN);
-	application.addOnOpen(&handleOpen);
-	application.addOnActivate(&activateClock);
-	return application.run(args);
+    void handleOpen(FileIF[] files, string name, GioApplication app)
+    {
+        activateClock(app);
+    }
+
+    application = new Application("org.gtkd.demo.cairo.iface", GApplicationFlags.HANDLES_OPEN);
+    application.addOnOpen(&handleOpen);
+    application.addOnActivate(&activateClock);
+    return application.run(args);
 }
 

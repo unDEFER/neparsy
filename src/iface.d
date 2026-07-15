@@ -44,14 +44,14 @@ struct Color
                 a);
         auto mi = min(ret.r, ret.g, ret.b);
         auto ma = max(ret.r, ret.g, ret.b);
-        
+
         if (mi < 0)
         {
             ret.r -= mi;
             ret.g -= mi;
             ret.b -= mi;
         }
-        
+
         if (ma > 1.0)
         {
             ret.r /= ma;
@@ -200,17 +200,17 @@ class Iface : DrawingArea
     bool edit;
     bool post_edit;
 
-public:
-	this(Expression _expression)
-	{
+    public:
+    this(Expression _expression)
+    {
         root_expr = _expression;
         selected = _expression;
         RotInfo ri;
         ri.fun = selected;
         rot_info ~= ri;
-		//Attach our expose callback, which will draw the window.
-		addOnDraw(&drawCallback);
-	}
+        //Attach our expose callback, which will draw the window.
+        addOnDraw(&drawCallback);
+    }
 
     bool click(uint button, double x, double y)
     {
@@ -420,13 +420,13 @@ public:
         {
             if (root.index < 0)
             {
-               if (dir > 0 && root.arguments.length > 0)
+                   if (dir > 0 && root.arguments.length > 0)
                    ret = root.arguments[0];
-            }
+               }
             else if (root.index+dir >= 0 && root.index+dir < root.parent.arguments.length)
             {
-               ret = root.parent.arguments[root.index+dir];
-            }
+                   ret = root.parent.arguments[root.index+dir];
+               }
         }
 
         return ret;
@@ -475,7 +475,7 @@ public:
             ne.center = selected.center;
             ne.postop = selected.postop;
             selected.postop = null;
-            
+
             if (ne.postop !is null)
             {
                 ne.postop.parent = ne;
@@ -703,7 +703,7 @@ public:
             ne.center = selected.center;
             ne.postop = selected.postop;
             selected.postop = null;
-            
+
             if (ne.postop !is null)
             {
                 ne.postop.parent = ne;
@@ -974,8 +974,8 @@ public:
 
     void redraw()
     {
-		GtkAllocation area, ar;
-		getAllocation(area);
+        GtkAllocation area, ar;
+        getAllocation(area);
         ar = area;
 
         if (sizes_invalid <= 1 && oselected !is null && oselected.center is selected.center && ofunselected is parentOfFun(selected))
@@ -988,7 +988,7 @@ public:
 
             real scale = area.width/w;
             real dx = w/5.0;
-            
+
             area.x = cast(int) ((selected.center.x - selected.center.r3 + dx) * scale);
             area.y = cast(int) ((selected.center.y - 150) * scale);
             area.width = cast(int) ((selected.center.r3 * 2) * scale);
@@ -1079,9 +1079,9 @@ public:
         post_edit = false;
     }
 
-protected:
-	real textWidth(string text)
-	{
+    protected:
+    real textWidth(string text)
+    {
         static real[string] cache;
 
         auto res_cache = text in cache;
@@ -1096,7 +1096,7 @@ protected:
         layout.setFontDescription(desc);
 
         layout.setText(text);
-        
+
         int width, height;
         layout.getSize(width, height);
 
@@ -1106,8 +1106,8 @@ protected:
         return rw;
     }
 
-	void drawText(ref Scoped!Context cr, string text, real X, real Y, real w, Color c, bool inv = false, ubyte[] colors = null)
-	{
+    void drawText(ref Scoped!Context cr, string text, real X, real Y, real w, Color c, bool inv = false, ubyte[] colors = null)
+    {
         if (inv) c = c.invert();
         cr.setSourceRgba(c.r, c.g, c.b, c.a);
 
@@ -1176,7 +1176,7 @@ protected:
                         assert(0);
                 }
 
-                
+
                 wi++;
                 while (wi < colors.length && colors[wi] == co)
                 {
@@ -1206,8 +1206,8 @@ protected:
         }
     }
 
-	real arcTextWidth(string text, real radius)
-	{
+    real arcTextWidth(string text, real radius)
+    {
         auto context = PgCairoFontMap.getDefault().createContext();
         auto layout = new PgLayout(context);
 
@@ -1232,7 +1232,7 @@ protected:
         return eangle;
     }
 
-	real arcTextWidthRecursive(Expression[] expressions, real radius)
+    real arcTextWidthRecursive(Expression[] expressions, real radius)
     {
         real tw = 0;
         foreach(i, expr; expressions)
@@ -1252,10 +1252,10 @@ protected:
         return tw;
     }
 
-	void drawArcText(ref Scoped!Context cr, string text, real a_from, real a_to, real radius,
+    void drawArcText(ref Scoped!Context cr, string text, real a_from, real a_to, real radius,
             real h1, real h2, real X, real Y,
             Color c, bool inv = false, ubyte[] colors = null)
-	{
+    {
         text = " "~text~" ";
         if (colors !is null) colors = 0 ~ colors ~ 0;
         if (inv) c = c.invert();
@@ -1415,9 +1415,9 @@ protected:
         }
     }
 
-	void drawArc(ref Scoped!Context cr, real a_from, real a_to, real p1, real p2, real d1, real d2,
+    void drawArc(ref Scoped!Context cr, real a_from, real a_to, real p1, real p2, real d1, real d2,
             real X, real Y, Color c, bool inv = false, bool lines = true)
-	{
+    {
         assert(a_from < 1440);
         assert(a_to < 1440);
 
@@ -1432,7 +1432,7 @@ protected:
             a_to = 360;
         }
 
-		cr.setLineWidth(m_lineWidth * (r2-r1)/30);
+        cr.setLineWidth(m_lineWidth * (r2-r1)/30);
         a_from = 270 + a_from;
         a_to = 270 + a_to;
 
@@ -1446,7 +1446,7 @@ protected:
         }
         else
             cr.moveTo(X + r2*cos(a_from*PI/180), Y2 + r2*sin(a_from*PI/180));
-        
+
         cr.arc(X, Y2, r2, a_from*PI/180, a_to*PI/180);
 
         if (r1 > 0.01)
@@ -1473,18 +1473,18 @@ protected:
                 cr.lineTo(X + r2*cos(a_to*PI/180), Y2 + r2*sin(a_to*PI/180));
             }
         }
-        
+
         cr.moveTo(X + r2*cos(a_from*PI/180), Y2 + r2*sin(a_from*PI/180));
         cr.arc(X, Y2, r2, a_from*PI/180, a_to*PI/180);
         cr.stroke();
 
-		cr.setLineWidth(m_lineWidth);
+        cr.setLineWidth(m_lineWidth);
     }
 
     DrawState getSize(Expression[] expressions, DrawState ds)
     {
         DrawState ret = ds;
-        
+
         if (ds.llimit < 0 && ds.mode == Mode.Block)
             //p-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------m
         {
@@ -1630,7 +1630,7 @@ protected:
                 if (expr.index < 0)
                     ds.level++;
             }
-            
+
             if (ds.llimit < 0)
             {
                 if (expr.index < 0)
@@ -1706,7 +1706,7 @@ protected:
 
                 if ((expr.index >= 0 && expr.index == expressions.length-1 || expr.index < 0 && expr.arguments.length == 0) && ds.t > to)
                     to = ds.t;
-                
+
                 if (expr.index >= 0)
                     sumpw += w;
                 /*if (ds.level == 4)
@@ -1764,7 +1764,7 @@ protected:
                     to = ds.t;
                     ds2.post_dir = -1;
                 }
-                
+
                 ds2.f = fr;
                 ds2.t = to;
 
@@ -2054,7 +2054,7 @@ protected:
                 if (!ds.force)
                 {
                     if (expr.parent !is null && expr.parent.type == "body" && expr.index == 0)
-                    { 
+                    {
                         foreach (ri; rot_info)
                         {
                             if (expr.parent.parent is parentOfFun(ri.fun))
@@ -2072,7 +2072,7 @@ protected:
                         }
                     }
                     else if (expr.parent !is null && (expr.parent.type == "module" || expr.parent.bt == BlockType.File) && expr.index == 0)
-                    { 
+                    {
                         foreach (ri; rot_info)
                         {
                             if (expr.parent is parentOfFun(ri.fun))
@@ -2541,10 +2541,10 @@ protected:
         return expr;
     }
 
-	//Override default signal handler:
-	bool drawCallback(Scoped!Context cr, Widget widget)
-	{
-		// This is where we draw on the window
+    //Override default signal handler:
+    bool drawCallback(Scoped!Context cr, Widget widget)
+    {
+        // This is where we draw on the window
 
         if ( m_timeout is null )
         {
@@ -2576,9 +2576,9 @@ protected:
             }
         }
 
-		GtkAllocation size;
+        GtkAllocation size;
 
-		getAllocation(size);
+        getAllocation(size);
 
         GdkRectangle rect;
         bool exist = cr.getClipRectangle(rect);
@@ -2661,7 +2661,7 @@ protected:
                     //writefln("target %s rot %s", ri.target_angle, ri.angle);
                     //writefln("%s + %s", 0.8*target_angle, 0.2*rot_angle);
                     real adiff = ri.angle - ri.target_angle;
-                    
+
                     while (adiff > 180)
                     {
                         ri.angle -= 360;
@@ -2679,7 +2679,7 @@ protected:
                     else
                         ri.angle = 0.6*ri.target_angle + 0.4*ri.angle;
                     //writefln("=rot %s", ri.angle);
-                    
+
                     redraw_need = true;
                 }
             }
@@ -2689,7 +2689,7 @@ protected:
                 //writefln("target %s rot %s", frot_info.target_angle, frot_info.angle);
                 //writefln("%s + %s", 0.8*target_angle, 0.2*rot_angle);
                 real adiff = frot_info.angle - frot_info.target_angle;
-                
+
                 while (adiff > 180)
                 {
                     frot_info.angle -= 360;
@@ -2707,7 +2707,7 @@ protected:
                 else
                     frot_info.angle = 0.6*frot_info.target_angle + 0.4*frot_info.angle;
                 //writefln("=rot %s", frot_info.angle);
-                
+
                 redraw_need = true;
             }
 
@@ -2745,7 +2745,7 @@ protected:
             size.width /= 5;
             real w = 200;
             real h = w*size.height/size.width;
-            
+
             cr.scale(size.width/w, size.height/h);
             cr.setLineWidth(m_lineWidth);
 
@@ -2930,8 +2930,8 @@ protected:
                 selected.parent.r3, (selected.parent.x2-selected.parent.x1)/(2*PI));
                 */
 
-		return true;
-	}
+        return true;
+    }
 
     bool onSecondElapsed()
     {
@@ -2939,8 +2939,8 @@ protected:
         return true;
     }
 
-	double m_radius = 0.40;
-	double m_lineWidth = 1.0;
+    double m_radius = 0.40;
+    double m_lineWidth = 1.0;
     RotInfo[] rot_info;
     RotInfo frot_info;
     Expression[] foreground, oforeground;
@@ -2949,6 +2949,6 @@ protected:
     real[] rlines;
     int sizes_invalid = 1;
 
-	Timeout m_timeout;
+    Timeout m_timeout;
 }
 

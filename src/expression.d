@@ -674,7 +674,7 @@ class Expression
                         savestr ~= " " ~ ps.brackets.begin ~ ps.dot;
                     }
                 }
-                
+
                 long[] br;
                 foreach(j, m; b)
                 {
@@ -815,7 +815,7 @@ class Expression
                                 }
                                 else if (ap.type == "init")
                                 {
-                                }
+                            }
                                 else
                                 {
                                     savestr = ap.saveD(-tab-1) ~ " " ~ savestr;
@@ -845,7 +845,7 @@ class Expression
                         }
                         else if (arg.type == "init")
                         {
-                        }
+                    }
                         else
                         {
                             savestr = arg.saveD(-tab-1) ~ " " ~ savestr;
@@ -903,7 +903,7 @@ class Expression
 
             default:
                 if (bt == BlockType.File)
-                {            
+                {
                     foreach(i, arg; this.arguments)
                     {
                         savestr ~= arg.saveD(tab, null, this.type);
@@ -912,7 +912,7 @@ class Expression
                 else handled = false;
                 break;
         }
-        
+
         if (!handled)
         {
             if (bt == BlockType.Comment)
@@ -1205,7 +1205,7 @@ class Expression
                                     }
                                     else if (arg.postop.type == "init")
                                     {
-                                    }
+                                }
                                     else
                                     {
                                         savestr = arg.postop.saveD(-tab-1) ~ " " ~ savestr;
@@ -1232,7 +1232,7 @@ class Expression
                             }
                             else if (postop.type == "init")
                             {
-                            }
+                        }
                             else
                             {
                                 savestr = postop.saveD(-tab-1) ~ " " ~ savestr;
@@ -1453,7 +1453,7 @@ class Expression
                         savestr ~= "(" ~ arguments[0].saveD(-tab-1, null, "op") ~ " ? " ~ arguments[1].saveD(-tab-1, null, "op") ~ " : " ~ arguments[2].saveD(-tab-1, null, "op") ~ ")";
                     }
                     break;
-                
+
                 default:
                     switch (this.operator)
                     {
@@ -1851,7 +1851,7 @@ class Expression
 
             ne = new Expression("(#if)", true);
             code.addChild(ne);
-            
+
             code = ne;
             assert(code !is null);
         } 
@@ -1930,7 +1930,7 @@ class Expression
                     ne = new Expression("(#do"~(!label.empty?"@"~label:"")~" !).(#body (= back this) nextChr)", true);
                     code.addChild(ne);
                     code.addChild(back);
-                    
+
                     code = ne.arguments[0];
                 }
                 else
@@ -1938,7 +1938,7 @@ class Expression
                     ne = new Expression("(#do).(#body (= back this) nextChr)", true);
                     code.addChild(ne);
                     code.addChild(back);
-                    
+
                     code = ne;
                 }
             }
@@ -1947,10 +1947,9 @@ class Expression
                 ne = new Expression("(#do ||).(#body (= back this) nextChr)", true);
                 code.addChild(ne);
                 code.addChild(back);
-                
+
                 code = ne.arguments[0];
             }
-
         } 
         else if (parent.type == "while" && operator != "!" || (parent.operator == "||" || parent.operator == "!") && parent.parent.type == "while")
         {
@@ -1990,7 +1989,7 @@ class Expression
         else if (parent.type == "return")
         {
             Expression ne;
-            
+
             if (main)
             {
                 ne = new Expression("(= type (#. LexemType "~operator~"))", true);
@@ -2129,7 +2128,7 @@ class Expression
         copy.level = level;
         copy.levels = levels;
         copy.bt = bt;
-        
+
         copy.x = x;
         copy.y = y;
         copy.r1 = r1;

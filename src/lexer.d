@@ -19,9 +19,11 @@ enum LexemType {
     Blank, 
     Operator, 
     Character, 
-    LenOperator}
+    LenOperator
+}
 enum  {
-    EOF = '\u0004'}
+    EOF = '\u0004'
+}
 
 struct Lexer {
     string file;
@@ -34,7 +36,7 @@ struct Lexer {
 
     bool isWhiteNL(dchar chr)
     {
-        
+
         if (chr == '\n') 
         {
             ++newlines;
@@ -56,7 +58,7 @@ struct Lexer {
         Lexer  back2;
         back = this;
         nextChr();
-        
+
         if (isAlpha(chr) || (chr == '_')) 
         {
             do
@@ -79,12 +81,12 @@ struct Lexer {
             back2 = this;
             back = this;
             nextChr();
-            
+
             if (chr == '.') 
             {
                 back = this;
                 nextChr();
-                
+
                 if (chr == '.') 
                 {
                     this = back2;
@@ -115,7 +117,7 @@ struct Lexer {
         {
             back = this;
             nextChr();
-            
+
             if (chr == '.') 
             {
                 type = LexemType.Punctuation;
@@ -148,7 +150,7 @@ struct Lexer {
         {
             back = this;
             nextChr();
-            
+
             if (chr == '+') 
             {
                 type = LexemType.Operator;
@@ -170,7 +172,7 @@ struct Lexer {
         {
             back = this;
             nextChr();
-            
+
             if (chr == '-') 
             {
                 type = LexemType.Operator;
@@ -192,7 +194,7 @@ struct Lexer {
         {
             back = this;
             nextChr();
-            
+
             if (chr == '=') 
             {
                 type = LexemType.CmpOperator;
@@ -209,7 +211,7 @@ struct Lexer {
         {
             back = this;
             nextChr();
-            
+
             if (chr == '=') 
             {
                 type = LexemType.AssignOperator;
@@ -226,7 +228,7 @@ struct Lexer {
         {
             back = this;
             nextChr();
-            
+
             if (chr == '=') 
             {
                 type = LexemType.AssignOperator;
@@ -244,15 +246,15 @@ struct Lexer {
                 return;
             }
             else if (chr == '*') 
-            {Comment: 
+            {    Comment: 
                 back = this;
                 nextChr();
-                
+
                 if (chr == '*') 
                 {
                     back = this;
                     nextChr();
-                    
+
                     if (chr == '/') 
                     {
                         type = LexemType.Comment;
@@ -292,7 +294,7 @@ struct Lexer {
         {
             back = this;
             nextChr();
-            
+
             if (chr == '=') 
             {
                 type = LexemType.AssignOperator;
@@ -310,7 +312,7 @@ struct Lexer {
             back2 = this;
             back = this;
             nextChr();
-            
+
             if (chr == '=') 
             {
                 type = LexemType.CmpOperator;
@@ -320,12 +322,12 @@ struct Lexer {
             {
                 back = this;
                 nextChr();
-                
+
                 if (chr == '>') 
                 {
                     back = this;
                     nextChr();
-                    
+
                     if (chr == '=') 
                     {
                         type = LexemType.CmpOperator;
@@ -362,7 +364,7 @@ struct Lexer {
         {
             back = this;
             nextChr();
-            
+
             if (chr == '=') 
             {
                 type = LexemType.CmpOperator;
@@ -372,7 +374,7 @@ struct Lexer {
             {
                 back = this;
                 nextChr();
-                
+
                 if (chr == '=') 
                 {
                     type = LexemType.Operator;
@@ -396,7 +398,7 @@ struct Lexer {
         {
             back = this;
             nextChr();
-            
+
             if (chr == '&') 
             {
                 type = LexemType.Operator;
@@ -418,7 +420,7 @@ struct Lexer {
         {
             back = this;
             nextChr();
-            
+
             if (chr == '|') 
             {
                 type = LexemType.Operator;
@@ -440,7 +442,7 @@ struct Lexer {
         {
             back = this;
             nextChr();
-            
+
             if (chr == '^') 
             {
                 type = LexemType.Operator;
@@ -462,7 +464,7 @@ struct Lexer {
         {
             back = this;
             nextChr();
-            
+
             if (chr == '=') 
             {
                 type = LexemType.AssignOperator;
@@ -479,7 +481,7 @@ struct Lexer {
         {
             back = this;
             nextChr();
-            
+
             if (chr == '=') 
             {
                 type = LexemType.AssignOperator;
@@ -498,15 +500,15 @@ struct Lexer {
             return;
         }
         else if (chr == '"') 
-        {String: 
+        {    String: 
             back = this;
             nextChr();
-            
+
             if (chr == '\\') 
             {
                 back = this;
                 nextChr();
-                
+
                 if (! chr.isNonCharacter) 
                 {
                     goto String;
@@ -531,15 +533,15 @@ struct Lexer {
             }
         }
         else if (chr == '\'') 
-        {Character: 
+        {    Character: 
             back = this;
             nextChr();
-            
+
             if (chr == '\\') 
             {
                 back = this;
                 nextChr();
-                
+
                 if (! chr.isNonCharacter) 
                 {
                     goto Character;
@@ -585,7 +587,7 @@ struct Lexer {
 
     void nextChr()
     {
-        
+
         if (file.empty) 
         {
             chr = EOF;
@@ -594,7 +596,7 @@ struct Lexer {
         {
             chr = decodeFront(file);
         }
-        
+
         if (chr == '\n') 
         {
             ++line;
@@ -625,15 +627,16 @@ struct Lexer {
     void CommentPlus()
     {
         Lexer  back;
-        Lexer  back2;Comment: 
+        Lexer  back2;
+        Comment: 
         back = this;
         nextChr();
-        
+
         if (chr == '/') 
         {
             back = this;
             nextChr();
-            
+
             if (chr == '+') 
             {
             }
@@ -647,7 +650,7 @@ struct Lexer {
         {
             back = this;
             nextChr();
-            
+
             if (chr == '/') 
             {
             }
