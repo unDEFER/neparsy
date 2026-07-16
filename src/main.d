@@ -264,6 +264,10 @@ int main(string[] args)
             {
                 string mod = readText(args[2]);
                 expr = new Expression(mod);
+
+                string imod = readText(args[2][0..$-3] ~ ".inp");
+                Expression iexpr = new Expression(imod);
+                expr.merge_inp(iexpr);
             }
             else
             {
@@ -280,6 +284,10 @@ int main(string[] args)
             else if (args[3].endsWith(".np"))
             {
                 savestr = expr.save;
+                string inp = expr.save(true);
+
+                auto file = File(args[3][0..$-3] ~ ".inp", "w");
+                file.writeln(inp);
             }
             else
             {

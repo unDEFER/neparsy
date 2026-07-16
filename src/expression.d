@@ -9,6 +9,7 @@ import std.math;
 import std.datetime;
 import std.algorithm.searching;
 import std.algorithm.mutation;
+import std.conv;
 import std.range.primitives;
 import std.utf;
 import std.algorithm;
@@ -17,6 +18,7 @@ import std.array;
 import std.string;
 import std.file;
 
+import lexer;
 import iface;
 
 struct BlockBE
@@ -43,6 +45,7 @@ struct ParserState
     string sharp = "#";
     string at = "@";
     string dot = ".";
+    uint row = 1;
 }
 
 class Expression
@@ -56,14 +59,69 @@ class Expression
     real[] pw, mw;
     Color c;
     int line;
+    int row;
     int block, level, levels;
     Expression center;
     bool hidden;
 
+    Lexem operator_lexem;
+    Lexem type_lexem;
+    Lexem open_lexem, close_lexem;
+    int nl1, nl2;
+
+    Position start_pos_val, end_pos_val;
+    bool start_pos_calc, end_pos_calc;
+
+    Position start_pos()
+    {
+        if (start_pos_calc) return start_pos_val;
+        Position pos = operator_lexem.start;
+        if (pos.row == 0 || type_lexem.start.row > 0 && type_lexem.start < pos) pos = type_lexem.start;
+        if (pos.row == 0 || open_lexem.start.row > 0 && open_lexem.start < pos) pos = open_lexem.start;
+        
+        foreach(arg; arguments)
+        {
+            Position spos = arg.start_pos();
+            if (pos.row == 0 || spos.row > 0 && spos < pos) pos = spos;
+        }
+
+        start_pos_val = pos;
+        start_pos_calc = true;
+        return pos;
+    }
+
+    uint start_row()
+    {
+        return start_pos().row;
+    }
+
+    Position end_pos()
+    {
+        if (end_pos_calc) return end_pos_val;
+        Position pos = operator_lexem.end;
+        if (type_lexem.end > pos) pos = type_lexem.end;
+        if (close_lexem.end > pos) pos = close_lexem.end;
+
+        foreach(arg; arguments)
+        {
+            Position spos = arg.end_pos();
+            if (spos > pos) pos = spos;
+        }
+
+        end_pos_val = pos;
+        end_pos_calc = true;
+        return pos;
+    }
+
+    uint end_row()
+    {
+        return end_pos().row;
+    }
+
     string operator;
     string type;
     string label;
-    int nl1, nl2;
+
     BlockType bt;
     Expression[] arguments;
     Expression postop;
@@ -222,48 +280,10 @@ class Expression
                 ps.strings = [BlockBE("\"", "\"", "\\"), BlockBE("'", "'", "\\")];
             }
         }
-        else
-        {
-            nl1 = parent.nl2;
-        }
-
-        if (ps.comments.empty)
-        {
-            char[] sline = line;
-
-            while (!line.empty)
-            {
-                if ( line.startsWith(ps.brackets.begin) )
-                {
-                    if (line !is sline)
-                    {
-                        operator = sline[0 .. line.ptr - sline.ptr].idup;
-                        bt = BlockType.Comment;
-                        return;
-                    }
-                    goto Init;
-                }
-                else
-                {
-                    while (!line.empty && !line.startsWith("\n"))
-                    {
-                        line.decodeFront();
-                    }
-
-                    if (!line.empty)
-                    {
-                        line.decodeFront();
-                    }
-                    nl1++;
-                }
-            }
-        }
 
         Init:
         while (!line.empty && (line[0] == ' ' || line[0] == '\n'))
         {
-            if (line[0] == '\n')
-                nl1++;
             line = line[1..$];
         }
 
@@ -452,7 +472,6 @@ class Expression
                 }
                 else if (line[0] == ' ' || line[0] == '\n')
                 {
-                    if (line[0] == '\n') nl2++;
                     line = line[1..$];
                 }
                 else
@@ -483,8 +502,6 @@ class Expression
                         ne.index = arguments.length;
                         arguments ~= ne;
                     }
-
-                    nl2 = 0;
                 }
             }
             assert(0, "Not closed bracket");
@@ -507,6 +524,9 @@ class Expression
             eline = eline[1..$];
         }
         if (eline.empty) line = eline;
+
+        operator_lexem.text = operator;
+        type_lexem.text = type;
     }
 
     this(string line, bool nofile = false)
@@ -558,6 +578,7 @@ class Expression
     void fixParents(Expression p = null, long i = 0)
     {
         parent = p;
+        assert(p !is this);
         assert(i >= 0 && index >= 0 || i < 0 && index <= 0);
         if (index >= -1)
             index = i;
@@ -612,33 +633,67 @@ class Expression
         return res;
     }
 
-    string save()
+    string save(bool inp = false)
     {
         ParserState ps;
-        return save(ps);
+        return save(ps, inp);
     }
 
-    string save(ref ParserState ps, int tab = 0, long[] cbr = null, bool force_brackets = false)
+    string lexem_lines(Lexem lexem, bool include_end = false)
     {
-        string op = operator;
+        return (lexem.text !is null && lexem.start.row > 0 ? ":" ~ lexem.start.row.text ~ ":" ~ lexem.start.col.text ~ 
+                (include_end && lexem.end.row > 0 ? "-" ~ ":" ~ lexem.end.row.text ~ ":" ~ lexem.end.col.text : "") : "");
+    }
+
+    string save(ref ParserState ps, bool inp = false, int tab = 0, long[] cbr = null, bool force_brackets = false)
+    {
         string savestr;
+
+        uint srow = start_row();
+        string prewhites = (srow > ps.row ? '\n'.repeat(srow - ps.row).array ~ ' '.repeat(tab*4).array : "").idup;
+        if (srow > ps.row) ps.row = srow;
 
         if (bt == BlockType.File)
         {            
         }
         else if (bt == BlockType.Comment)
         {
-            return (nl1 > 0 ? '\n'.repeat(nl1).array ~ ' '.repeat(tab*4).array : "").idup ~ op;
+            savestr = (srow > ps.row ? '\n'.repeat(srow - ps.row).array ~ ' '.repeat(tab*4).array : "").idup;
+            if (srow > ps.row) ps.row = srow;
+
+            if (inp)
+            {
+                savestr ~= lexem_lines(operator_lexem, true);
+            }
+            else
+            {
+                savestr ~= operator;
+            }
+
+            return savestr;
         }
         else if (bt == BlockType.String)
         {
-            savestr ~= op;
+            if (inp)
+            {
+                savestr ~= lexem_lines(operator_lexem, true);
+            }
+            else
+            {
+                savestr ~= operator;
+            }
         }
         else
         {
             auto bbe = ps.brackets;
-            op = escape(op, bbe);
-            savestr ~= op ~ (this.type.empty ? "" : ps.sharp ~ escape(type, bbe)) ~ (this.label.empty ? "" : ps.at ~ escape(label, bbe));
+            if (inp)
+            {
+                savestr ~= lexem_lines(operator_lexem) ~ (this.type.empty ? "" : ps.sharp ~ lexem_lines(type_lexem)) ~ (open_lexem.text.empty && close_lexem.text.empty ? "" : "[" ~ lexem_lines(open_lexem) ~ "-" ~ lexem_lines(close_lexem) ~ "]" );
+            }
+            else
+            {
+                savestr ~= escape(operator, bbe) ~ (this.type.empty ? "" : ps.sharp ~ escape(type, bbe)) ~ (this.label.empty ? "" : ps.at ~ escape(label, bbe));
+            }
         }
 
         if (savestr.empty && bt != BlockType.File)
@@ -685,10 +740,10 @@ class Expression
                 }
 
                 if (bt == BlockType.File)
-                    savestr ~= arg.save(ps, 0, br, false);
+                    savestr ~= arg.save(ps, inp, 0, br, false);
                 else
                 {
-                    auto as = arg.save(ps, tab+1, br, false);
+                    auto as = arg.save(ps, inp, tab+1, br, false);
                     if (as.startsWith(" ") || as.startsWith("\n"))
                         savestr ~= as;
                     else
@@ -698,23 +753,29 @@ class Expression
 
             if (bt != BlockType.File)
             {
+                uint erow = end_row();
                 savestr = ps.brackets.begin ~ savestr ~ 
-                    (nl2 > 0 ? '\n'.repeat(nl2).array ~ ' '.repeat(tab*4).array : "").idup ~
+                    (erow > ps.row ? '\n'.repeat(erow - ps.row).array ~ ' '.repeat(tab*4).array : "").idup ~
                     ps.brackets.end;
+                if (erow > ps.row) ps.row = erow;
             }
         }
         else if (force_brackets || arguments !is null)
         {
+            uint erow = end_row();
             savestr = ps.brackets.begin ~ savestr ~
-                (nl2 > 0 ? '\n'.repeat(nl2).array ~ ' '.repeat(tab*4).array : "").idup ~
+                (erow > ps.row ? '\n'.repeat(erow - ps.row).array ~ ' '.repeat(tab*4).array : "").idup ~
                 ps.brackets.end;
+            if (erow > ps.row) ps.row = erow;
         }
-        else if (nl2 > 0)
+        else if (close_lexem.end.row > ps.row)
         {
-            savestr ~= ('\n'.repeat(nl2).array ~ ' '.repeat(tab*4).array).idup;
+            uint erow = end_row();
+            savestr ~= ('\n'.repeat(erow - ps.row).array ~ ' '.repeat(tab*4).array).idup;
+            if (erow > ps.row) ps.row = erow;
         }
 
-        savestr = (nl1 > 0 ? '\n'.repeat(nl1).array ~ ' '.repeat(tab*4).array : "").idup ~ savestr;
+        savestr = prewhites ~ savestr;
 
         if (index >= 0)
         {
@@ -730,7 +791,7 @@ class Expression
                     cj++;
                 }
 
-                savestr ~= ps.dot ~ arg.save(ps, tab, null, true);
+                savestr ~= ps.dot ~ arg.save(ps, inp, tab, null, true);
                 arg = arg.postop;
                 j++;
             }
@@ -739,22 +800,122 @@ class Expression
         return savestr;
     }
 
-    string wrapWithSpaces(string str, string tabstr)
+    static bool parse_position(ref string itext, out uint row, out uint col)
     {
-        return (nl1 > 0 ? '\n'.repeat(nl1).array ~ tabstr : "").idup ~ str ~ (nl2 > 0 ? '\n'.repeat(nl2).array : "").idup;
+        if (itext[0] != ':') return false;
+        itext = itext[1..$];
+        row = parse!(uint, string)(itext);
+
+        if (itext[0] != ':') return false;
+        itext = itext[1..$];
+        col = parse!(uint, string)(itext);
+        return true;
     }
 
-    string beforeSpaces(string tabstr)
+    void merge_indent_info(ref Lexem a, ref Lexem i, ref Lexem ol, ref Lexem cl)
     {
-        return (nl1 > 0 ? '\n'.repeat(nl1).array ~ tabstr : "").idup;
+        uint row, col;
+        string itext = i.text;
+
+        if (itext.empty) return;
+        if ( parse_position(itext, row, col) )
+        {
+            a.start.row = row;
+            a.start.col = col;
+        }
+
+        if (itext.empty) return;
+        if (itext[0] == '-')
+        {
+            itext = itext[1..$];
+
+            if ( parse_position(itext, row, col) )
+            {
+                a.end.row = row;
+                a.end.col = col;
+            }
+        }
+
+        if (itext.empty) return;
+        if (itext[0] == '[')
+        {
+            itext = itext[1..$];
+
+            if ( parse_position(itext, row, col) )
+            {
+                ol.text = "$";
+                ol.start.row = row;
+                ol.start.col = col;
+            }
+
+            if (itext[0] == '-')
+            {
+                itext = itext[1..$];
+
+                if ( parse_position(itext, row, col) )
+                {
+                    cl.text = "$";
+                    cl.start.row = row;
+                    cl.start.col = col;
+                    cl.end.row = row;
+                    cl.end.col = col;
+                }
+            }
+        }
     }
 
-    string afterSpaces()
+    void merge_inp(Expression inp)
     {
-        return (nl2 > 0 ? '\n'.repeat(nl2).array : "").idup;
+        merge_indent_info(operator_lexem, inp.operator_lexem, open_lexem, close_lexem);
+        merge_indent_info(type_lexem, inp.type_lexem, open_lexem, close_lexem);
+
+        foreach(i, arg; this.arguments)
+        {
+            arg.merge_inp(inp.arguments[i]);
+        }
+
+        if (postop !is null)
+        {
+            postop.merge_inp(inp.postop);
+        }
     }
 
-    string saveD(int tab = 0, Expression[] post = null, string ptype = null, string inner = null)
+    string wrapWithSpaces(string str, string tabstr, ref Position pos)
+    {
+        return str;
+    }
+
+    string beforeSpaces(string tabstr, ref Position pos)
+    {
+        return "";
+    }
+
+    string afterSpaces(ref Position pos)
+    {
+        return "";
+    }
+
+    string saveD()
+    {
+         Position pos = Position(1, 1);
+         string resstr;
+         saveD(resstr, pos);
+         return resstr;
+    }
+
+    void savePrint(ref string resstr, ref Position pos, string str, Position spos)
+    {
+        if (spos > pos)
+        {
+            resstr ~= '\n'.repeat(spos.row - pos.row).array.idup() ~ ' '.repeat(spos.col-(spos.row > pos.row ? 1 : pos.col)).array.idup();
+            pos = spos;
+        }
+
+        resstr ~= str;
+        pos.col += str.length;
+    }
+
+    string saveD(ref string resstr, ref Position pos, int tab = 0, Expression[] post = null, string ptype = null)
     {
         string savestr;
         string tabstr = "";
@@ -766,6 +927,7 @@ class Expression
         }
 
         if (tab > 0) tabstr = ' '.repeat(tab*4).array;
+        writefln("%s %s %s %s => %s", tabstr, bt, this, start_pos(), end_pos());
 
         bool handled = true;
         switch(ptype)
@@ -783,14 +945,7 @@ class Expression
 
                 foreach(i, arg; this.arguments)
                 {
-                    if (ptype == "function")
-                    {
-                        savestr = arg.saveD(-tab-1) ~ " " ~ savestr;
-                    }
-                    else
-                    {
-                        savestr ~= arg.saveD(-tab-1) ~ " ";
-                    }
+                    arg.saveD(resstr, pos, -tab-1);
                 }
 
                 string poststr = "";
@@ -806,24 +961,24 @@ class Expression
                             {
                                 if (ap.operator == "[]")
                                 {
-                                    savestr =  savestr ~ ap.saveD(tab);
+                                    savestr =  savestr ~ ap.saveD(resstr, pos, tab);
 
                                     foreach(i3, arg3; parent.arguments[index+1..arg.index+1])
                                     {
-                                        poststr ~= ", " ~ arg3.saveD(-tab-1, null, "ctype");
+                                        poststr ~= ", " ~ arg3.saveD(resstr, pos, -tab-1, null, "ctype");
                                     }
                                 }
                                 else if (ap.type == "init")
                                 {
-                            }
+                                }
                                 else
                                 {
-                                    savestr = ap.saveD(-tab-1) ~ " " ~ savestr;
+                                    savestr = ap.saveD(resstr, pos, -tab-1) ~ " " ~ savestr;
                                     //writefln("%s -- %s-%s", savestr, index, arg.index);
 
                                     foreach(i3, arg3; parent.arguments[index+1..arg.index+1])
                                     {
-                                        poststr ~= ", " ~ arg3.saveD(-tab-1, null, "ctype");
+                                        poststr ~= ", " ~ arg3.saveD(resstr, pos, -tab-1, null, "ctype");
                                     }
                                 }
                             }
@@ -841,19 +996,19 @@ class Expression
                     {
                         if (arg.operator == "[]")
                         {
-                            savestr =  savestr ~ arg.saveD(tab);
+                            savestr =  savestr ~ arg.saveD(resstr, pos, tab);
                         }
                         else if (arg.type == "init")
                         {
                     }
                         else
                         {
-                            savestr = arg.saveD(-tab-1) ~ " " ~ savestr;
+                            savestr = arg.saveD(resstr, pos, -tab-1) ~ " " ~ savestr;
                         }
                     }
                 }
 
-                savestr ~= this.operator;
+                savePrint(resstr, pos, this.operator, operator_lexem.start);
 
                 foreach(arg; post ~ (postop is null ? [] : [postop]))
                 {
@@ -861,7 +1016,7 @@ class Expression
                     {
                         if (arg.type == "init")
                         {
-                            savestr = savestr ~ arg.saveD(tab);
+                            savestr = savestr ~ arg.saveD(resstr, pos, tab);
                         }
                     }
                 }
@@ -870,18 +1025,17 @@ class Expression
 
                 if (!negtab)
                 {
-                    savestr = savestr ~ ";";
+                    savePrint(resstr, pos, ";", pos);
                 }
-                savestr = wrapWithSpaces(savestr, tabstr);
                 break;
 
             case "enum":
-                savestr ~= beforeSpaces(tabstr) ~ this.operator;
+                savestr ~= beforeSpaces(tabstr, pos) ~ this.operator;
                 foreach(i, arg; post ~ (postop is null ? [] : [postop]))
                 {
-                    savestr =  savestr ~ arg.saveD(tab);
+                    savestr =  savestr ~ arg.saveD(resstr, pos, tab);
                 }
-                savestr ~= afterSpaces();
+                savestr ~= afterSpaces(pos);
                 break;
 
             case "var":
@@ -889,16 +1043,16 @@ class Expression
                     handled = false;
                 else
                 {
-                    savestr ~= this.operator;
                     if (!this.arguments.empty)
-                        savestr = this.arguments[0].saveD(-tab-1) ~ " " ~ savestr;
+                        this.arguments[0].saveD(resstr, pos, -tab-1);
+
+                    savePrint(resstr, pos, this.operator, operator_lexem.start);
 
                     if (postop !is null)
                     {
-                        savestr = postop.saveD(tab, null, this.type) ~ " " ~ savestr;
+                        postop.saveD(resstr, pos, tab, null, this.type);
                     }
                 }
-                savestr = wrapWithSpaces(savestr, tabstr);
                 break;
 
             default:
@@ -906,7 +1060,7 @@ class Expression
                 {
                     foreach(i, arg; this.arguments)
                     {
-                        savestr ~= arg.saveD(tab, null, this.type);
+                        arg.saveD(resstr, pos, tab, null, this.type);
                     }
                 }
                 else handled = false;
@@ -917,46 +1071,56 @@ class Expression
         {
             if (bt == BlockType.Comment)
             {
-                savestr ~= this.operator;
-                savestr = wrapWithSpaces(savestr, tabstr);
+                savePrint(resstr, pos, this.operator, operator_lexem.start);
+            }
+            else if (bt == BlockType.String)
+            {
+                savePrint(resstr, pos, this.operator, operator_lexem.start);
             }
             else switch(this.type)
             {
                 case "module":
-                    savestr ~= beforeSpaces(tabstr) ~ "module "~this.operator~";";
+                    savePrint(resstr, pos, "module ", type_lexem.start);
+                    savePrint(resstr, pos, this.operator, operator_lexem.start);
+                    savePrint(resstr, pos, ";", pos);
+
                     foreach(i, arg; this.arguments)
                     {
-                        savestr ~= arg.saveD(tab, null, this.type);
+                        arg.saveD(resstr, pos, tab, null, this.type);
                     }
-                    savestr ~= afterSpaces();
                     break;
 
                 case "import":
-                    string impstr = "import "~this.arguments[0].operator;
+                    savePrint(resstr, pos, "import ", type_lexem.start);
+                    savePrint(resstr, pos, this.arguments[0].operator, this.arguments[0].operator_lexem.start);
+
                     if (!arguments[0].arguments.empty)
                     {
-                        impstr ~= ": ";
+                        savePrint(resstr, pos, ": ", pos);
                         foreach (i, arg; arguments[0].arguments)
                         {
-                            if (i > 0) impstr ~= ", ";
-                            impstr ~= arg.operator;
+                            if (i > 0)
+                            {
+                                savePrint(resstr, pos, ", ", pos);
+                            }
+                            savePrint(resstr, pos, arg.operator, arg.operator_lexem.start);
                             if (arg.postop !is null)
                             {
-                                impstr ~= " = " ~ arg.postop.operator;
+                                savePrint(resstr, pos, " = ", pos);
+                                savePrint(resstr, pos, arg.postop.operator, arg.postop.operator_lexem.start);
                             }
                         }
                     }
-                    impstr ~= ";";
-                    savestr ~= wrapWithSpaces(impstr, tabstr);
+                    savePrint(resstr, pos, ";", pos);
                     break;
 
                 case "enum":
-                    savestr ~= beforeSpaces(tabstr) ~ "enum "~this.operator~" {";
+                    savestr ~= beforeSpaces(tabstr, pos) ~ "enum "~this.operator~" {";
                     foreach(i, arg; this.arguments)
                     {
-                        savestr ~= arg.saveD(tab+1, null, this.type) ~ ( i < this.arguments.length-1 ? ", " : "" );
+                        savestr ~= arg.saveD(resstr, pos, tab+1, null, this.type) ~ ( i < this.arguments.length-1 ? ", " : "" );
                     }
-                    savestr ~= tabstr ~ "}" ~ afterSpaces();
+                    savestr ~= tabstr ~ "}" ~ afterSpaces(pos);
                     break;
 
                 case "init":
@@ -964,53 +1128,69 @@ class Expression
 
                     foreach(i, arg; this.arguments)
                     {
-                        savestr ~= arg.saveD(-tab-1, null, this.type);
+                        savestr ~= arg.saveD(resstr, pos, -tab-1, null, this.type);
                     }
                     break;
 
                 case ":":
                     foreach(i, arg; this.arguments)
                     {
-                        savestr ~= arg.saveD(-tab-1, null, this.type);
+                        savestr ~= arg.saveD(resstr, pos, -tab-1, null, this.type);
                     }
                     savestr ~= this.type;
-                    savestr = wrapWithSpaces(savestr, tabstr);
+                    savestr = wrapWithSpaces(savestr, tabstr, pos);
                     break;
 
                 case "*":
                     foreach(i, arg; this.arguments)
                     {
-                        savestr ~= arg.saveD(-tab-1, null, this.type);
+                        savestr ~= arg.saveD(resstr, pos, -tab-1, null, this.type);
                     }
                     savestr ~= this.type;
-                    savestr = wrapWithSpaces(savestr, tabstr);
+                    savestr = wrapWithSpaces(savestr, tabstr, pos);
                     break;
 
                 case "struct":
-                    savestr ~= beforeSpaces(tabstr) ~ "struct "~this.operator~" {";
+                    savestr ~= beforeSpaces(tabstr, pos) ~ "struct "~this.operator~" {";
                     foreach(i, arg; this.arguments)
                     {
-                        savestr ~= arg.saveD(tab+1, null, this.type);
+                        savestr ~= arg.saveD(resstr, pos, tab+1, null, this.type);
                     }
-                    savestr ~= afterSpaces() ~ tabstr ~ "}";
+                    savestr ~= afterSpaces(pos) ~ tabstr ~ "}";
                     break;
 
                 case "class":
-                    savestr ~= beforeSpaces(tabstr) ~ "class "~this.operator;
+                    savePrint(resstr, pos, "class ", type_lexem.start);
+                    savePrint(resstr, pos, this.operator, operator_lexem.start);
                     if (arguments[0].type == "superclass")
-                        savestr ~= " : " ~ arguments[0].saveD(-tab-1, null, this.type);
-                    savestr ~= " {";
+                    {
+                        savePrint(resstr, pos, " :", pos);
+                        arguments[0].saveD(resstr, pos, -tab-1, null, this.type);
+                    }
+                    savePrint(resstr, pos, "{", open_lexem.start);
 
                     foreach(i, arg; this.arguments)
                     {
                         if (arg.type != "superclass")
-                            savestr ~= arg.saveD(tab+1, null, this.type);
+                        {
+                            arg.saveD(resstr, pos, tab+1, null, this.type);
+                        }
                     }
-                    savestr ~= afterSpaces() ~ tabstr ~ "}";
+                    savePrint(resstr, pos, "}", close_lexem.start);
                     break;
 
                 case "function":
-                    savestr ~= beforeSpaces(tabstr) ~ this.arguments[0].saveD(-tab-1, null, this.type) ~" "~(this.operator.empty?"function":this.operator)~"(";
+                    this.arguments[0].saveD(resstr, pos, -tab-1, null, this.type);
+                    savePrint(resstr, pos, " ", pos);
+                    if (this.operator.empty)
+                    {
+                        savePrint(resstr, pos, "function", type_lexem.start);
+                    }
+                    else
+                    {
+                        savePrint(resstr, pos, this.operator, operator_lexem.start);
+                    }
+                    savePrint(resstr, pos, "(", open_lexem.start);
 
                     long[] a, b, c;
                     foreach(i, arg; this.arguments)
@@ -1040,151 +1220,192 @@ class Expression
                     }
 
                     if (this.arguments.length > 1)
-                        savestr ~= this.arguments[1].saveD(-tab-1, getPost(1), this.type);
+                        this.arguments[1].saveD(resstr, pos, -tab-1, getPost(1), this.type);
                     if (this.arguments.length > 2)
                     {
                         foreach(i, arg; this.arguments[2..$])
                         {
-                            savestr ~= ", " ~ arg.saveD(-tab-1, getPost(i+2), this.type);
+                            savePrint(resstr, pos, ",", pos);
+                            arg.saveD(resstr, pos, -tab-1, getPost(i+2), this.type);
                         }
                     }
                     if (postop !is null)
                     {
-                        savestr ~= ")";
-                        savestr ~= postop.saveD(tab, null, this.type);
+                        savePrint(resstr, pos, ")", close_lexem.start);
+                        postop.saveD(resstr, pos, tab, null, this.type);
                     }
                     else if (!negtab)
                     {
-                        savestr ~= ");";
+                        savePrint(resstr, pos, ");", close_lexem.start);
                     }
                     else
                     {
-                        savestr ~= ")";
+                        savePrint(resstr, pos, ")", close_lexem.start);
                     }
                     break;
 
                 case "body":
-                    savestr ~= beforeSpaces(tabstr) ~ "{";
+                case "{":
+                    if (this.arguments.length > 1 || open_lexem.start.row > 0 || type_lexem.start.row > 0)
+                        savePrint(resstr, pos, "{", open_lexem.start.row > 0 ? open_lexem.start : type_lexem.start);
                     foreach(i, arg; this.arguments)
                     {
-                        savestr ~= arg.saveD(tab+1, null, this.type);
+                        arg.saveD(resstr, pos, tab+1, null, this.type);
                     }
-                    savestr ~= afterSpaces() ~ tabstr ~ "}";
+                    if (this.arguments.length > 1 || close_lexem.start.row > 0)
+                        savePrint(resstr, pos, "}", close_lexem.start);
                     break;
 
                 case "return":
                 case "break":
                 case "continue":
                 case "goto":
-                    savestr ~= this.type;
+                    savePrint(resstr, pos, type, type_lexem.start);
                     if (!this.arguments.empty)
                     {
-                        savestr ~= " " ~ this.arguments[0].saveD(-tab-1, null, this.type);
+                        this.arguments[0].saveD(resstr, pos, -tab-1, null, this.type);
                         foreach(i, arg; this.arguments[1..$])
                         {
-                            savestr ~= ", " ~ arg.saveD(-tab-1, null, this.type);
+                            savePrint(resstr, pos, ", ", pos);
+                            arg.saveD(resstr, pos, -tab-1, null, this.type);
                         }
                     }
 
                     if (!negtab)
                     {
-                        savestr = savestr ~ ";";
+                        savePrint(resstr, pos, ";", pos);
                     }
-                    savestr = wrapWithSpaces(savestr, tabstr);
                     break;
 
                 case "for":
-                    savestr ~= beforeSpaces(tabstr) ~ this.type;
-                    savestr ~= " (" ~ this.arguments[0].saveD(-tab-1, null, this.type);
-                    savestr ~= "; " ~ this.arguments[1].saveD(-tab-1, null, this.type);
-                    savestr ~= "; " ~ this.arguments[2].saveD(-tab-1, null, this.type) ~ ") ";
+                    savestr ~= beforeSpaces(tabstr, pos) ~ this.type;
+                    savestr ~= " (" ~ this.arguments[0].saveD(resstr, pos, -tab-1, null, this.type);
+                    savestr ~= "; " ~ this.arguments[1].saveD(resstr, pos, -tab-1, null, this.type);
+                    savestr ~= "; " ~ this.arguments[2].saveD(resstr, pos, -tab-1, null, this.type) ~ ") ";
                     if (postop !is null)
                     {
-                        savestr ~= postop.saveD(tab);
+                        savestr ~= postop.saveD(resstr, pos, tab);
                     }
-                    savestr ~= afterSpaces();
+                    savestr ~= afterSpaces(pos);
                     break;
 
                 case "while":
-                    savestr ~= beforeSpaces(tabstr) ~ this.type;
-                    savestr ~= " (" ~ this.arguments[0].saveD(-tab-1, null, this.type) ~ ") ";
+                    savestr ~= beforeSpaces(tabstr, pos) ~ this.type;
+                    savestr ~= " (" ~ this.arguments[0].saveD(resstr, pos, -tab-1, null, this.type) ~ ") ";
                     if (postop !is null)
                     {
-                        savestr ~= postop.saveD(tab);
+                        savestr ~= postop.saveD(resstr, pos, tab);
                     }
-                    savestr ~= afterSpaces();
+                    savestr ~= afterSpaces(pos);
                     break;
 
                 case "do":
-                    savestr ~= beforeSpaces(tabstr) ~ this.type;
+                    savePrint(resstr, pos, type, type_lexem.start);
                     if (postop !is null)
                     {
-                        savestr ~= postop.saveD(tab);
+                        postop.saveD(resstr, pos, tab);
                     }
-                    savestr ~= "while (" ~ this.arguments[0].saveD(-tab-1, null, this.type) ~ ");" ~ afterSpaces();
+                    savePrint(resstr, pos, "while (", postop.postop.type_lexem.start);
+                    postop.postop.saveD(resstr, pos, -tab-1, null, this.type);
+                    savePrint(resstr, pos, ");", postop.postop.close_lexem.start);
                     break;
 
                 case "foreach":
-                    savestr ~= beforeSpaces(tabstr) ~ this.type ~ " (";
+                    savestr ~= beforeSpaces(tabstr, pos) ~ this.type ~ " (";
                     if (!this.arguments[0].operator.empty)
-                        savestr ~= this.arguments[0].saveD(-tab-1, null, this.type) ~ ", ";
-                    savestr ~= this.arguments[1].saveD(-tab-1, null, this.type) ~ "; ";
-                    savestr ~= this.arguments[2].saveD(-tab-1, null, this.type) ~ ")";
+                        savestr ~= this.arguments[0].saveD(resstr, pos, -tab-1, null, this.type) ~ ", ";
+                    savestr ~= this.arguments[1].saveD(resstr, pos, -tab-1, null, this.type) ~ "; ";
+                    savestr ~= this.arguments[2].saveD(resstr, pos, -tab-1, null, this.type) ~ ")";
                     if (postop !is null)
                     {
-                        savestr ~= postop.saveD(tab, null, this.type);
+                        savestr ~= postop.saveD(resstr, pos, tab, null, this.type);
                     }
-                    savestr ~= afterSpaces();
+                    savestr ~= afterSpaces(pos);
                     break;
 
                 case "if":
-                    savestr ~= beforeSpaces(tabstr) ~ arguments[0].beforeSpaces(tabstr) ~ "if (" ~ (!operator.empty ? operator~" == " : "") ~ this.arguments[0].saveD(tab, null, this.type) ~ arguments[0].afterSpaces();
+                    savePrint(resstr, pos, "if (", type_lexem.start);
+                    if (!operator.empty)
+                    {
+                        savePrint(resstr, pos, operator ~ " == ", operator_lexem.start);
+                    }
+
+                    this.arguments[0].saveD(resstr, pos, tab, null, this.type);
+
                     bool or_need = arguments[0].postop is null;
+                    ubyte else_if_quoted = 0;
                     foreach(i, arg; this.arguments[1..$])
                     {
                         if (arg.bt == BlockType.Comment)
                         {
-                            savestr ~= arg.beforeSpaces(tabstr) ~ arg.saveD(tab, null, this.type) ~ arg.afterSpaces();
+                            arg.saveD(resstr, pos, tab, null, this.type);
                         }
                         else if (arg.type == "else")
                         {
-                            savestr ~= arg.beforeSpaces(tabstr) ~ "else " ~ arg.saveD(tab, null, "else") ~ arg.afterSpaces();
+                            savePrint(resstr, pos, "else", arg.type_lexem.start);
+                            arg.saveD(resstr, pos, tab, null, "else");
                             or_need = false;
+                        }
+                        else if (arg.type == "quote")
+                        {
+                            if (arg.arguments.length > 0 && arg.arguments[0].operator == "else")
+                            {
+                                else_if_quoted++;
+                                savePrint(resstr, pos, "else", arg.arguments[0].operator_lexem.start);
+                            }
+                            if (arg.arguments.length > 1 && arg.arguments[1].operator == "if")
+                            {
+                                else_if_quoted++;
+                                savePrint(resstr, pos, "if", arg.arguments[1].operator_lexem.start);
+                            }
                         }
                         else if (or_need)
                         {
-                            savestr ~= arg.beforeSpaces(tabstr) ~ " || " ~ (!operator.empty ? operator~" == " : "") ~ arg.saveD(tab, null, this.type) ~ arg.afterSpaces();
+                            savePrint(resstr, pos, " || ", pos);
+                            if (!operator.empty)
+                            {
+                                savePrint(resstr, pos, operator ~ " == ", operator_lexem.start);
+                            }
+                            arg.saveD(resstr, pos, tab, null, this.type);
                             or_need = arg.postop is null;
                         }
                         else
                         {
-                            savestr ~= arg.beforeSpaces(tabstr) ~ "else if (" ~ (!operator.empty ? operator~" == " : "") ~ arg.saveD(tab, null, this.type) ~ arg.afterSpaces();
+                            if (else_if_quoted < 1)
+                                savePrint(resstr, pos, "else ", type_lexem.start);
+                            if (else_if_quoted < 2)
+                                savePrint(resstr, pos, "if ", type_lexem.start);
+
+                            savePrint(resstr, pos, "(", arg.open_lexem.start);
+                            if (!operator.empty)
+                            {
+                                savePrint(resstr, pos, operator ~ " == ", operator_lexem.start);
+                            }
+                            arg.saveD(resstr, pos, tab, null, this.type);
                             or_need = arg.postop is null;
+                            else_if_quoted = 0;
                         }
                     }
-                    savestr ~= afterSpaces();
                     break;
 
                 case "switch":
-                    savestr ~= beforeSpaces(tabstr) ~ "switch (" ~ (!operator.empty ? operator : inner) ~ ")";
-                    savestr ~= " {";
+                    savePrint(resstr, pos, type, type_lexem.start);
+                    savePrint(resstr, pos, "(", open_lexem.start);
+
                     foreach(i, arg; this.arguments)
                     {
-                        if (arg.type == "default")
-                            savestr ~= arg.beforeSpaces(tabstr) ~ "    default" ~ arg.saveD(tab+1, null, "case") ~ arg.afterSpaces();
-                        else
-                            savestr ~= arg.beforeSpaces(tabstr) ~ "    case " ~ arg.saveD(tab+1, null, "case") ~ arg.afterSpaces();
+                        arg.saveD(resstr, pos, -tab-1, null, this.type);
                     }
-                    savestr ~= afterSpaces() ~ tabstr ~ "}";
+
+                    savePrint(resstr, pos, ")", close_lexem.start);
+
+                    if (postop !is null)
+                    {
+                        postop.saveD(resstr, pos, tab, null, this.type);
+                    }
                     break;
 
                 case "var":
-                    foreach(i, arg; this.arguments)
-                    {
-                        savestr ~= arg.saveD(-tab-1) ~ " ";
-                    }
-
-                    string poststr = "";
                     if (parent !is null && index >= 0 && parent.arguments.length > index)
                     {
                         foreach(i, arg; parent.arguments[index..$])
@@ -1196,23 +1417,121 @@ class Expression
                                 {
                                     if (arg.postop.operator == "[]")
                                     {
-                                        savestr =  savestr ~ arg.postop.saveD(tab);
+                                    }
+                                    else if (arg.postop.type == "init")
+                                    {
+                                    }
+                                    else
+                                    {
+                                        arg.postop.saveD(resstr, pos, -tab-1);
+                                    }
+                                }
+                                else if (ptype != "ctype" && this.index <= arg.index && this.index > arg.index + arg.postop.index + 1)
+                                    return "";
+                            }
+                        }
+                    }
+                    else if (postop !is null)
+                    {
+                        if (postop.index == -1)
+                        {
+                            if (postop.operator == "[]")
+                            {
+                            }
+                            else if (postop.type == "init")
+                            {
+                            }
+                            else
+                            {
+                                savestr = postop.saveD(resstr, pos, -tab-1) ~ " " ~ savestr;
+                            }
+                        }
+                    }
 
+                    foreach(i, arg; this.arguments)
+                    {
+                        arg.saveD(resstr, pos, -tab-1);
+                    }
+
+                    if (parent !is null && index >= 0 && parent.arguments.length > index)
+                    {
+                        foreach(i, arg; parent.arguments[index..$])
+                        {
+                            if (arg.postop !is null)
+                            {
+                                //writefln("%s -- %s (%s == %s)", this, arg2.app_args, arg.index - arg2.app_args + 1, this.index);
+                                if (arg.index + arg.postop.index + 1 == this.index)
+                                {
+                                    if (arg.postop.operator == "[]")
+                                    {
+                                        arg.postop.saveD(resstr, pos, tab);
+                                    }
+                                    else if (arg.postop.type == "init")
+                                    {
+                                    }
+                                    else
+                                    {
+                                    }
+                                }
+                                else if (ptype != "ctype" && this.index <= arg.index && this.index > arg.index + arg.postop.index + 1)
+                                    return "";
+                            }
+                        }
+                    }
+                    else if (postop !is null)
+                    {
+                        if (postop.index == -1)
+                        {
+                            if (postop.operator == "[]")
+                            {
+                                postop.saveD(resstr, pos, tab);
+                            }
+                            else if (postop.type == "init")
+                            {
+                            }
+                            else
+                            {
+                            }
+                        }
+                    }
+
+                    foreach(i, arg; post ~ (postop is null ? [] : [postop]))
+                    {
+                        if (arg.index == -1)
+                        {
+                            if (arg.type == "init")
+                            {
+                                arg.saveD(resstr, pos, tab);
+                            }
+                        }
+                    }
+
+                    if (parent !is null && index >= 0 && parent.arguments.length > index)
+                    {
+                        foreach(i, arg; parent.arguments[index..$])
+                        {
+                            if (arg.postop !is null)
+                            {
+                                //writefln("%s -- %s (%s == %s)", this, arg2.app_args, arg.index - arg2.app_args + 1, this.index);
+                                if (arg.index + arg.postop.index + 1 == this.index)
+                                {
+                                    if (arg.postop.operator == "[]")
+                                    {
                                         foreach(i3, arg3; parent.arguments[index+1..arg.index+1])
                                         {
-                                            poststr ~= ", " ~ arg3.saveD(-tab-1, null, "ctype");
+                                            savePrint(resstr, pos, ", ", pos);
+                                            arg3.saveD(resstr, pos, -tab-1, null, "ctype");
                                         }
                                     }
                                     else if (arg.postop.type == "init")
                                     {
-                                }
+                                    }
                                     else
                                     {
-                                        savestr = arg.postop.saveD(-tab-1) ~ " " ~ savestr;
-
                                         foreach(i3, arg3; parent.arguments[index+1..arg.index+1])
                                         {
-                                            poststr ~= ", " ~ arg3.saveD(-tab-1, null, "ctype");
+                                            savePrint(resstr, pos, ", ", pos);
+                                            arg3.saveD(resstr, pos, -tab-1, null, "ctype");
                                         }
                                     }
                                 }
@@ -1221,134 +1540,127 @@ class Expression
                             }
                         }
                     }
-                    else
-                    if (postop !is null)
-                    {
-                        if (postop.index == -1)
-                        {
-                            if (postop.operator == "[]")
-                            {
-                                savestr =  savestr ~ postop.saveD(tab);
-                            }
-                            else if (postop.type == "init")
-                            {
-                        }
-                            else
-                            {
-                                savestr = postop.saveD(-tab-1) ~ " " ~ savestr;
-                            }
-                        }
-                    }
 
-                    savestr ~= " " ~ this.operator;
-
-                    foreach(i, arg; post ~ (postop is null ? [] : [postop]))
-                    {
-                        if (arg.index == -1)
-                        {
-                            if (arg.type == "init")
-                            {
-                                savestr = savestr ~ arg.saveD(tab);
-                            }
-                        }
-                    }
-
-                    savestr ~= poststr;
+                    savePrint(resstr, pos, operator, operator_lexem.start);
 
                     if (!negtab)
                     {
-                        savestr = savestr ~ ";";
+                        savePrint(resstr, pos, ";", pos);
                     }
-                    savestr = wrapWithSpaces(savestr, tabstr);
                     break;
 
+                case "case":
                 case "default":
-                    savestr ~= ":";
-                    if (postop !is null)
-                    {
-                        savestr ~= postop.saveD(tab, null, "op");
-                    }
+                    savePrint(resstr, pos, type, type_lexem.start);
+                    if (arguments.length > 0)
+                        this.arguments[0].saveD(resstr, pos, -tab-1, null, "op");
+                    savePrint(resstr, pos, ":", pos);
                     break;
 
                 case ".":
                     if (!arguments.empty)
                     {
-                        savestr ~= this.arguments[0].saveD(-tab-1, null, "op");
+                        bool quoted_op;
+                        this.arguments[0].saveD(resstr, pos, -tab-1, null, "op");
                         foreach(i, arg; this.arguments[1..$])
                         {
-                            auto next = arg.saveD(-tab-1, null, "op");
-                            if (next[0] == '[')
-                                savestr ~= next;
-                            else if (next == "init")
-                                savestr = "(" ~ savestr ~ ")" ~ this.type ~ next;
+                            if (arg.type == "quote" && arg.arguments[0].operator == this.type)
+                            {
+                                savePrint(resstr, pos, this.type, arg.arguments[0].operator_lexem.start);
+                                quoted_op = true;
+                            }
                             else
-                                savestr ~= this.type ~ next;
+                            {
+                                if (arg.type == "[")
+                                {
+                                    arg.saveD(resstr, pos, -tab-1, null, "op");
+                                }
+                                else if (arg.type == "init")
+                                {
+                                    //savestr = "(" ~ savestr ~ ")";
+                                    if (!quoted_op)
+                                        savePrint(resstr, pos, this.type, type_lexem.start);
+                                    arg.saveD(resstr, pos, -tab-1, null, "op");
+                                }
+                                else
+                                {
+                                    if (!quoted_op)
+                                        savePrint(resstr, pos, this.type, type_lexem.start);
+                                    arg.saveD(resstr, pos, -tab-1, null, "op");
+                                }
+                                quoted_op = false;
+                            }
                         }
                     }
 
                     if (ptype == "if" && postop !is null)
                     {
-                        savestr ~= ") ";
+                        savePrint(resstr, pos, ")", pos);
                     }
                     else if (ptype == "case")
                     {
-                        savestr ~= ":";
+                        savePrint(resstr, pos, ":", pos);
                     }
 
                     if (postop !is null)
                     {
-                        if (postop.type == "switch")
-                            savestr = postop.saveD(tab, null, "op", savestr);
-                        else
-                            savestr ~= postop.saveD(tab, null, "op");
+                        postop.saveD(resstr, pos, tab, null, "op");
                     }
 
                     if (ptype != "if" && ptype != "case" && !negtab && postop is null)
                     {
-                        savestr = savestr ~ ";";
+                        savePrint(resstr, pos, ";", pos);
                     }
-                    if (ptype != "if" && ptype != "else" && ptype != "case")
-                        savestr = wrapWithSpaces(savestr, tabstr);
                     break;
 
                 case "[":
-                    savestr ~= "[";
+                    savePrint(resstr, pos, "[", open_lexem.start);
                     if (!arguments.empty)
                     {
-                        savestr ~= this.arguments[0].saveD(-tab-1, null, "op");
-                        string sep = ", ";
+                        bool quoted_sep;
+                        this.arguments[0].saveD(resstr, pos, -tab-1, null, "op");
+                        string sep = ",";
                         foreach(i, arg; this.arguments[1..$])
                         {
-                            if (arg.operator == "..") sep = "";
-                            savestr ~= sep ~ arg.saveD(-tab-1, null, "op");
+                            if (arg.type == "quote" && arg.arguments[0].operator == sep)
+                            {
+                                savePrint(resstr, pos, sep, arg.arguments[0].operator_lexem.start);
+                                quoted_sep = true;
+                            }
+                            else
+                            {
+                                if (arg.operator == "..") sep = "";
+                                if (!quoted_sep && !sep.empty)
+                                    savePrint(resstr, pos, sep, operator_lexem.start);
+                                arg.saveD(resstr, pos, -tab-1, null, "op");
+                                quoted_sep = false;
+                            }
                         }
                     }
-                    savestr ~= "]";
+                    savePrint(resstr, pos, "]", close_lexem.start);
 
                     if (ptype == "if" && postop !is null)
                     {
-                        savestr ~= ") ";
+                        savePrint(resstr, pos, ")", close_lexem.start);
                     }
 
                     if (postop !is null)
                     {
-                        savestr ~= postop.saveD(tab, null, "op");
+                        postop.saveD(resstr, pos, tab, null, "op");
                     }
 
                     if (ptype != "if" && !negtab && postop is null)
                     {
-                        savestr = savestr ~ ";";
+                        savePrint(resstr, pos, ";", pos);
                     }
-                    if (ptype != "if" && ptype != "else")
-                        savestr = wrapWithSpaces(savestr, tabstr);
                     break;
 
                 case "\"":
-                    savestr ~= "\"" ~ this.arguments[0].saveD(-tab-1, null, "op");
+                    savestr ~= "\"" ~ this.arguments[0].saveD(resstr, pos, -tab-1, null, "op");
                     string sep = " ";
                     foreach(i, arg; this.arguments[1..$])
                     {
-                        savestr ~= sep ~ arg.saveD(-tab-1, null, "op");
+                        savestr ~= sep ~ arg.saveD(resstr, pos, -tab-1, null, "op");
                     }
                     savestr ~= "\"";
 
@@ -1359,7 +1671,7 @@ class Expression
 
                     if (postop !is null)
                     {
-                        savestr ~= postop.saveD(tab, null, "op");
+                        savestr ~= postop.saveD(resstr, pos, tab, null, "op");
                     }
 
                     if (ptype != "if" && !negtab && postop is null)
@@ -1367,40 +1679,42 @@ class Expression
                         savestr = savestr ~ ";";
                     }
                     if (ptype != "if" && ptype != "else")
-                        savestr = wrapWithSpaces(savestr, tabstr);
+                        savestr = wrapWithSpaces(savestr, tabstr, pos);
                     break;
 
                 case "new":
-                    savestr ~= this.type;
+                    savePrint(resstr, pos, this.type, type_lexem.start);
                     if (!this.arguments.empty)
                     {
-                        savestr ~= " " ~ this.arguments[0].saveD(-tab-1, null, this.type);
+                        this.arguments[0].saveD(resstr, pos, -tab-1, null, this.type);
                         foreach(i, arg; this.arguments[1..$])
                         {
-                            savestr ~= ", " ~ arg.saveD(-tab-1, null, this.type);
+                            savePrint(resstr, pos, ",", pos);
+                            arg.saveD(resstr, pos, -tab-1, null, this.type);
                         }
                     }
 
                     if (postop !is null)
                     {
-                        savestr ~= (postop.operator != "[]"?".":"") ~ postop.saveD(-tab-1, null, this.type);
+                        if (postop.operator != "[]")
+                            savePrint(resstr, pos, ".", pos);
+                        postop.saveD(resstr, pos, -tab-1, null, this.type);
                     }
 
                     if (!negtab)
                     {
-                        savestr = savestr ~ ";";
+                        savePrint(resstr, pos, ";", pos);
                     }
-                    savestr = wrapWithSpaces(savestr, tabstr);
                     break;
 
                 case "cast":
                     savestr ~= "(" ~ this.type;
                     if (!this.arguments.empty)
                     {
-                        savestr ~= "(" ~ this.arguments[0].saveD(-tab-1, null, this.type);
+                        savestr ~= "(" ~ this.arguments[0].saveD(resstr, pos, -tab-1, null, this.type);
                         foreach(i, arg; this.arguments[1..$])
                         {
-                            savestr ~= ") (" ~ arg.saveD(-tab-1, null, this.type);
+                            savestr ~= ") (" ~ arg.saveD(resstr, pos, -tab-1, null, this.type);
                         }
                         savestr ~= "))";
                     }
@@ -1419,16 +1733,11 @@ class Expression
                     {
                         if (postop.type == "body")
                         {
-                            savestr ~= postop.saveD(tab, null, this.type);
-                            body_ = true;
-                        }
-                        else if (postop.type == "switch")
-                        {
-                            savestr = postop.saveD(tab, null, "postop", savestr);
+                            savestr ~= postop.saveD(resstr, pos, tab, null, this.type);
                             body_ = true;
                         }
                         else
-                            savestr ~= (postop.operator != "[]"?".":"") ~ postop.saveD(-tab-1, null, this.type);
+                            savestr ~= (postop.operator != "[]"?".":"") ~ postop.saveD(resstr, pos, -tab-1, null, this.type);
                     }
 
                     if (ptype != "if" && ptype != "case" && !negtab && !body_)
@@ -1436,22 +1745,30 @@ class Expression
                         savestr = savestr ~ ";";
                     }
                     if (ptype != "if" && ptype != "else" && ptype != "case")
-                        savestr = wrapWithSpaces(savestr, tabstr);
+                        savestr = wrapWithSpaces(savestr, tabstr, pos);
                     break;
 
                 case "noop":
                     savestr ~= "{}";
                     if (!negtab)
                     {
-                        savestr = wrapWithSpaces(savestr, tabstr);
+                        savestr = wrapWithSpaces(savestr, tabstr, pos);
                     }
                     break;
 
                 case "?":
                     if (arguments.length >= 3)
                     {
-                        savestr ~= "(" ~ arguments[0].saveD(-tab-1, null, "op") ~ " ? " ~ arguments[1].saveD(-tab-1, null, "op") ~ " : " ~ arguments[2].saveD(-tab-1, null, "op") ~ ")";
+                        savestr ~= "(" ~ arguments[0].saveD(resstr, pos, -tab-1, null, "op") ~ " ? " ~ arguments[1].saveD(resstr, pos, -tab-1, null, "op") ~ " : " ~ arguments[2].saveD(resstr, pos, -tab-1, null, "op") ~ ")";
                     }
+                    break;
+
+                case "label":
+                    if (!this.arguments.empty)
+                    {
+                        this.arguments[0].saveD(resstr, pos, -tab-1, null, this.type);
+                    }
+                    savePrint(resstr, pos, ":", pos);
                     break;
 
                 default:
@@ -1485,54 +1802,68 @@ class Expression
                         case "!is":
                         case "in":
                         case "!in":
+                            if (!(!negtab && postop is null) && ptype == "op" && open_lexem.start.row > 0)
+                            {
+                                savePrint(resstr, pos, "(", open_lexem.start);
+                            }
+
                             if (!arguments.empty)
                             {
                                 if (type == "unary")
-                                    savestr ~= this.operator;
-                                savestr ~= this.arguments[0].saveD(-tab-1, null, this.operator == "=" && arguments[0].type != "unary"?"var":"op");
+                                    savePrint(resstr, pos, operator, operator_lexem.start);
+
+                                bool quoted_op;
+                                this.arguments[0].saveD(resstr, pos, -tab-1, null, this.operator == "=" && arguments[0].type != "unary"?"var":"op");
                                 foreach(i, arg; this.arguments[1..$])
                                 {
-                                    savestr ~= " " ~ this.operator ~ " " ~ arg.saveD(-tab-1, null, "op");
+                                    if (arg.type == "quote" && arg.arguments[0].operator == operator)
+                                    {
+                                        savePrint(resstr, pos, operator, arg.arguments[0].operator_lexem.start);
+                                        quoted_op = true;
+                                    }
+                                    else
+                                    {
+                                        if (!quoted_op)
+                                            savePrint(resstr, pos, operator, operator_lexem.start);
+                                        arg.saveD(resstr, pos, -tab-1, null, "op");
+                                        quoted_op = false;
+                                    }
                                 }
+
                                 if (type == "type")
-                                    savestr ~= this.operator;
+                                    savePrint(resstr, pos, operator, operator_lexem.start);
                             }
 
-                            if (!(!negtab && postop is null) && ptype == "op")
+                            if (!(!negtab && postop is null) && ptype == "op" && close_lexem.start.row > 0)
                             {
-                                savestr = "(" ~ savestr ~ ")";
+                                savePrint(resstr, pos, ")", close_lexem.start);
                             }
 
-                            if (ptype == "if" && postop !is null)
+                            if (ptype == "if" && postop !is null && close_lexem.start.row > 0)
                             {
-                                savestr ~= ") ";
+                                savePrint(resstr, pos, ")", close_lexem.start);
                             }
 
                             if (postop !is null)
                             {
-                                if (postop.type == "switch")
-                                    savestr = postop.saveD(tab, null, "postop", savestr);
-                                else
-                                    savestr ~= postop.saveD(tab, null, "postop");
+                                postop.saveD(resstr, pos, tab, null, "postop");
                             }
 
                             if (ptype != "if" && !negtab && postop is null)
                             {
-                                savestr = savestr ~ ";";
+                                savePrint(resstr, pos, ";", pos);
                             }
-                            if (ptype != "if" && ptype != "else")
-                                savestr = wrapWithSpaces(savestr, tabstr);
                             break;
 
                         case "++":
                         case "--":
                             if (type == "post")
                             {
-                                savestr = arguments[0].saveD(-tab-1, null, "op") ~ operator;
+                                savestr = arguments[0].saveD(resstr, pos, -tab-1, null, "op") ~ operator;
                             }
                             else
                             {
-                                savestr = operator ~ arguments[0].saveD(-tab-1, null, "op");
+                                savestr = operator ~ arguments[0].saveD(resstr, pos, -tab-1, null, "op");
                             }
 
                             if (ptype != "if" && !negtab && postop is null)
@@ -1540,51 +1871,59 @@ class Expression
                                 savestr = savestr ~ ";";
                             }
                             if (ptype != "if" && ptype != "else")
-                                savestr = wrapWithSpaces(savestr, tabstr);
+                                savestr = wrapWithSpaces(savestr, tabstr, pos);
                             break;
 
                         case "!":
-                            savestr ~= this.operator;
-                            if (!arguments.empty)
-                                savestr ~= " " ~ this.arguments[0].saveD(-tab-1, null, "op");
-
-                            if (!(!negtab && postop is null) && ptype == "op")
+                            if (!(!negtab && postop is null) && ptype == "op" && open_lexem.start.row > 0)
                             {
-                                savestr = "(" ~ savestr ~ ")";
+                                savePrint(resstr, pos, "(", open_lexem.start);
                             }
 
-                            if (ptype == "if" && postop !is null)
+                            savePrint(resstr, pos, this.operator, operator_lexem.start);
+                            if (!arguments.empty)
+                                this.arguments[0].saveD(resstr, pos, -tab-1, null, "op");
+
+                            if (!(!negtab && postop is null) && ptype == "op" && close_lexem.start.row > 0)
                             {
-                                savestr ~= ") ";
+                                savePrint(resstr, pos, ")", close_lexem.start);
+                            }
+
+                            if (ptype == "if" && postop !is null && close_lexem.start.row > 0)
+                            {
+                                savePrint(resstr, pos, ")", close_lexem.start);
                             }
 
                             if (postop !is null)
                             {
-                                if (postop.type == "switch")
-                                    savestr = postop.saveD(tab, null, "postop", savestr);
-                                else
-                                    savestr ~= postop.saveD(tab, null, "postop");
+                                postop.saveD(resstr, pos, tab, null, "postop");
                             }
 
                             if (ptype != "if" && !negtab && postop is null)
                             {
-                                savestr = savestr ~ ";";
+                                savePrint(resstr, pos, ";", pos);
                             }
-                            if (ptype != "if" && ptype != "else")
-                                savestr = wrapWithSpaces(savestr, tabstr);
                             break;
 
                         case "[]":
+                            if (postop !is null)
+                            {
+                                if (type == "type")
+                                    postop.saveD(resstr, pos, tab, null, "op");
+                            }
+
+                            if (type != "type")
+                                savePrint(resstr, pos, "[", open_lexem.start);
 
                             if (!this.arguments.empty)
                             {
-                                savestr ~= this.arguments[0].saveD(-tab-1, null, this.type);
+                                this.arguments[0].saveD(resstr, pos, -tab-1, null, this.type);
                                 if (type == "type")
                                 {
-                                    string of = "";
+                                    savePrint(resstr, pos, "[", open_lexem.start);
                                     if (this.arguments.length >= 2)
-                                        of = this.arguments[1].saveD(-tab-1, null, this.type);
-                                    savestr ~= "["~of~"]";
+                                        this.arguments[1].saveD(resstr, pos, -tab-1, null, this.type);
+                                    savePrint(resstr, pos, "]", close_lexem.start);
                                 }
                                 else
                                 {
@@ -1592,92 +1931,92 @@ class Expression
                                     foreach(i, arg; this.arguments[1..$])
                                     {
                                         if (arg.operator == "..") sep = "";
-                                        savestr ~= sep ~ arg.saveD(-tab-1, null, this.type);
+                                        savePrint(resstr, pos, sep, pos);
+                                        arg.saveD(resstr, pos, -tab-1, null, this.type);
                                     }
                                 }
                             }
 
                             if (type != "type")
-                                savestr = "[" ~ savestr ~ "]";
+                                savePrint(resstr, pos, "]", open_lexem.start);
 
                             if (postop !is null)
                             {
-                                if (postop.type == "switch")
-                                    savestr = postop.saveD(tab, null, "postop", savestr);
-                                else if (type == "type")
-                                    savestr = postop.saveD(tab, null, "op") ~ " " ~ savestr;
+                                if (type == "type")
+                                {}
                                 else
-                                    savestr ~= postop.saveD(tab, null, "postop");
+                                    postop.saveD(resstr, pos, tab, null, "postop");
                             }
 
                             break;
 
                         case "false":
                         case "true":
-                            savestr ~= this.operator;
+                            savePrint(resstr, pos, operator, operator_lexem.start);
 
                             if (ptype == "if" && postop !is null)
                             {
-                                savestr ~= ") ";
+                                savePrint(resstr, pos, ")", pos);
                             }
 
                             if (postop !is null)
                             {
-                                if (postop.type == "switch")
-                                    savestr = postop.saveD(tab, null, "postop", savestr);
-                                else
-                                    savestr ~= postop.saveD(tab, null, "postop");
+                                savestr ~= postop.saveD(resstr, pos, tab, null, "postop");
                             }
                             break;
 
                         default:
-                            if (ptype == "postop") savestr ~= ".";
+                            if (ptype == "postop")
+                            {
+                                savePrint(resstr, pos, ".", pos);
+                            }
 
-                            savestr ~= this.operator;
+                            savePrint(resstr, pos, operator, operator_lexem.start);
                             if (!this.arguments.empty)
                             {
                                 bool first = true;
-                                auto f = this.arguments[0].saveD(-tab-1, null, this.type);
-                                
-                                if (f == "!")
-                                    savestr ~= "!(";
+                                if (this.arguments[0].type == "!")
+                                {
+                                    savePrint(resstr, pos, "!(", this.arguments[0].type_lexem.start);
+                                }
                                 else
                                 {
-                                    savestr ~= "(" ~ f;
-                                    first = false;
+                                    savePrint(resstr, pos, "(", open_lexem.start);
                                 }
 
-                                foreach(i, arg; this.arguments[1..$])
+                                foreach(i, arg; this.arguments)
                                 {
                                     if (arg.type == "!")
                                     {
                                         if (i+2 < arguments.length)
                                         {
                                             first = false;
-                                            savestr ~= ")(";
+                                            savePrint(resstr, pos, ")(", pos);
                                         }
                                         continue;
                                     }
                                     else if (first)
+                                    {
                                         first = false;
+                                    }
                                     else
-                                        savestr ~= ", ";
-                                    savestr ~= arg.saveD(-tab-1, null, this.type);
+                                        savePrint(resstr, pos, ", ", pos);
+                                    arg.saveD(resstr, pos, -tab-1, null, this.type);
                                 }
-                                savestr ~= ")";
+                                savePrint(resstr, pos, ")", close_lexem.start);
                             }
-                            else if (arguments !is null)
+                            else if (arguments !is null || type == "funcall")
                             {
-                                savestr ~= "()";
+                                savePrint(resstr, pos, "()", open_lexem.start);
                             }
 
                             if (ptype == "if" && postop !is null)
                             {
-                                savestr ~= ") ";
+                                savePrint(resstr, pos, ")", close_lexem.start);
                             }
                             else if (ptype == "case")
                             {
-                                savestr ~= ":";
+                                savePrint(resstr, pos, ":", pos);
                             }
 
                             bool body_;
@@ -1685,28 +2024,27 @@ class Expression
                             {
                                 if (postop.type == "body")
                                 {
-                                    savestr ~= postop.saveD(tab, null, this.type);
-                                    body_ = true;
-                                }
-                                else if (postop.type == "switch")
-                                {
-                                    savestr = postop.saveD(tab, null, "postop", savestr);
+                                    postop.saveD(resstr, pos, tab, null, this.type);
                                     body_ = true;
                                 }
                                 else if (ptype == "foreach")
                                 {
-                                    savestr = postop.saveD(-tab-1, null, this.type) ~ " " ~ savestr;
+                                    postop.saveD(resstr, pos, -tab-1, null, this.type);
                                 }
                                 else
-                                    savestr ~= (postop.operator != "[]"?".":"") ~ postop.saveD(-tab-1, null, this.type);
+                                {
+                                    if (postop.operator != "[]")
+                                    {
+                                        savePrint(resstr, pos, ".", pos);
+                                    }
+                                    postop.saveD(resstr, pos, -tab-1, null, this.type);
+                                }
                             }
 
                             if (ptype != "if" && ptype != "case" && !negtab && !body_)
                             {
-                                savestr = savestr ~ ";";
+                                savePrint(resstr, pos, ";", pos);
                             }
-                            if (ptype != "if" && ptype != "else" && ptype != "case")
-                                savestr = wrapWithSpaces(savestr, tabstr);
                             break;
                     }
                     break;
