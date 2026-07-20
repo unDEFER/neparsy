@@ -17,6 +17,7 @@ import std.range: repeat;
 import std.array;
 import std.string;
 import std.file;
+import std.ascii;
 
 import lexer;
 import iface;
@@ -27,12 +28,14 @@ struct BlockBE
     string end;
     string escape;
     bool nested;
+    bool exclude_end;
 }
 
 enum BlockType
 {
     Code = 0,
     String,
+    Character,
     Comment,
     File
 }
@@ -72,6 +75,11 @@ class Expression
     Position start_pos_val, end_pos_val;
     bool start_pos_calc, end_pos_calc;
 
+    Position start_comment_val;
+    uint[] start_comment_path;
+    bool start_comment_calc;
+    Lexem[] before_comments;
+
     Position start_pos()
     {
         if (start_pos_calc) return start_pos_val;
@@ -87,6 +95,53 @@ class Expression
 
         start_pos_val = pos;
         start_pos_calc = true;
+        return pos;
+    }
+
+    Position start_comment(out uint[] path)
+    {
+        if (start_comment_calc)
+        {
+            path = start_comment_path;
+            return start_comment_val;
+        }
+        Position pos;
+        foreach(i, comment_lexems; [open_lexem.comments, operator_lexem.comments, type_lexem.comments, close_lexem.comments])
+        {
+            foreach(com; comment_lexems)
+            {
+                Position spos = com.start;
+                if (pos.row == 0 || spos.row > 0 && spos < pos)
+                {
+                    pos = spos;
+                    path = [cast(uint) i];
+                }
+            }
+        }
+
+        uint[] mpath;
+        uint m;
+        foreach(i, arg; arguments)
+        {
+            uint[] spath;
+            Position spos = arg.start_comment(spath);
+            if (pos.row == 0 || spos.row > 0 && spos < pos)
+            {
+                pos = spos;
+                m = cast(uint) (i+1);
+                mpath = spath;
+            }
+        }
+
+        if (m > 0)
+        {
+            path = [m] ~ mpath;
+            //writefln("%s: %s, %s", this, path, pos);
+        }
+
+        start_comment_val = pos;
+        start_comment_path = path;
+        start_comment_calc = true;
         return pos;
     }
 
@@ -207,8 +262,13 @@ class Expression
             }
             else if ( line.startsWith(be.end) )
             {
+                char[] ret = sline[0..line.ptr - sline.ptr];
                 line = line[be.end.length .. $];
-                if (nest == 0) return sline[0..line.ptr - sline.ptr].idup;
+                if (!be.exclude_end)
+                {
+                    ret = sline[0..line.ptr - sline.ptr];
+                }
+                if (nest == 0) return ret.idup;
                 nest--;
             }
             else
@@ -244,15 +304,33 @@ class Expression
         return be;
     }
 
-    static bool startsWithDotBracket(char[] line, ParserState ps)
+    bool startsWithDotBracket(char[] line, ParserState ps)
     {
         if (line.startsWith(ps.dot))
         {
             line = line[ps.dot.length .. $];
-            while (!line.empty && (line[0] == ' ' || line[0] == '\n'))
+
+            WhileLineNotEmpty:
+            while (!line.empty)
             {
-                line.decodeFront();
+                if (line[0] == ' ' || line[0] == '\n')
+                {
+                    line.decodeFront();
+                    continue;
+                }
+
+                foreach(be; ps.comments)
+                {
+                    if ( line.startsWith(be.begin) )
+                    {
+                        string block = getBlock(line, be);
+                        continue WhileLineNotEmpty;
+                    }
+                }
+
+                break;
             }
+
             return line.startsWith(ps.brackets.begin);
         }
         return false;
@@ -262,22 +340,29 @@ class Expression
     {
         if (parent is null)
         {
+            ps.comments = [BlockBE("/*", "*/")];
+            ps.strings = [BlockBE("\"", "\"", "\\"), BlockBE("'", "'", "\\")];
+
             if (!nofile)
             {
                 bt = BlockType.File;
+                Lexem[] comments;
                 while (!line.empty)
                 {
                     auto ne = new Expression(line, ps, this);
+                    if (ne.bt == BlockType.Comment)
+                    {
+                        comments ~= Lexem(ne.operator, LexemType.Comment);
+                        continue;
+                    }
+
                     ne.parent = this;
                     ne.index = arguments.length;
+                    ne.open_lexem.comments = comments;
+                    comments = [];
                     arguments ~= ne;
                 }
                 return;
-            }
-            else
-            {
-                ps.comments = [BlockBE("/*", "*/")];
-                ps.strings = [BlockBE("\"", "\"", "\\"), BlockBE("'", "'", "\\")];
             }
         }
 
@@ -453,7 +538,7 @@ class Expression
             {
                 case "D":
                 case "Lexer":
-                    ps.comments = [BlockBE("//", "\n"), BlockBE("/*", "*/"), BlockBE("/+", "+/", null, true)];
+                    ps.comments = [BlockBE("//", "\n", null, false, true), BlockBE("/*", "*/"), BlockBE("/+", "+/", null, true)];
                     ps.strings = [BlockBE("\"", "\"", "\\"), BlockBE("'", "'", "\\")];
                     break;
                 default:
@@ -463,6 +548,7 @@ class Expression
 
         if (in_brackets)
         {
+            Lexem[] comments;
             while (!line.empty)
             {
                 if ( line.startsWith(ps.brackets.end) )
@@ -477,6 +563,13 @@ class Expression
                 else
                 {
                     auto ne = new Expression(line, ps, this);
+                    if (ne.bt == BlockType.Comment)
+                    {
+                        comments ~= Lexem(ne.operator, LexemType.Comment);
+                        continue;
+                    }
+                    ne.open_lexem.comments = comments;
+                    comments = [];
 
                     if (ne.operator == ps.dot && !ne.arguments.empty)
                     {
@@ -511,7 +604,21 @@ class Expression
         if (startsWithDotBracket(line, ps))
         {
             line = line[ps.dot.length .. $];
-            auto ne = new Expression(line, ps, this);
+            Expression ne;
+            Lexem[] comments;
+            while (true)
+            {
+                ne = new Expression(line, ps, this);
+                if (ne.bt == BlockType.Comment)
+                {
+                    writefln("HELLO %s", ne.operator);
+                    comments ~= Lexem(ne.operator, LexemType.Comment);
+                    continue;
+                }
+                break;
+            }
+
+            ne.open_lexem.comments = comments;
             ne.parent = this;
             ne.index = -1;
             postop = ne;
@@ -645,9 +752,85 @@ class Expression
                 (include_end && lexem.end.row > 0 ? "-" ~ ":" ~ lexem.end.row.text ~ ":" ~ lexem.end.col.text : "") : "");
     }
 
+    Lexem *get_lexem_by_path(uint[] path)
+    {
+        if (path.length == 0) return null;
+
+        Expression t = this;
+        foreach (p; path[0..$-1])
+        {
+            t = t.arguments[p-1];
+        }
+
+        switch (path[$-1])
+        {
+            case 0:
+                return &t.open_lexem;
+            case 1:
+                return &t.operator_lexem;
+            case 2:
+                return &t.type_lexem;
+            case 3:
+                return &t.close_lexem;
+            default:
+                assert(0);
+        }
+    }
+
     string save(ref ParserState ps, bool inp = false, int tab = 0, long[] cbr = null, bool force_brackets = false)
     {
         string savestr;
+        string comments;
+        uint[] path;
+        Position pos = start_comment(path);
+
+        if (before_comments is null && path.length > 1 && bt != BlockType.File && pos.row > 0 && pos.row < start_row())
+        {
+            Lexem *l = get_lexem_by_path(path);
+            before_comments = l.comments;
+            l.comments = null;
+        }
+
+        string[] types = ["OPEN", "OPERATOR", "TYPE", "CLOSE"];
+        foreach(i, comment_lexems; [before_comments, open_lexem.comments, operator_lexem.comments, type_lexem.comments, close_lexem.comments])
+        {
+            foreach(com; comment_lexems)
+            {
+                uint srow = com.start.row;
+                comments ~= (srow > ps.row ? '\n'.repeat(srow - ps.row).array ~ ' '.repeat(tab*4).array : "").idup;
+                if (srow > ps.row) ps.row = srow;
+
+                if (inp)
+                {
+                    if (i == 0)
+                    {
+                        comments ~= "/*" ~ path[0..$-1].map!(a => a.text).join("#") ~ "#" ~ types[path[$-1]] ~ lexem_lines(com, true) ~ "*/";
+                    }
+                    else
+                    {
+                        comments ~= "/*" ~ types[i-1] ~ lexem_lines(com, true) ~ "*/";
+                    }
+                }
+                else
+                {
+                    comments ~= com.text;
+                    string comment = com.text;
+                    while (1) {
+                        string newline = comment.find("\n");
+                        if (!newline.empty)
+                        {
+                            ps.row++;
+                            comment = newline;
+                            comment.decodeFront();
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
 
         uint srow = start_row();
         string prewhites = (srow > ps.row ? '\n'.repeat(srow - ps.row).array ~ ' '.repeat(tab*4).array : "").idup;
@@ -655,24 +838,10 @@ class Expression
 
         if (bt == BlockType.File)
         {            
+            ps.row = 1;
+            prewhites = "";
         }
-        else if (bt == BlockType.Comment)
-        {
-            savestr = (srow > ps.row ? '\n'.repeat(srow - ps.row).array ~ ' '.repeat(tab*4).array : "").idup;
-            if (srow > ps.row) ps.row = srow;
-
-            if (inp)
-            {
-                savestr ~= lexem_lines(operator_lexem, true);
-            }
-            else
-            {
-                savestr ~= operator;
-            }
-
-            return savestr;
-        }
-        else if (bt == BlockType.String)
+        else if (bt == BlockType.String || bt == BlockType.Character)
         {
             if (inp)
             {
@@ -726,7 +895,10 @@ class Expression
                 {
                     if (m == i)
                     {
-                        savestr ~= " " ~ ps.brackets.begin ~ ps.dot;
+                        uint arow = arg.start_row();
+                        string aprewhites = (arow > ps.row ? '\n'.repeat(arow - ps.row).array ~ ' '.repeat((tab+1)*4).array : " ").idup;
+                        if (arow > ps.row) ps.row = arow;
+                        savestr ~= aprewhites ~ ps.brackets.begin ~ ps.dot;
                     }
                 }
 
@@ -797,43 +969,57 @@ class Expression
             }
         }
 
-        return savestr;
+        return comments ~ savestr;
     }
 
-    static bool parse_position(ref string itext, out uint row, out uint col)
+    static bool parse_position(ref string itext, ref Position pos)
     {
         if (itext[0] != ':') return false;
         itext = itext[1..$];
-        row = parse!(uint, string)(itext);
+        pos.row = parse!(uint, string)(itext);
 
         if (itext[0] != ':') return false;
         itext = itext[1..$];
-        col = parse!(uint, string)(itext);
+        pos.col = parse!(uint, string)(itext);
         return true;
+    }
+
+    static bool parse_path(ref string itext, ref uint[] path)
+    {
+        if (itext[0..2] == "/*") itext = itext[2..$];
+        while ( itext[0].isDigit() )
+        {
+            path ~= parse!(uint, string)(itext);
+            if (itext[0] == '#') itext = itext[1..$];
+        }
+
+        string[] types = ["OPEN", "OPERATOR", "TYPE", "CLOSE"];
+
+        foreach (i, type; types)
+        {
+            if (itext.startsWith(type))
+            {
+                path ~= cast(uint) i;
+                itext = itext[type.length..$];
+                return true;
+            }
+        }
+        return false;
     }
 
     void merge_indent_info(ref Lexem a, ref Lexem i, ref Lexem ol, ref Lexem cl)
     {
-        uint row, col;
+        Position pos;
         string itext = i.text;
 
         if (itext.empty) return;
-        if ( parse_position(itext, row, col) )
-        {
-            a.start.row = row;
-            a.start.col = col;
-        }
+        parse_position(itext, a.start);
 
         if (itext.empty) return;
         if (itext[0] == '-')
         {
             itext = itext[1..$];
-
-            if ( parse_position(itext, row, col) )
-            {
-                a.end.row = row;
-                a.end.col = col;
-            }
+            parse_position(itext, a.end);
         }
 
         if (itext.empty) return;
@@ -841,24 +1027,19 @@ class Expression
         {
             itext = itext[1..$];
 
-            if ( parse_position(itext, row, col) )
+            if ( parse_position(itext, ol.start) )
             {
                 ol.text = "$";
-                ol.start.row = row;
-                ol.start.col = col;
             }
 
             if (itext[0] == '-')
             {
                 itext = itext[1..$];
 
-                if ( parse_position(itext, row, col) )
+                if ( parse_position(itext, cl.end) )
                 {
                     cl.text = "$";
-                    cl.start.row = row;
-                    cl.start.col = col;
-                    cl.end.row = row;
-                    cl.end.col = col;
+                    cl.start = cl.end;
                 }
             }
         }
@@ -868,6 +1049,39 @@ class Expression
     {
         merge_indent_info(operator_lexem, inp.operator_lexem, open_lexem, close_lexem);
         merge_indent_info(type_lexem, inp.type_lexem, open_lexem, close_lexem);
+
+        for (int i = 0; i < open_lexem.comments.length; i++)
+        {
+            Lexem com = open_lexem.comments[i];
+            Lexem icom = inp.open_lexem.comments[i];
+
+            string itext = icom.text;
+            uint[] path;
+            if ( !parse_path(itext, path) ) continue;
+            parse_position(itext, com.start);
+            if (itext[0] == '-')
+            {
+                itext = itext[1..$];
+                parse_position(itext, com.end);
+            }
+
+            if (path == [0])
+            {
+                open_lexem.comments[i] = com;
+                continue;
+            }
+
+            writefln("COM %s, path %s", com.text, path);
+            Lexem *l = get_lexem_by_path(path);
+            Lexem *il = inp.get_lexem_by_path(path);
+            l.comments ~= com;
+            il.comments ~= icom;
+
+            open_lexem.comments = open_lexem.comments[0..i] ~ open_lexem.comments[i+1..$];
+            inp.open_lexem.comments = inp.open_lexem.comments[0..i] ~ inp.open_lexem.comments[i+1..$];
+
+            i--;
+        }
 
         foreach(i, arg; this.arguments)
         {
@@ -912,7 +1126,36 @@ class Expression
         }
 
         resstr ~= str;
-        pos.col += str.length;
+
+        while (1) {
+            string newline = str.find("\n");
+            if (!newline.empty)
+            {
+                pos.row++;
+                pos.col = 1;
+                str = newline;
+                str.decodeFront();
+            }
+            else
+            {
+                pos.col += cast(uint) str.walkLength();
+                break;
+            }
+        }
+    }
+
+    void savePrint(ref string resstr, ref Position pos, Lexem[] comments)
+    {
+        foreach(com; comments)
+        {
+            savePrint(resstr, pos, com.text, com.start);
+        }
+    }
+
+    void savePrint(ref string resstr, ref Position pos, string str, Lexem lexem)
+    {
+        savePrint(resstr, pos, lexem.comments);
+        savePrint(resstr, pos, str, lexem.start);
     }
 
     string saveD(ref string resstr, ref Position pos, int tab = 0, Expression[] post = null, string ptype = null)
@@ -1008,7 +1251,7 @@ class Expression
                     }
                 }
 
-                savePrint(resstr, pos, this.operator, operator_lexem.start);
+                savePrint(resstr, pos, this.operator, operator_lexem);
 
                 foreach(arg; post ~ (postop is null ? [] : [postop]))
                 {
@@ -1046,7 +1289,7 @@ class Expression
                     if (!this.arguments.empty)
                         this.arguments[0].saveD(resstr, pos, -tab-1);
 
-                    savePrint(resstr, pos, this.operator, operator_lexem.start);
+                    savePrint(resstr, pos, this.operator, operator_lexem);
 
                     if (postop !is null)
                     {
@@ -1058,6 +1301,7 @@ class Expression
             default:
                 if (bt == BlockType.File)
                 {
+                    pos.row = 1;
                     foreach(i, arg; this.arguments)
                     {
                         arg.saveD(resstr, pos, tab, null, this.type);
@@ -1069,19 +1313,58 @@ class Expression
 
         if (!handled)
         {
+            long[] a, b, c;
+            foreach(i, arg; this.arguments)
+            {
+                if (arg.postop !is null && arg.postop.index < -1)
+                {
+                    a ~= i+arg.postop.index+1;
+                    b ~= i;
+                    c ~= 0;
+                }
+            }
+
+            Expression[] getPost(long i)
+            {
+                Expression[] e;
+
+                foreach(j, f; a)
+                {
+                    if (i >= f && i < b[j])
+                        e ~= this.arguments[b[j]].postop;
+                }
+
+                return e;
+            }
+
             if (bt == BlockType.Comment)
             {
-                savePrint(resstr, pos, this.operator, operator_lexem.start);
+                savePrint(resstr, pos, this.operator, operator_lexem);
+                string comment = this.operator;
+                while (1) {
+                    string newline = comment.find("\n");
+                    if (!newline.empty)
+                    {
+                        pos.row++;
+                        comment = newline;
+                        comment.decodeFront();
+                    }
+                    else
+                    {
+                        pos.col = cast(uint) comment.walkLength();
+                        break;
+                    }
+                }
             }
             else if (bt == BlockType.String)
             {
-                savePrint(resstr, pos, this.operator, operator_lexem.start);
+                savePrint(resstr, pos, this.operator, operator_lexem);
             }
             else switch(this.type)
             {
                 case "module":
-                    savePrint(resstr, pos, "module ", type_lexem.start);
-                    savePrint(resstr, pos, this.operator, operator_lexem.start);
+                    savePrint(resstr, pos, "module ", type_lexem);
+                    savePrint(resstr, pos, this.operator, operator_lexem);
                     savePrint(resstr, pos, ";", pos);
 
                     foreach(i, arg; this.arguments)
@@ -1091,23 +1374,39 @@ class Expression
                     break;
 
                 case "import":
-                    savePrint(resstr, pos, "import ", type_lexem.start);
-                    savePrint(resstr, pos, this.arguments[0].operator, this.arguments[0].operator_lexem.start);
+                    savePrint(resstr, pos, "import ", type_lexem);
+                    savePrint(resstr, pos, this.arguments[0].operator, this.arguments[0].operator_lexem);
 
                     if (!arguments[0].arguments.empty)
                     {
-                        savePrint(resstr, pos, ": ", pos);
-                        foreach (i, arg; arguments[0].arguments)
+                        auto args = arguments[0].arguments;
+                        auto farg = args[0];
+                        if (farg.type == "quote" && farg.arguments.length > 0 && farg.arguments[0].operator == ":")
+                        {
+                            savePrint(resstr, pos, farg.arguments[0].operator, farg.arguments[0].operator_lexem);
+                            args = args[1..$];
+                        }
+                        else
+                        {
+                            savePrint(resstr, pos, ":", pos);
+                        }
+
+                        foreach (i, arg; args)
                         {
                             if (i > 0)
                             {
                                 savePrint(resstr, pos, ", ", pos);
                             }
-                            savePrint(resstr, pos, arg.operator, arg.operator_lexem.start);
+                            savePrint(resstr, pos, arg.operator, arg.operator_lexem);
                             if (arg.postop !is null)
                             {
-                                savePrint(resstr, pos, " = ", pos);
-                                savePrint(resstr, pos, arg.postop.operator, arg.postop.operator_lexem.start);
+                                if (arg.postop.type == "quote" && arg.postop.arguments.length > 0 && arg.postop.arguments[0].operator == "=")
+                                {
+                                    savePrint(resstr, pos, arg.postop.arguments[0].operator, arg.postop.arguments[0].operator_lexem);
+                                    arg = arg.postop;
+                                }
+                                else savePrint(resstr, pos, " = ", pos);
+                                savePrint(resstr, pos, arg.postop.operator, arg.postop.operator_lexem);
                             }
                         }
                     }
@@ -1124,50 +1423,62 @@ class Expression
                     break;
 
                 case "init":
-                    savestr ~= " = "~this.operator;
+                    savePrint(resstr, pos, "=", type_lexem);
 
                     foreach(i, arg; this.arguments)
                     {
-                        savestr ~= arg.saveD(resstr, pos, -tab-1, null, this.type);
+                        arg.saveD(resstr, pos, -tab-1, null, this.type);
                     }
                     break;
 
                 case ":":
                     foreach(i, arg; this.arguments)
                     {
-                        savestr ~= arg.saveD(resstr, pos, -tab-1, null, this.type);
+                        arg.saveD(resstr, pos, -tab-1, null, this.type);
                     }
-                    savestr ~= this.type;
-                    savestr = wrapWithSpaces(savestr, tabstr, pos);
+                    savePrint(resstr, pos, type, type_lexem);
+                    break;
+
+                case "attr":
+                    foreach(i, arg; this.arguments)
+                    {
+                        arg.saveD(resstr, pos, -tab-1, null, this.type);
+                    }
+
+                    if (postop !is null)
+                    {
+                        postop.saveD(resstr, pos, -tab-1, null, this.type);
+                    }
                     break;
 
                 case "*":
                     foreach(i, arg; this.arguments)
                     {
-                        savestr ~= arg.saveD(resstr, pos, -tab-1, null, this.type);
+                        arg.saveD(resstr, pos, -tab-1, null, this.type);
                     }
-                    savestr ~= this.type;
-                    savestr = wrapWithSpaces(savestr, tabstr, pos);
+                    savePrint(resstr, pos, type, type_lexem);
                     break;
 
                 case "struct":
-                    savestr ~= beforeSpaces(tabstr, pos) ~ "struct "~this.operator~" {";
+                    savePrint(resstr, pos, "struct ", type_lexem);
+                    savePrint(resstr, pos, this.operator, operator_lexem);
+                    savePrint(resstr, pos, "{", open_lexem);
                     foreach(i, arg; this.arguments)
                     {
                         savestr ~= arg.saveD(resstr, pos, tab+1, null, this.type);
                     }
-                    savestr ~= afterSpaces(pos) ~ tabstr ~ "}";
+                    savePrint(resstr, pos, "}", close_lexem);
                     break;
 
                 case "class":
-                    savePrint(resstr, pos, "class ", type_lexem.start);
-                    savePrint(resstr, pos, this.operator, operator_lexem.start);
+                    savePrint(resstr, pos, "class ", type_lexem);
+                    savePrint(resstr, pos, this.operator, operator_lexem);
                     if (arguments[0].type == "superclass")
                     {
                         savePrint(resstr, pos, " :", pos);
                         arguments[0].saveD(resstr, pos, -tab-1, null, this.type);
                     }
-                    savePrint(resstr, pos, "{", open_lexem.start);
+                    savePrint(resstr, pos, "{", open_lexem);
 
                     foreach(i, arg; this.arguments)
                     {
@@ -1176,7 +1487,7 @@ class Expression
                             arg.saveD(resstr, pos, tab+1, null, this.type);
                         }
                     }
-                    savePrint(resstr, pos, "}", close_lexem.start);
+                    savePrint(resstr, pos, "}", close_lexem);
                     break;
 
                 case "function":
@@ -1184,40 +1495,13 @@ class Expression
                     savePrint(resstr, pos, " ", pos);
                     if (this.operator.empty)
                     {
-                        savePrint(resstr, pos, "function", type_lexem.start);
+                        savePrint(resstr, pos, "function", type_lexem);
                     }
                     else
                     {
-                        savePrint(resstr, pos, this.operator, operator_lexem.start);
+                        savePrint(resstr, pos, this.operator, operator_lexem);
                     }
-                    savePrint(resstr, pos, "(", open_lexem.start);
-
-                    long[] a, b, c;
-                    foreach(i, arg; this.arguments)
-                    {
-                        if (arg.postop !is null)
-                        {
-                            if (arg.postop.index < -1)
-                            {
-                                a ~= i+arg.postop.index+1;
-                                b ~= i;
-                                c ~= 0;
-                            }
-                        }
-                    }
-
-                    Expression[] getPost(long i)
-                    {
-                        Expression[] e;
-                        
-                        foreach(j, f; a)
-                        {
-                            if (i >= f && i < b[j])
-                                e ~= this.arguments[b[j]].postop;
-                        }
-
-                        return e;
-                    }
+                    savePrint(resstr, pos, "(", open_lexem);
 
                     if (this.arguments.length > 1)
                         this.arguments[1].saveD(resstr, pos, -tab-1, getPost(1), this.type);
@@ -1231,36 +1515,37 @@ class Expression
                     }
                     if (postop !is null)
                     {
-                        savePrint(resstr, pos, ")", close_lexem.start);
+                        savePrint(resstr, pos, ")", close_lexem);
                         postop.saveD(resstr, pos, tab, null, this.type);
                     }
                     else if (!negtab)
                     {
-                        savePrint(resstr, pos, ");", close_lexem.start);
+                        savePrint(resstr, pos, ");", close_lexem);
                     }
                     else
                     {
-                        savePrint(resstr, pos, ")", close_lexem.start);
+                        savePrint(resstr, pos, ")", close_lexem);
                     }
                     break;
 
                 case "body":
                 case "{":
                     if (this.arguments.length > 1 || open_lexem.start.row > 0 || type_lexem.start.row > 0)
-                        savePrint(resstr, pos, "{", open_lexem.start.row > 0 ? open_lexem.start : type_lexem.start);
+                        savePrint(resstr, pos, "{", open_lexem.start.row > 0 ? open_lexem : type_lexem);
                     foreach(i, arg; this.arguments)
                     {
-                        arg.saveD(resstr, pos, tab+1, null, this.type);
+                        writefln("THIS %s, ARG#%s %s POST %s", this, i, arg, getPost(i));
+                        arg.saveD(resstr, pos, tab+1, getPost(i), this.type);
                     }
                     if (this.arguments.length > 1 || close_lexem.start.row > 0)
-                        savePrint(resstr, pos, "}", close_lexem.start);
+                        savePrint(resstr, pos, "}", close_lexem);
                     break;
 
                 case "return":
                 case "break":
                 case "continue":
                 case "goto":
-                    savePrint(resstr, pos, type, type_lexem.start);
+                    savePrint(resstr, pos, type, type_lexem);
                     if (!this.arguments.empty)
                     {
                         this.arguments[0].saveD(resstr, pos, -tab-1, null, this.type);
@@ -1300,34 +1585,41 @@ class Expression
                     break;
 
                 case "do":
-                    savePrint(resstr, pos, type, type_lexem.start);
+                    savePrint(resstr, pos, type, type_lexem);
                     if (postop !is null)
                     {
                         postop.saveD(resstr, pos, tab);
                     }
-                    savePrint(resstr, pos, "while (", postop.postop.type_lexem.start);
+                    savePrint(resstr, pos, "while (", postop.postop.type_lexem);
                     postop.postop.saveD(resstr, pos, -tab-1, null, this.type);
-                    savePrint(resstr, pos, ");", postop.postop.close_lexem.start);
+                    savePrint(resstr, pos, ");", postop.postop.close_lexem);
                     break;
 
                 case "foreach":
-                    savestr ~= beforeSpaces(tabstr, pos) ~ this.type ~ " (";
+                    savePrint(resstr, pos, type, type_lexem);
+                    savePrint(resstr, pos, "(", open_lexem);
                     if (!this.arguments[0].operator.empty)
-                        savestr ~= this.arguments[0].saveD(resstr, pos, -tab-1, null, this.type) ~ ", ";
-                    savestr ~= this.arguments[1].saveD(resstr, pos, -tab-1, null, this.type) ~ "; ";
-                    savestr ~= this.arguments[2].saveD(resstr, pos, -tab-1, null, this.type) ~ ")";
+                    {
+                        this.arguments[0].saveD(resstr, pos, -tab-1, null, this.type);
+                        savePrint(resstr, pos, ",", pos);
+                    }
+                    this.arguments[1].saveD(resstr, pos, -tab-1, null, this.type);
+                    savePrint(resstr, pos, ";", pos);
+                    this.arguments[2].saveD(resstr, pos, -tab-1, null, this.type);
+                    savePrint(resstr, pos, ")", close_lexem);
+
                     if (postop !is null)
                     {
-                        savestr ~= postop.saveD(resstr, pos, tab, null, this.type);
+                        postop.saveD(resstr, pos, tab, null, this.type);
                     }
-                    savestr ~= afterSpaces(pos);
                     break;
 
                 case "if":
-                    savePrint(resstr, pos, "if (", type_lexem.start);
+                    savePrint(resstr, pos, "if", type_lexem);
+                    savePrint(resstr, pos, "(", arguments[0].open_lexem);
                     if (!operator.empty)
                     {
-                        savePrint(resstr, pos, operator ~ " == ", operator_lexem.start);
+                        savePrint(resstr, pos, operator ~ " == ", operator_lexem);
                     }
 
                     this.arguments[0].saveD(resstr, pos, tab, null, this.type);
@@ -1342,7 +1634,7 @@ class Expression
                         }
                         else if (arg.type == "else")
                         {
-                            savePrint(resstr, pos, "else", arg.type_lexem.start);
+                            savePrint(resstr, pos, "else", arg.type_lexem);
                             arg.saveD(resstr, pos, tab, null, "else");
                             or_need = false;
                         }
@@ -1351,12 +1643,12 @@ class Expression
                             if (arg.arguments.length > 0 && arg.arguments[0].operator == "else")
                             {
                                 else_if_quoted++;
-                                savePrint(resstr, pos, "else", arg.arguments[0].operator_lexem.start);
+                                savePrint(resstr, pos, "else", arg.arguments[0].operator_lexem);
                             }
                             if (arg.arguments.length > 1 && arg.arguments[1].operator == "if")
                             {
                                 else_if_quoted++;
-                                savePrint(resstr, pos, "if", arg.arguments[1].operator_lexem.start);
+                                savePrint(resstr, pos, "if", arg.arguments[1].operator_lexem);
                             }
                         }
                         else if (or_need)
@@ -1364,7 +1656,7 @@ class Expression
                             savePrint(resstr, pos, " || ", pos);
                             if (!operator.empty)
                             {
-                                savePrint(resstr, pos, operator ~ " == ", operator_lexem.start);
+                                savePrint(resstr, pos, operator ~ " == ", operator_lexem);
                             }
                             arg.saveD(resstr, pos, tab, null, this.type);
                             or_need = arg.postop is null;
@@ -1372,14 +1664,14 @@ class Expression
                         else
                         {
                             if (else_if_quoted < 1)
-                                savePrint(resstr, pos, "else ", type_lexem.start);
+                                savePrint(resstr, pos, "else ", type_lexem);
                             if (else_if_quoted < 2)
-                                savePrint(resstr, pos, "if ", type_lexem.start);
+                                savePrint(resstr, pos, "if ", type_lexem);
 
-                            savePrint(resstr, pos, "(", arg.open_lexem.start);
+                            savePrint(resstr, pos, "(", arg.open_lexem);
                             if (!operator.empty)
                             {
-                                savePrint(resstr, pos, operator ~ " == ", operator_lexem.start);
+                                savePrint(resstr, pos, operator ~ " == ", operator_lexem);
                             }
                             arg.saveD(resstr, pos, tab, null, this.type);
                             or_need = arg.postop is null;
@@ -1389,15 +1681,15 @@ class Expression
                     break;
 
                 case "switch":
-                    savePrint(resstr, pos, type, type_lexem.start);
-                    savePrint(resstr, pos, "(", open_lexem.start);
+                    savePrint(resstr, pos, type, type_lexem);
+                    savePrint(resstr, pos, "(", open_lexem);
 
                     foreach(i, arg; this.arguments)
                     {
                         arg.saveD(resstr, pos, -tab-1, null, this.type);
                     }
 
-                    savePrint(resstr, pos, ")", close_lexem.start);
+                    savePrint(resstr, pos, ")", close_lexem);
 
                     if (postop !is null)
                     {
@@ -1423,7 +1715,7 @@ class Expression
                                     }
                                     else
                                     {
-                                        arg.postop.saveD(resstr, pos, -tab-1);
+                                        arg.postop.saveD(resstr, pos, -tab-1, null, "var");
                                     }
                                 }
                                 else if (ptype != "ctype" && this.index <= arg.index && this.index > arg.index + arg.postop.index + 1)
@@ -1443,7 +1735,7 @@ class Expression
                             }
                             else
                             {
-                                savestr = postop.saveD(resstr, pos, -tab-1) ~ " " ~ savestr;
+                                postop.saveD(resstr, pos, -tab-1);
                             }
                         }
                     }
@@ -1506,6 +1798,8 @@ class Expression
                         }
                     }
 
+                    savePrint(resstr, pos, operator, operator_lexem);
+
                     if (parent !is null && index >= 0 && parent.arguments.length > index)
                     {
                         foreach(i, arg; parent.arguments[index..$])
@@ -1541,8 +1835,6 @@ class Expression
                         }
                     }
 
-                    savePrint(resstr, pos, operator, operator_lexem.start);
-
                     if (!negtab)
                     {
                         savePrint(resstr, pos, ";", pos);
@@ -1551,7 +1843,7 @@ class Expression
 
                 case "case":
                 case "default":
-                    savePrint(resstr, pos, type, type_lexem.start);
+                    savePrint(resstr, pos, type, type_lexem);
                     if (arguments.length > 0)
                         this.arguments[0].saveD(resstr, pos, -tab-1, null, "op");
                     savePrint(resstr, pos, ":", pos);
@@ -1566,7 +1858,7 @@ class Expression
                         {
                             if (arg.type == "quote" && arg.arguments[0].operator == this.type)
                             {
-                                savePrint(resstr, pos, this.type, arg.arguments[0].operator_lexem.start);
+                                savePrint(resstr, pos, this.type, arg.arguments[0].operator_lexem);
                                 quoted_op = true;
                             }
                             else
@@ -1579,13 +1871,13 @@ class Expression
                                 {
                                     //savestr = "(" ~ savestr ~ ")";
                                     if (!quoted_op)
-                                        savePrint(resstr, pos, this.type, type_lexem.start);
+                                        savePrint(resstr, pos, this.type, type_lexem);
                                     arg.saveD(resstr, pos, -tab-1, null, "op");
                                 }
                                 else
                                 {
                                     if (!quoted_op)
-                                        savePrint(resstr, pos, this.type, type_lexem.start);
+                                        savePrint(resstr, pos, this.type, type_lexem);
                                     arg.saveD(resstr, pos, -tab-1, null, "op");
                                 }
                                 quoted_op = false;
@@ -1614,7 +1906,7 @@ class Expression
                     break;
 
                 case "[":
-                    savePrint(resstr, pos, "[", open_lexem.start);
+                    savePrint(resstr, pos, "[", open_lexem);
                     if (!arguments.empty)
                     {
                         bool quoted_sep;
@@ -1624,24 +1916,24 @@ class Expression
                         {
                             if (arg.type == "quote" && arg.arguments[0].operator == sep)
                             {
-                                savePrint(resstr, pos, sep, arg.arguments[0].operator_lexem.start);
+                                savePrint(resstr, pos, sep, arg.arguments[0].operator_lexem);
                                 quoted_sep = true;
                             }
                             else
                             {
                                 if (arg.operator == "..") sep = "";
                                 if (!quoted_sep && !sep.empty)
-                                    savePrint(resstr, pos, sep, operator_lexem.start);
+                                    savePrint(resstr, pos, sep, operator_lexem);
                                 arg.saveD(resstr, pos, -tab-1, null, "op");
                                 quoted_sep = false;
                             }
                         }
                     }
-                    savePrint(resstr, pos, "]", close_lexem.start);
+                    savePrint(resstr, pos, "]", close_lexem);
 
                     if (ptype == "if" && postop !is null)
                     {
-                        savePrint(resstr, pos, ")", close_lexem.start);
+                        savePrint(resstr, pos, ")", close_lexem);
                     }
 
                     if (postop !is null)
@@ -1683,7 +1975,7 @@ class Expression
                     break;
 
                 case "new":
-                    savePrint(resstr, pos, this.type, type_lexem.start);
+                    savePrint(resstr, pos, this.type, type_lexem);
                     if (!this.arguments.empty)
                     {
                         this.arguments[0].saveD(resstr, pos, -tab-1, null, this.type);
@@ -1708,24 +2000,22 @@ class Expression
                     break;
 
                 case "cast":
-                    savestr ~= "(" ~ this.type;
-                    if (!this.arguments.empty)
+                    savePrint(resstr, pos, "cast", type_lexem);
+                    savePrint(resstr, pos, "(", open_lexem);
+                    if (this.arguments.length >= 2)
                     {
-                        savestr ~= "(" ~ this.arguments[0].saveD(resstr, pos, -tab-1, null, this.type);
-                        foreach(i, arg; this.arguments[1..$])
-                        {
-                            savestr ~= ") (" ~ arg.saveD(resstr, pos, -tab-1, null, this.type);
-                        }
-                        savestr ~= "))";
+                        this.arguments[0].saveD(resstr, pos, -tab-1, null, this.type);
+                        savePrint(resstr, pos, ")", close_lexem);
+                        this.arguments[1].saveD(resstr, pos, -tab-1, null, this.type);
                     }
 
                     if (ptype == "if" && postop !is null)
                     {
-                        savestr ~= ") ";
+                        savePrint(resstr, pos, ")", close_lexem);
                     }
                     else if (ptype == "case")
                     {
-                        savestr ~= ":";
+                        savePrint(resstr, pos, ":", pos);
                     }
 
                     bool body_;
@@ -1733,27 +2023,28 @@ class Expression
                     {
                         if (postop.type == "body")
                         {
-                            savestr ~= postop.saveD(resstr, pos, tab, null, this.type);
+                            postop.saveD(resstr, pos, tab, null, this.type);
                             body_ = true;
                         }
                         else
-                            savestr ~= (postop.operator != "[]"?".":"") ~ postop.saveD(resstr, pos, -tab-1, null, this.type);
+                        {
+                            if (postop.operator != "[]")
+                            {
+                                savePrint(resstr, pos, ".", pos);
+                            }
+
+                            postop.saveD(resstr, pos, -tab-1, null, this.type);
+                        }
                     }
 
                     if (ptype != "if" && ptype != "case" && !negtab && !body_)
                     {
-                        savestr = savestr ~ ";";
+                        savePrint(resstr, pos, ";", pos);
                     }
-                    if (ptype != "if" && ptype != "else" && ptype != "case")
-                        savestr = wrapWithSpaces(savestr, tabstr, pos);
                     break;
 
                 case "noop":
-                    savestr ~= "{}";
-                    if (!negtab)
-                    {
-                        savestr = wrapWithSpaces(savestr, tabstr, pos);
-                    }
+                    savePrint(resstr, pos, "{}", pos);
                     break;
 
                 case "?":
@@ -1804,13 +2095,13 @@ class Expression
                         case "!in":
                             if (!(!negtab && postop is null) && ptype == "op" && open_lexem.start.row > 0)
                             {
-                                savePrint(resstr, pos, "(", open_lexem.start);
+                                savePrint(resstr, pos, "(", open_lexem);
                             }
 
                             if (!arguments.empty)
                             {
                                 if (type == "unary")
-                                    savePrint(resstr, pos, operator, operator_lexem.start);
+                                    savePrint(resstr, pos, operator, operator_lexem);
 
                                 bool quoted_op;
                                 this.arguments[0].saveD(resstr, pos, -tab-1, null, this.operator == "=" && arguments[0].type != "unary"?"var":"op");
@@ -1818,30 +2109,30 @@ class Expression
                                 {
                                     if (arg.type == "quote" && arg.arguments[0].operator == operator)
                                     {
-                                        savePrint(resstr, pos, operator, arg.arguments[0].operator_lexem.start);
+                                        savePrint(resstr, pos, operator, arg.arguments[0].operator_lexem);
                                         quoted_op = true;
                                     }
                                     else
                                     {
                                         if (!quoted_op)
-                                            savePrint(resstr, pos, operator, operator_lexem.start);
+                                            savePrint(resstr, pos, operator, operator_lexem);
                                         arg.saveD(resstr, pos, -tab-1, null, "op");
                                         quoted_op = false;
                                     }
                                 }
 
                                 if (type == "type")
-                                    savePrint(resstr, pos, operator, operator_lexem.start);
+                                    savePrint(resstr, pos, operator, operator_lexem);
                             }
 
                             if (!(!negtab && postop is null) && ptype == "op" && close_lexem.start.row > 0)
                             {
-                                savePrint(resstr, pos, ")", close_lexem.start);
+                                savePrint(resstr, pos, ")", close_lexem);
                             }
 
                             if (ptype == "if" && postop !is null && close_lexem.start.row > 0)
                             {
-                                savePrint(resstr, pos, ")", close_lexem.start);
+                                savePrint(resstr, pos, ")", close_lexem);
                             }
 
                             if (postop !is null)
@@ -1877,21 +2168,21 @@ class Expression
                         case "!":
                             if (!(!negtab && postop is null) && ptype == "op" && open_lexem.start.row > 0)
                             {
-                                savePrint(resstr, pos, "(", open_lexem.start);
+                                savePrint(resstr, pos, "(", open_lexem);
                             }
 
-                            savePrint(resstr, pos, this.operator, operator_lexem.start);
+                            savePrint(resstr, pos, this.operator, operator_lexem);
                             if (!arguments.empty)
                                 this.arguments[0].saveD(resstr, pos, -tab-1, null, "op");
 
                             if (!(!negtab && postop is null) && ptype == "op" && close_lexem.start.row > 0)
                             {
-                                savePrint(resstr, pos, ")", close_lexem.start);
+                                savePrint(resstr, pos, ")", close_lexem);
                             }
 
                             if (ptype == "if" && postop !is null && close_lexem.start.row > 0)
                             {
-                                savePrint(resstr, pos, ")", close_lexem.start);
+                                savePrint(resstr, pos, ")", close_lexem);
                             }
 
                             if (postop !is null)
@@ -1913,17 +2204,17 @@ class Expression
                             }
 
                             if (type != "type")
-                                savePrint(resstr, pos, "[", open_lexem.start);
+                                savePrint(resstr, pos, "[", open_lexem);
 
                             if (!this.arguments.empty)
                             {
                                 this.arguments[0].saveD(resstr, pos, -tab-1, null, this.type);
                                 if (type == "type")
                                 {
-                                    savePrint(resstr, pos, "[", open_lexem.start);
+                                    savePrint(resstr, pos, "[", open_lexem);
                                     if (this.arguments.length >= 2)
                                         this.arguments[1].saveD(resstr, pos, -tab-1, null, this.type);
-                                    savePrint(resstr, pos, "]", close_lexem.start);
+                                    savePrint(resstr, pos, "]", close_lexem);
                                 }
                                 else
                                 {
@@ -1938,7 +2229,7 @@ class Expression
                             }
 
                             if (type != "type")
-                                savePrint(resstr, pos, "]", open_lexem.start);
+                                savePrint(resstr, pos, "]", open_lexem);
 
                             if (postop !is null)
                             {
@@ -1952,7 +2243,7 @@ class Expression
 
                         case "false":
                         case "true":
-                            savePrint(resstr, pos, operator, operator_lexem.start);
+                            savePrint(resstr, pos, operator, operator_lexem);
 
                             if (ptype == "if" && postop !is null)
                             {
@@ -1971,17 +2262,17 @@ class Expression
                                 savePrint(resstr, pos, ".", pos);
                             }
 
-                            savePrint(resstr, pos, operator, operator_lexem.start);
+                            savePrint(resstr, pos, operator, operator_lexem);
                             if (!this.arguments.empty)
                             {
                                 bool first = true;
                                 if (this.arguments[0].type == "!")
                                 {
-                                    savePrint(resstr, pos, "!(", this.arguments[0].type_lexem.start);
+                                    savePrint(resstr, pos, "!(", this.arguments[0].type_lexem);
                                 }
                                 else
                                 {
-                                    savePrint(resstr, pos, "(", open_lexem.start);
+                                    savePrint(resstr, pos, "(", open_lexem);
                                 }
 
                                 foreach(i, arg; this.arguments)
@@ -2003,16 +2294,16 @@ class Expression
                                         savePrint(resstr, pos, ", ", pos);
                                     arg.saveD(resstr, pos, -tab-1, null, this.type);
                                 }
-                                savePrint(resstr, pos, ")", close_lexem.start);
+                                savePrint(resstr, pos, ")", close_lexem);
                             }
                             else if (arguments !is null || type == "funcall")
                             {
-                                savePrint(resstr, pos, "()", open_lexem.start);
+                                savePrint(resstr, pos, "()", open_lexem);
                             }
 
                             if (ptype == "if" && postop !is null)
                             {
-                                savePrint(resstr, pos, ")", close_lexem.start);
+                                savePrint(resstr, pos, ")", close_lexem);
                             }
                             else if (ptype == "case")
                             {

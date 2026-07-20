@@ -43,6 +43,7 @@ struct Lexem
     LexemType type;
     Position start;
     Position end;
+    Lexem[] comments;
 }
 
 struct Lexer {
@@ -56,7 +57,7 @@ struct Lexer {
         return isWhite(chr);
     }
 
-    void getLexem()
+    void getLexemRaw()
     {
         lexem.text = file;
         Lexer  back;
@@ -648,6 +649,23 @@ struct Lexer {
         }
         writefln("%s %s", lexem, chr);
         assert(0);
+    }
+
+    void getLexem()
+    {
+        lexem.comments = null;
+        Lexem[] comments;
+        
+        do
+        {
+            getLexemRaw();
+            if (lexem.type == LexemType.Comment)
+            {
+                comments ~= lexem;
+            }
+        } while (lexem.type == LexemType.Blank || lexem.type == LexemType.Comment);
+
+        lexem.comments = comments;
     }
 
     void nextChr()
