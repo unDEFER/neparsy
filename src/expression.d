@@ -843,13 +843,14 @@ class Expression
         }
         else if (bt == BlockType.String || bt == BlockType.Character)
         {
+            auto bbe = ps.brackets;
             if (inp)
             {
-                savestr ~= lexem_lines(operator_lexem, true);
+                savestr ~= lexem_lines(operator_lexem, true) ~ (this.type.empty ? "" : ps.sharp ~ lexem_lines(type_lexem));
             }
             else
             {
-                savestr ~= operator;
+                savestr ~= operator ~ (this.type.empty ? "" : ps.sharp ~ escape(type, bbe));
             }
         }
         else
@@ -1186,7 +1187,7 @@ class Expression
                     break;
                 }
 
-                foreach(i, arg; this.arguments)
+                foreach_reverse(i, arg; this.arguments)
                 {
                     arg.saveD(resstr, pos, -tab-1);
                 }
@@ -1273,12 +1274,11 @@ class Expression
                 break;
 
             case "enum":
-                savestr ~= beforeSpaces(tabstr, pos) ~ this.operator;
+                savePrint(resstr, pos, this.operator, operator_lexem);
                 foreach(i, arg; post ~ (postop is null ? [] : [postop]))
                 {
-                    savestr =  savestr ~ arg.saveD(resstr, pos, tab);
+                    arg.saveD(resstr, pos, tab);
                 }
-                savestr ~= afterSpaces(pos);
                 break;
 
             case "var":
@@ -1356,10 +1356,6 @@ class Expression
                     }
                 }
             }
-            else if (bt == BlockType.String)
-            {
-                savePrint(resstr, pos, this.operator, operator_lexem);
-            }
             else switch(this.type)
             {
                 case "module":
@@ -1414,20 +1410,34 @@ class Expression
                     break;
 
                 case "enum":
-                    savestr ~= beforeSpaces(tabstr, pos) ~ "enum "~this.operator~" {";
+                    savePrint(resstr, pos, "enum", type_lexem);
+                    savePrint(resstr, pos, this.operator, operator_lexem);
+                    savePrint(resstr, pos, "{", open_lexem);
                     foreach(i, arg; this.arguments)
                     {
-                        savestr ~= arg.saveD(resstr, pos, tab+1, null, this.type) ~ ( i < this.arguments.length-1 ? ", " : "" );
+                        arg.saveD(resstr, pos, tab+1, null, this.type);
+                        if (i < this.arguments.length-1)
+                            savePrint(resstr, pos, ",", pos);
                     }
-                    savestr ~= tabstr ~ "}" ~ afterSpaces(pos);
+                    savePrint(resstr, pos, "}", close_lexem);
                     break;
 
                 case "init":
                     savePrint(resstr, pos, "=", type_lexem);
+                    savePrint(resstr, pos, operator, operator_lexem);
 
-                    foreach(i, arg; this.arguments)
+                    if (this.arguments.length > 0)
                     {
-                        arg.saveD(resstr, pos, -tab-1, null, this.type);
+                        savePrint(resstr, pos, "(", open_lexem);
+                        foreach(i, arg; this.arguments)
+                        {
+                            if (i > 0)
+                            {
+                                savePrint(resstr, pos, ",", pos);
+                            }
+                            arg.saveD(resstr, pos, -tab-1, null, this.type);
+                        }
+                        savePrint(resstr, pos, ")", close_lexem);
                     }
                     break;
 
@@ -1534,7 +1544,6 @@ class Expression
                         savePrint(resstr, pos, "{", open_lexem.start.row > 0 ? open_lexem : type_lexem);
                     foreach(i, arg; this.arguments)
                     {
-                        writefln("THIS %s, ARG#%s %s POST %s", this, i, arg, getPost(i));
                         arg.saveD(resstr, pos, tab+1, getPost(i), this.type);
                     }
                     if (this.arguments.length > 1 || close_lexem.start.row > 0)
@@ -1616,7 +1625,7 @@ class Expression
 
                 case "if":
                     savePrint(resstr, pos, "if", type_lexem);
-                    savePrint(resstr, pos, "(", arguments[0].open_lexem);
+                    savePrint(resstr, pos, "(", open_lexem);
                     if (!operator.empty)
                     {
                         savePrint(resstr, pos, operator ~ " == ", operator_lexem);
@@ -1624,8 +1633,14 @@ class Expression
 
                     this.arguments[0].saveD(resstr, pos, tab, null, this.type);
 
+                    savePrint(resstr, pos, ")", close_lexem);
+
+                    if (arguments[0].postop !is null)
+                        arguments[0].postop.saveD(resstr, pos, tab, null);
+
                     bool or_need = arguments[0].postop is null;
                     ubyte else_if_quoted = 0;
+                    Expression quote_expr;
                     foreach(i, arg; this.arguments[1..$])
                     {
                         if (arg.bt == BlockType.Comment)
@@ -1649,6 +1664,7 @@ class Expression
                             {
                                 else_if_quoted++;
                                 savePrint(resstr, pos, "if", arg.arguments[1].operator_lexem);
+                                quote_expr = arg;
                             }
                         }
                         else if (or_need)
@@ -1668,12 +1684,22 @@ class Expression
                             if (else_if_quoted < 2)
                                 savePrint(resstr, pos, "if ", type_lexem);
 
-                            savePrint(resstr, pos, "(", arg.open_lexem);
+                            if (else_if_quoted >= 2)
+                                savePrint(resstr, pos, "(", quote_expr.open_lexem);
+                            else
+                                savePrint(resstr, pos, "(", pos);
+
                             if (!operator.empty)
                             {
                                 savePrint(resstr, pos, operator ~ " == ", operator_lexem);
                             }
                             arg.saveD(resstr, pos, tab, null, this.type);
+                            if (else_if_quoted >= 2)
+                                savePrint(resstr, pos, ")", quote_expr.close_lexem);
+                            else
+                                savePrint(resstr, pos, ")", pos);
+                            if (arg.postop !is null)
+                                arg.postop.saveD(resstr, pos, tab, null);
                             or_need = arg.postop is null;
                             else_if_quoted = 0;
                         }
@@ -1885,16 +1911,12 @@ class Expression
                         }
                     }
 
-                    if (ptype == "if" && postop !is null)
-                    {
-                        savePrint(resstr, pos, ")", pos);
-                    }
-                    else if (ptype == "case")
+                    if (ptype == "case")
                     {
                         savePrint(resstr, pos, ":", pos);
                     }
 
-                    if (postop !is null)
+                    if (ptype != "if" && postop !is null)
                     {
                         postop.saveD(resstr, pos, tab, null, "op");
                     }
@@ -1931,12 +1953,7 @@ class Expression
                     }
                     savePrint(resstr, pos, "]", close_lexem);
 
-                    if (ptype == "if" && postop !is null)
-                    {
-                        savePrint(resstr, pos, ")", close_lexem);
-                    }
-
-                    if (postop !is null)
+                    if (ptype != "if" && postop !is null)
                     {
                         postop.saveD(resstr, pos, tab, null, "op");
                     }
@@ -1956,12 +1973,7 @@ class Expression
                     }
                     savestr ~= "\"";
 
-                    if (ptype == "if" && postop !is null)
-                    {
-                        savestr ~= ") ";
-                    }
-
-                    if (postop !is null)
+                    if (ptype != "if" && postop !is null)
                     {
                         savestr ~= postop.saveD(resstr, pos, tab, null, "op");
                     }
@@ -2009,17 +2021,13 @@ class Expression
                         this.arguments[1].saveD(resstr, pos, -tab-1, null, this.type);
                     }
 
-                    if (ptype == "if" && postop !is null)
-                    {
-                        savePrint(resstr, pos, ")", close_lexem);
-                    }
-                    else if (ptype == "case")
+                    if (ptype == "case")
                     {
                         savePrint(resstr, pos, ":", pos);
                     }
 
                     bool body_;
-                    if (postop !is null)
+                    if (ptype != "if" && postop !is null)
                     {
                         if (postop.type == "body")
                         {
@@ -2050,7 +2058,21 @@ class Expression
                 case "?":
                     if (arguments.length >= 3)
                     {
-                        savestr ~= "(" ~ arguments[0].saveD(resstr, pos, -tab-1, null, "op") ~ " ? " ~ arguments[1].saveD(resstr, pos, -tab-1, null, "op") ~ " : " ~ arguments[2].saveD(resstr, pos, -tab-1, null, "op") ~ ")";
+                        if (open_lexem.start.row > 0) savePrint(resstr, pos, "(", open_lexem);
+                        arguments[0].saveD(resstr, pos, -tab-1, null, "op");
+                        savePrint(resstr, pos, "?", type_lexem);
+                        arguments[1].saveD(resstr, pos, -tab-1, null, "op");
+                        if (arguments[2].type == "quote" && arguments[2].arguments[0].operator == ":")
+                        {
+                            savePrint(resstr, pos, ":", arguments[2].arguments[0].operator_lexem);
+                            arguments[3].saveD(resstr, pos, -tab-1, null, "op");
+                        }
+                        else
+                        {
+                            savePrint(resstr, pos, ":", pos);
+                            arguments[2].saveD(resstr, pos, -tab-1, null, "op");
+                        }
+                        if (close_lexem.start.row > 0) savePrint(resstr, pos, ")", close_lexem);
                     }
                     break;
 
@@ -2130,12 +2152,7 @@ class Expression
                                 savePrint(resstr, pos, ")", close_lexem);
                             }
 
-                            if (ptype == "if" && postop !is null && close_lexem.start.row > 0)
-                            {
-                                savePrint(resstr, pos, ")", close_lexem);
-                            }
-
-                            if (postop !is null)
+                            if (ptype != "if" && postop !is null)
                             {
                                 postop.saveD(resstr, pos, tab, null, "postop");
                             }
@@ -2150,19 +2167,19 @@ class Expression
                         case "--":
                             if (type == "post")
                             {
-                                savestr = arguments[0].saveD(resstr, pos, -tab-1, null, "op") ~ operator;
+                                arguments[0].saveD(resstr, pos, -tab-1, null, "op");
+                                savePrint(resstr, pos, operator, operator_lexem);
                             }
                             else
                             {
-                                savestr = operator ~ arguments[0].saveD(resstr, pos, -tab-1, null, "op");
+                                savePrint(resstr, pos, operator, operator_lexem);
+                                arguments[0].saveD(resstr, pos, -tab-1, null, "op");
                             }
 
                             if (ptype != "if" && !negtab && postop is null)
                             {
-                                savestr = savestr ~ ";";
+                                savePrint(resstr, pos, ";", pos);
                             }
-                            if (ptype != "if" && ptype != "else")
-                                savestr = wrapWithSpaces(savestr, tabstr, pos);
                             break;
 
                         case "!":
@@ -2180,12 +2197,7 @@ class Expression
                                 savePrint(resstr, pos, ")", close_lexem);
                             }
 
-                            if (ptype == "if" && postop !is null && close_lexem.start.row > 0)
-                            {
-                                savePrint(resstr, pos, ")", close_lexem);
-                            }
-
-                            if (postop !is null)
+                            if (ptype != "if" && postop !is null)
                             {
                                 postop.saveD(resstr, pos, tab, null, "postop");
                             }
@@ -2245,12 +2257,7 @@ class Expression
                         case "true":
                             savePrint(resstr, pos, operator, operator_lexem);
 
-                            if (ptype == "if" && postop !is null)
-                            {
-                                savePrint(resstr, pos, ")", pos);
-                            }
-
-                            if (postop !is null)
+                            if (ptype != "if" && postop !is null)
                             {
                                 savestr ~= postop.saveD(resstr, pos, tab, null, "postop");
                             }
@@ -2301,17 +2308,13 @@ class Expression
                                 savePrint(resstr, pos, "()", open_lexem);
                             }
 
-                            if (ptype == "if" && postop !is null)
-                            {
-                                savePrint(resstr, pos, ")", close_lexem);
-                            }
-                            else if (ptype == "case")
+                            if (ptype == "case")
                             {
                                 savePrint(resstr, pos, ":", pos);
                             }
 
                             bool body_;
-                            if (postop !is null)
+                            if (ptype != "if" && postop !is null)
                             {
                                 if (postop.type == "body")
                                 {

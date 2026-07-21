@@ -367,4 +367,3 @@ int main(string[] args)
     application.addOnActivate(&activateClock);
     return application.run(args);
 }
-

@@ -434,12 +434,14 @@ class Parser {
                     init.operator = init.operator_lexem.text;
                     init.type = "init";
                     init.type_lexem = ilexem;
+                    if (lexer == LexemType.Character)
+                        init.bt = BlockType.Character;
                     val.postop = init;
                     getLexem;
                 }
                 else 
                 {
-                    writefln("Number Expected not %s", lexer);
+                    writefln("Number or Character Expected not %s", lexer);
                     assert(0);
                 }
             }
@@ -783,18 +785,18 @@ class Parser {
             expr.type = "if";
             expr.type_lexem = lexer.lexem;
             expr.addPosts(post);
+            Expression if_open_close = expr;
             Init: 
             getLexem;
 
             if (lexer == "(") 
             {
-                Lexem open_lexem = lexer.lexem;
+                if_open_close.open_lexem = lexer.lexem;
                 Expression cond = getExpression;
-                cond.open_lexem = open_lexem;
 
                 if (lexer == ")") 
                 {
-                    cond.close_lexem = lexer.lexem;
+                    if_open_close.close_lexem = lexer.lexem;
                 }
                 else 
                 {
@@ -827,6 +829,7 @@ class Parser {
                         qexpr.addChilds([eexpr, iexpr]);
 
                         expr.addChilds([qexpr]);
+                        if_open_close = qexpr;
 
                         goto Init;
                     }
@@ -1809,12 +1812,10 @@ class Parser {
             if (lexer == "=") 
             {
                 Lexem ilexem = lexer.lexem;
-                Expression iarg = new Expression;
                 Expression init = getExpression;
-                iarg.type = "init";
-                iarg.type_lexem = ilexem;
-                iarg.addChild(init);
-                arg.postop = iarg;
+                init.type = "init";
+                init.type_lexem = ilexem;
+                arg.postop = init;
 
                 if (lexer == ")") 
                 {
@@ -2203,6 +2204,15 @@ class Parser {
                 }
                 else if (op2.text == ":") 
                 {
+                    Expression oexpr = new Expression;
+                    oexpr.operator_lexem = op2;
+                    oexpr.operator = op2.text;
+
+                    Expression qexpr = new Expression;
+                    qexpr.type = "quote";
+                    qexpr.addChilds([oexpr]);
+
+                    ed.addChilds([qexpr]);
                     goto Argument;
                 }
                 else 
