@@ -2951,4 +2951,3 @@ class Iface : DrawingArea
 
     Timeout m_timeout;
 }
-

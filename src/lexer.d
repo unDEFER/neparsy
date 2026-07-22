@@ -266,11 +266,9 @@ struct Lexer {
             {
                 do
                 {
-                    back = this;
                     nextChr;
                 } while (! (chr == '\n'));
 
-                this = back;
                 lexem.type = LexemType.Comment;
                 lexem.end = cursor;
                 return;

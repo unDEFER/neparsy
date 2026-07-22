@@ -429,13 +429,16 @@ class Parser {
                 if (lexer == LexemType.Character
                  || lexer == LexemType.Number) 
                 {
+                    Expression einit = new Expression;
+                    einit.operator_lexem = lexer.lexem;
+                    einit.operator = einit.operator_lexem.text;
+
                     Expression init = new Expression;
-                    init.operator_lexem = lexer.lexem;
-                    init.operator = init.operator_lexem.text;
                     init.type = "init";
                     init.type_lexem = ilexem;
+                    init.addChilds([einit]);
                     if (lexer == LexemType.Character)
-                        init.bt = BlockType.Character;
+                        einit.bt = BlockType.Character;
                     val.postop = init;
                     getLexem;
                 }
@@ -664,10 +667,10 @@ class Parser {
             }
             else if (lexer == "=") 
             {
-                Lexem ilexem = lexer.lexem;
-                Expression init = getExpression;
+                Expression init = new Expression();
+                init.type_lexem = lexer.lexem;
                 init.type = "init";
-                init.type_lexem = ilexem;
+                init.addChilds([getExpression]);
                 expr.arguments[($ - 1)].postop = init;
                 goto Comma;
             }
@@ -695,10 +698,10 @@ class Parser {
         }
         else if (lexer == "=") 
         {
-            Lexem ilexem = lexer.lexem;
-            Expression init = getExpression;
+            Expression init = new Expression();
+            init.type_lexem = lexer.lexem;
             init.type = "init";
-            init.type_lexem = ilexem;
+            init.addChilds([getExpression]);
             ret.postop = init;
             goto Eq;
         }
@@ -782,8 +785,17 @@ class Parser {
         else if (lexer == "if") 
         {
             Expression expr = new Expression;
-            expr.type = "if";
-            expr.type_lexem = lexer.lexem;
+            if (post.length > 0 && post[$-1].operator == "static")
+            {
+                expr.type_lexem = post[$-1].operator_lexem;
+                expr.type = "static-if";
+                post = post[0..$-1];
+            }
+            else
+            {
+                expr.type = "if";
+                expr.type_lexem = lexer.lexem;
+            }
             expr.addPosts(post);
             Expression if_open_close = expr;
             Init: 
@@ -1128,10 +1140,12 @@ class Parser {
 
             if (lexer == "(") 
             {
+                wexpr.open_lexem = lexer.lexem;
                 Expression cexpr = getExpression;
 
                 if (lexer == ")") 
                 {
+                    wexpr.close_lexem = lexer.lexem;
                 }
                 else 
                 {
@@ -1330,6 +1344,7 @@ class Parser {
 
                 if (lexer == ";") 
                 {
+                    expr.addPosts(post);
                     return [expr];
                 }
                 else 
@@ -1379,18 +1394,23 @@ class Parser {
                     else 
                     {
                         lexer = back;
-                        return [getExpression];
+                        Expression expr = getExpression;
+                        expr.addPosts(post);
+                        return [expr];
                     }
                 }
                 else 
                 {
                     lexer = back;
-                    return [getExpression];
+                    Expression expr = getExpression;
+                    expr.addPosts(post);
+                    return [expr];
                 }
                 goto Name;
             }
             else if (lexer == ";") 
             {
+                type.addPosts(post);
                 return [type];
             }
             else if (lexer == ":") 
@@ -1436,6 +1456,7 @@ class Parser {
                         {
                             type.index = (-multi.arguments.length);
                             var.postop = type;
+                            multi.addPosts(post);
                             return multi.arguments;
                         }
                         else if (lexer == "=") 
@@ -1448,6 +1469,7 @@ class Parser {
 
                             if (lexer == ";") 
                             {
+                                assign.addPosts(post);
                                 return [assign];
                             }
                             else 
@@ -1470,6 +1492,7 @@ class Parser {
                 }
                 else if (lexer == ";") 
                 {
+                    expr.addPosts(post);
                     return [expr];
                 }
                 else if (lexer == "=") 
@@ -1482,6 +1505,7 @@ class Parser {
 
                     if (lexer == ";") 
                     {
+                        assign.addPosts(post);
                         return [assign];
                     }
                     else 
@@ -1519,6 +1543,7 @@ class Parser {
 
                         if (lexer == ";") 
                         {
+                            expr.addPosts(post);
                             return [expr];
                         }
                         else 
@@ -1535,10 +1560,12 @@ class Parser {
                     {
                         lexer = back;
                         expr.postop = getBody;
+                        expr.addPosts(post);
                         return [expr];
                     }
                     else if (lexer == ";") 
                     {
+                        expr.addPosts(post);
                         return [expr];
                     }
                     else 
@@ -1565,6 +1592,7 @@ class Parser {
 
                 if (lexer == ";") 
                 {
+                    expr.addPosts(post);
                     return [expr];
                 }
                 else 
@@ -1767,13 +1795,10 @@ class Parser {
             }
             else if (lexer == "!") 
             {
-                Expression q = new Expression;
-                q.operator_lexem = lexer.lexem;
-                q.operator = q.operator_lexem.text;
                 Expression eq = new Expression;
                 eq.type_lexem = lexer.lexem;
                 eq.type = eq.type_lexem.text;
-                type.arguments ~= q;
+                type.arguments ~= eq;
                 getLexem;
 
                 if (lexer == LexemType.Identifier) 
@@ -1781,13 +1806,14 @@ class Parser {
                     Expression a = new Expression;
                     a.operator_lexem = lexer.lexem;
                     a.operator = a.operator_lexem.text;
-                    type.arguments ~= a;
+                    eq.arguments ~= a;
                 }
                 else if (lexer == "(") 
                 {
-                    type.arguments ~= getArguments;
+                    eq.open_lexem = lexer.lexem;
+                    eq.arguments ~= getArguments;
+                    eq.close_lexem = lexer.lexem;
                 }
-                type.arguments ~= eq;
                 goto Name;
             }
             else if (lexer == ")") 
@@ -1811,10 +1837,10 @@ class Parser {
 
             if (lexer == "=") 
             {
-                Lexem ilexem = lexer.lexem;
-                Expression init = getExpression;
+                Expression init = new Expression();
+                init.type_lexem = lexer.lexem;
                 init.type = "init";
-                init.type_lexem = ilexem;
+                init.addChilds([getExpression]);
                 arg.postop = init;
 
                 if (lexer == ")") 
@@ -1905,6 +1931,7 @@ class Parser {
 
             if (lexer == "(") 
             {
+                ct.open_lexem = lexer.lexem;
             }
             else 
             {
@@ -1913,11 +1940,14 @@ class Parser {
             }
 
             ct.addChilds(getCallArgs);
+            ct.close_lexem = lexer.lexem;
 
             if (ed.operator.empty && ed.type.empty) 
             {
+                ed.open_lexem = ct.open_lexem;
                 ed.type = ct.type;
                 ed.type_lexem = ct.type_lexem;
+                ed.close_lexem = ct.close_lexem;
                 ed.addChilds(ct.arguments);
             }
             else 
@@ -2031,14 +2061,23 @@ class Parser {
         }
         else if (lexer == "(") 
         {
+            writefln("LEXEM %s", lexer.lexem);
             Lexem open_lexem = lexer.lexem;
             Expression expr = getExpression;
-            expr.open_lexem = open_lexem;
-
-            if (! expr.arguments.empty) 
+            writefln("EXPR %s, open %s", expr, expr.open_lexem.start);
+            /*if (expr.open_lexem.start.row == 0)
             {
-                expr.hidden = true;
+                expr.open_lexem = open_lexem;
             }
+            else*/
+            {
+                Expression brexpr = new Expression;
+                brexpr.type = "ord";
+                brexpr.open_lexem = open_lexem;
+                brexpr.arguments ~= expr;
+                expr = brexpr;
+            }
+
             ed.arguments ~= expr;
 
             if (lexer == ")") 
@@ -2135,7 +2174,7 @@ class Parser {
                 }
                 else 
                 {
-                    writefln("Expected () or () not %s", lexer);
+                    writefln("Expected is or in not %s", lexer);
                     assert(0);
                 }
             }
