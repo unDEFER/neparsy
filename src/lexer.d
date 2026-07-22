@@ -7,18 +7,18 @@ import std.file;
 import std.conv;
 import std.algorithm.searching;
 enum LexemType {
-    Identifier, 
-    AssignOperator, 
-    Comment, 
-    String, 
-    EndInput, 
-    Punctuation, 
-    Number, 
-    Float, 
-    CmpOperator, 
-    Blank, 
-    Operator, 
-    Character, 
+    Identifier,
+    AssignOperator,
+    Comment,
+    String,
+    EndInput,
+    Punctuation,
+    Number,
+    Float,
+    CmpOperator,
+    Blank,
+    Operator,
+    Character,
     LenOperator,
     Lambda
 }
@@ -67,7 +67,7 @@ struct Lexer {
         lexem.start = cursor;
         nextChr();
 
-        if (isAlpha(chr) || (chr == '_')) 
+        if (isAlpha(chr) || (chr == '_'))
         {
             do
             {
@@ -80,7 +80,7 @@ struct Lexer {
             lexem.end = cursor;
             return;
         }
-        else if (isNumber(chr)) 
+        else if (isNumber(chr))
         {
             do
             {
@@ -92,12 +92,12 @@ struct Lexer {
             back = this;
             nextChr();
 
-            if (chr == '.') 
+            if (chr == '.')
             {
                 back = this;
                 nextChr();
 
-                if (chr == '.') 
+                if (chr == '.')
                 {
                     this = back2;
                     lexem.type = LexemType.Number;
@@ -126,18 +126,18 @@ struct Lexer {
                 return;
             }
         }
-        else if (chr == '.') 
+        else if (chr == '.')
         {
             back = this;
             nextChr();
 
-            if (chr == '.') 
+            if (chr == '.')
             {
                 lexem.type = LexemType.Punctuation;
                 lexem.end = cursor;
                 return;
             }
-            else if (isNumber(chr)) 
+            else if (isNumber(chr))
             {
                 do
                 {
@@ -158,24 +158,24 @@ struct Lexer {
                 return;
             }
         }
-        else if (! ",;:[]{}()?".find(chr).empty) 
+        else if (! ",;:[]{}()?".find(chr).empty)
         {
             lexem.type = LexemType.Punctuation;
             lexem.end = cursor;
             return;
         }
-        else if (chr == '+') 
+        else if (chr == '+')
         {
             back = this;
             nextChr();
 
-            if (chr == '+') 
+            if (chr == '+')
             {
                 lexem.type = LexemType.Operator;
                 lexem.end = cursor;
                 return;
             }
-            else if (chr == '=') 
+            else if (chr == '=')
             {
                 lexem.type = LexemType.AssignOperator;
                 lexem.end = cursor;
@@ -189,18 +189,18 @@ struct Lexer {
                 return;
             }
         }
-        else if (chr == '-') 
+        else if (chr == '-')
         {
             back = this;
             nextChr();
 
-            if (chr == '-') 
+            if (chr == '-')
             {
                 lexem.type = LexemType.Operator;
                 lexem.end = cursor;
                 return;
             }
-            else if (chr == '=') 
+            else if (chr == '=')
             {
                 lexem.type = LexemType.AssignOperator;
                 lexem.end = cursor;
@@ -214,18 +214,18 @@ struct Lexer {
                 return;
             }
         }
-        else if (chr == '=') 
+        else if (chr == '=')
         {
             back = this;
             nextChr();
 
-            if (chr == '>') 
+            if (chr == '>')
             {
                 lexem.type = LexemType.Lambda;
                 lexem.end = cursor;
                 return;
             }
-            else if (chr == '=') 
+            else if (chr == '=')
             {
                 lexem.type = LexemType.CmpOperator;
                 lexem.end = cursor;
@@ -239,12 +239,12 @@ struct Lexer {
                 return;
             }
         }
-        else if (chr == '*') 
+        else if (chr == '*')
         {
             back = this;
             nextChr();
 
-            if (chr == '=') 
+            if (chr == '=')
             {
                 lexem.type = LexemType.AssignOperator;
                 lexem.end = cursor;
@@ -258,18 +258,18 @@ struct Lexer {
                 return;
             }
         }
-        else if (chr == '/') 
+        else if (chr == '/')
         {
             back = this;
             nextChr();
 
-            if (chr == '=') 
+            if (chr == '=')
             {
                 lexem.type = LexemType.AssignOperator;
                 lexem.end = cursor;
                 return;
             }
-            else if (chr == '/') 
+            else if (chr == '/')
             {
                 do
                 {
@@ -280,24 +280,24 @@ struct Lexer {
                 lexem.end = cursor;
                 return;
             }
-            else if (chr == '*') 
-            {   
-                Comment: 
+            else if (chr == '*')
+            {
+                Comment:
                 back = this;
                 nextChr();
 
-                if (chr == '*') 
+                if (chr == '*')
                 {
                     back = this;
                     nextChr();
 
-                    if (chr == '/') 
+                    if (chr == '/')
                     {
                         lexem.type = LexemType.Comment;
                         lexem.end = cursor;
                         return;
                     }
-                    else if (! chr.isNonCharacter) 
+                    else if (! chr.isNonCharacter)
                     {
                         goto Comment;
                     }
@@ -306,7 +306,7 @@ struct Lexer {
                         this = back;
                     }
                 }
-                else if (! chr.isNonCharacter) 
+                else if (! chr.isNonCharacter)
                 {
                     goto Comment;
                 }
@@ -315,7 +315,7 @@ struct Lexer {
                     this = back;
                 }
             }
-            else if (chr == '+') 
+            else if (chr == '+')
             {
                 lexem.type = LexemType.Comment;
                 lexem.end = cursor;
@@ -329,12 +329,12 @@ struct Lexer {
                 return;
             }
         }
-        else if (chr == '~') 
+        else if (chr == '~')
         {
             back = this;
             nextChr();
 
-            if (chr == '=') 
+            if (chr == '=')
             {
                 lexem.type = LexemType.AssignOperator;
                 lexem.end = cursor;
@@ -348,29 +348,29 @@ struct Lexer {
                 return;
             }
         }
-        else if (chr == '>') 
+        else if (chr == '>')
         {
             back2 = this;
             back = this;
             nextChr();
 
-            if (chr == '=') 
+            if (chr == '=')
             {
                 lexem.type = LexemType.CmpOperator;
                 lexem.end = cursor;
                 return;
             }
-            else if (chr == '>') 
+            else if (chr == '>')
             {
                 back = this;
                 nextChr();
 
-                if (chr == '>') 
+                if (chr == '>')
                 {
                     back = this;
                     nextChr();
 
-                    if (chr == '=') 
+                    if (chr == '=')
                     {
                         lexem.type = LexemType.CmpOperator;
                         lexem.end = cursor;
@@ -384,7 +384,7 @@ struct Lexer {
                         return;
                     }
                 }
-                else if (chr == '=') 
+                else if (chr == '=')
                 {
                     lexem.type = LexemType.CmpOperator;
                     lexem.end = cursor;
@@ -406,23 +406,23 @@ struct Lexer {
                 return;
             }
         }
-        else if (chr == '<') 
+        else if (chr == '<')
         {
             back = this;
             nextChr();
 
-            if (chr == '=') 
+            if (chr == '=')
             {
                 lexem.type = LexemType.CmpOperator;
                 lexem.end = cursor;
                 return;
             }
-            else if (chr == '<') 
+            else if (chr == '<')
             {
                 back = this;
                 nextChr();
 
-                if (chr == '=') 
+                if (chr == '=')
                 {
                     lexem.type = LexemType.Operator;
                     lexem.end = cursor;
@@ -444,18 +444,18 @@ struct Lexer {
                 return;
             }
         }
-        else if (chr == '&') 
+        else if (chr == '&')
         {
             back = this;
             nextChr();
 
-            if (chr == '&') 
+            if (chr == '&')
             {
                 lexem.type = LexemType.Operator;
                 lexem.end = cursor;
                 return;
             }
-            else if (chr == '=') 
+            else if (chr == '=')
             {
                 lexem.type = LexemType.AssignOperator;
                 lexem.end = cursor;
@@ -469,18 +469,18 @@ struct Lexer {
                 return;
             }
         }
-        else if (chr == '|') 
+        else if (chr == '|')
         {
             back = this;
             nextChr();
 
-            if (chr == '|') 
+            if (chr == '|')
             {
                 lexem.type = LexemType.Operator;
                 lexem.end = cursor;
                 return;
             }
-            else if (chr == '=') 
+            else if (chr == '=')
             {
                 lexem.type = LexemType.AssignOperator;
                 lexem.end = cursor;
@@ -494,18 +494,18 @@ struct Lexer {
                 return;
             }
         }
-        else if (chr == '^') 
+        else if (chr == '^')
         {
             back = this;
             nextChr();
 
-            if (chr == '^') 
+            if (chr == '^')
             {
                 lexem.type = LexemType.Operator;
                 lexem.end = cursor;
                 return;
             }
-            else if (chr == '=') 
+            else if (chr == '=')
             {
                 lexem.type = LexemType.AssignOperator;
                 lexem.end = cursor;
@@ -519,12 +519,12 @@ struct Lexer {
                 return;
             }
         }
-        else if (chr == '%') 
+        else if (chr == '%')
         {
             back = this;
             nextChr();
 
-            if (chr == '=') 
+            if (chr == '=')
             {
                 lexem.type = LexemType.AssignOperator;
                 lexem.end = cursor;
@@ -538,12 +538,12 @@ struct Lexer {
                 return;
             }
         }
-        else if (chr == '!') 
+        else if (chr == '!')
         {
             back = this;
             nextChr();
 
-            if (chr == '=') 
+            if (chr == '=')
             {
                 lexem.type = LexemType.AssignOperator;
                 lexem.end = cursor;
@@ -557,24 +557,24 @@ struct Lexer {
                 return;
             }
         }
-        else if (chr == '$') 
+        else if (chr == '$')
         {
             lexem.type = LexemType.LenOperator;
             lexem.end = cursor;
             return;
         }
-        else if (chr == '"') 
+        else if (chr == '"')
         {
-            String: 
+            String:
             back = this;
             nextChr();
 
-            if (chr == '\\') 
+            if (chr == '\\')
             {
                 back = this;
                 nextChr();
 
-                if (! chr.isNonCharacter) 
+                if (! chr.isNonCharacter)
                 {
                     goto String;
                 }
@@ -583,13 +583,13 @@ struct Lexer {
                     this = back;
                 }
             }
-            else if (chr == '"') 
+            else if (chr == '"')
             {
                 lexem.type = LexemType.String;
                 lexem.end = cursor;
                 return;
             }
-            else if (! chr.isNonCharacter) 
+            else if (! chr.isNonCharacter)
             {
                 goto String;
             }
@@ -598,18 +598,18 @@ struct Lexer {
                 this = back;
             }
         }
-        else if (chr == '\'') 
-        {   
-            Character: 
+        else if (chr == '\'')
+        {
+            Character:
             back = this;
             nextChr();
 
-            if (chr == '\\') 
+            if (chr == '\\')
             {
                 back = this;
                 nextChr();
 
-                if (! chr.isNonCharacter) 
+                if (! chr.isNonCharacter)
                 {
                     goto Character;
                 }
@@ -618,13 +618,13 @@ struct Lexer {
                     this = back;
                 }
             }
-            else if (chr == '\'') 
+            else if (chr == '\'')
             {
                 lexem.type = LexemType.Character;
                 lexem.end = cursor;
                 return;
             }
-            else if (! chr.isNonCharacter) 
+            else if (! chr.isNonCharacter)
             {
                 goto Character;
             }
@@ -633,7 +633,7 @@ struct Lexer {
                 this = back;
             }
         }
-        else if (isWhiteNL(chr)) 
+        else if (isWhiteNL(chr))
         {
             do
             {
@@ -646,7 +646,7 @@ struct Lexer {
             lexem.end = cursor;
             return;
         }
-        else if (chr == EOF) 
+        else if (chr == EOF)
         {
             lexem.type = LexemType.EndInput;
             lexem.end = cursor;
@@ -660,7 +660,7 @@ struct Lexer {
     {
         lexem.comments = null;
         Lexem[] comments;
-        
+
         do
         {
             getLexemRaw();
@@ -675,21 +675,21 @@ struct Lexer {
 
     void nextChr()
     {
-        if (file.empty) 
+        if (file.empty)
         {
             chr = EOF;
         }
-        else 
+        else
         {
             chr = decodeFront(file);
         }
 
-        if (chr == '\n') 
+        if (chr == '\n')
         {
             ++cursor.row;
             cursor.col = 1;
         }
-        else 
+        else
         {
             ++cursor.col;
         }
@@ -716,16 +716,16 @@ struct Lexer {
     {
         Lexer  back;
         Lexer  back2;
-        Comment: 
+        Comment:
         back = this;
         nextChr();
 
-        if (chr == '/') 
+        if (chr == '/')
         {
             back = this;
             nextChr();
 
-            if (chr == '+') 
+            if (chr == '+')
             {
             }
             else
@@ -734,12 +734,12 @@ struct Lexer {
                 goto Comment;
             }
         }
-        else if (chr == '+') 
+        else if (chr == '+')
         {
             back = this;
             nextChr();
 
-            if (chr == '/') 
+            if (chr == '/')
             {
             }
             else

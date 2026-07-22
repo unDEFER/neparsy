@@ -11,7 +11,7 @@ test()
 
     diff -q "$1.np" "$1_.np" &&
     diff -q "$1.inp" "$1_.inp" &&
-    diff -wq "src/$1.d" "$1.d"
+    diff -q "src/$1.d" "$1.d"
 }
 
  

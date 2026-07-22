@@ -38,9 +38,9 @@ struct Color
     real r, g, b, a;
     Color invert()
     {
-        auto ret = Color(1.0 + 0.402*r - 1.174*g - 0.228*b,
-                1.0 - 0.598*r - 0.174*g - 0.228*b,
-                1.0 - 0.598*r - 1.174*g + 0.772*b,
+        auto ret = Color(1.0 + 0.402*r - 1.174*g - 0.228*b, 
+                1.0 - 0.598*r - 0.174*g - 0.228*b, 
+                1.0 - 0.598*r - 1.174*g + 0.772*b, 
                 a);
         auto mi = min(ret.r, ret.g, ret.b);
         auto ma = max(ret.r, ret.g, ret.b);
@@ -261,9 +261,9 @@ class Iface : DrawingArea
             {
                 if ( posa > 0 && arg.x == expr.x && arg.y == expr.y )
                 {
-                    writefln("%s#%s (%sx%s): %s#%s (%sx%s) => %s#%s (%sx%s)",
-                            expr.operator, expr.type, expr.x, expr.y,
-                            ret.operator, ret.type, ret.x, ret.y,
+                    writefln("%s#%s (%sx%s): %s#%s (%sx%s) => %s#%s (%sx%s)", 
+                            expr.operator, expr.type, expr.x, expr.y, 
+                            ret.operator, ret.type, ret.x, ret.y, 
                             arg.operator, arg.type, arg.x, arg.y);
 
                     if (!arg.hidden)
@@ -317,9 +317,9 @@ class Iface : DrawingArea
             {
                 if ( posa < 0 && arg.center is expr.center )
                 {
-                    writefln("%s#%s (%sx%s): %s#%s (%sx%s) => %s#%s (%sx%s)",
-                            expr.operator, expr.type, expr.x, expr.y,
-                            ret.operator, ret.type, ret.x, ret.y,
+                    writefln("%s#%s (%sx%s): %s#%s (%sx%s) => %s#%s (%sx%s)", 
+                            expr.operator, expr.type, expr.x, expr.y, 
+                            ret.operator, ret.type, ret.x, ret.y, 
                             arg.operator, arg.type, arg.x, arg.y);
 
                     if (!arg.hidden)
@@ -2152,7 +2152,7 @@ class Iface : DrawingArea
                     bool first = true;
                     bool last = true;
                     ubyte[] colors = (cast(ubyte)0).repeat(text.walkLength).array;
-                    
+
                     if (text.empty)
                     {
                         text = ".";
@@ -2179,7 +2179,7 @@ class Iface : DrawingArea
 
                         first = first && (ex.index == 0);
                         last = last && (ex.index == parent.arguments.length-1);
-                        
+
                         if (parent.operator.length > 0 && !"-+!&*".find(parent.operator).empty && parent.arguments.length == 1 && first)
                         {
                             if (parent.type == "post")
@@ -2269,7 +2269,7 @@ class Iface : DrawingArea
                         expr.brat = pow(180.0, 1.0-expr.arat);
                         foreground ~= expr;
                     }
-                    
+
                     foreach(exp; oforeground)
                     {
                         if (exp.center is expr.center)
@@ -2816,7 +2816,7 @@ class Iface : DrawingArea
                 foreach (type; ["import", "class", "struct", "function", "enum", "var"])
                     buttons ~= [Button("#"~type, typeColor(type), null)];
             }
-              
+
             if (selected.parent !is null && selected.parent.type == "body")
             {
                 buttons ~= [ Button("", c, null) ];

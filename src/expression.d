@@ -85,7 +85,7 @@ class Expression
         Position pos = operator_lexem.start;
         if (pos.row == 0 || type_lexem.start.row > 0 && type_lexem.start < pos) pos = type_lexem.start;
         if (pos.row == 0 || open_lexem.start.row > 0 && open_lexem.start < pos) pos = open_lexem.start;
-        
+
         foreach(arg; arguments)
         {
             Position spos = arg.start_pos();
@@ -628,7 +628,7 @@ class Expression
         }
 
         End:
-        
+
         if (operator == ps.dot && !escaped_operator && arguments.length == 0)
             operator = null;
 
@@ -756,7 +756,7 @@ class Expression
 
     string lexem_lines(Lexem lexem, bool include_end = false)
     {
-        return (lexem.text !is null && lexem.start.row > 0 ? ":" ~ lexem.start.row.text ~ ":" ~ lexem.start.col.text ~ 
+        return (lexem.text !is null && lexem.start.row > 0 ? ":" ~ lexem.start.row.text ~ ":" ~ lexem.start.col.text ~
                 (include_end && lexem.end.row > 0 ? "-" ~ ":" ~ lexem.end.row.text ~ ":" ~ lexem.end.col.text : "") : "");
     }
 
@@ -847,7 +847,7 @@ class Expression
         if (srow > ps.row) ps.row = srow;
 
         if (bt == BlockType.File)
-        {            
+        {
             ps.row = 1;
             prewhites = "";
         }
@@ -937,7 +937,7 @@ class Expression
             if (bt != BlockType.File)
             {
                 uint erow = end_row();
-                savestr = ps.brackets.begin ~ savestr ~ 
+                savestr = ps.brackets.begin ~ savestr ~
                     (erow > ps.row ? '\n'.repeat(erow - ps.row).array ~ ' '.repeat(tab*4).array : "").idup ~
                     ps.brackets.end;
                 if (erow > ps.row) ps.row = erow;
@@ -2549,7 +2549,7 @@ class Expression
 
             code = ne;
             assert(code !is null);
-        } 
+        }
         else if (parent.type == "switch")
         {
             Expression ne;
@@ -2645,7 +2645,7 @@ class Expression
 
                 code = ne.arguments[0];
             }
-        } 
+        }
         else if (parent.type == "while" && operator != "!" || (parent.operator == "||" || parent.operator == "!") && parent.parent.type == "while")
         {
             Expression ne;
