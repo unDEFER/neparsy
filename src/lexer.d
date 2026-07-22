@@ -19,7 +19,8 @@ enum LexemType {
     Blank, 
     Operator, 
     Character, 
-    LenOperator
+    LenOperator,
+    Lambda
 }
 
 enum  {
@@ -218,7 +219,13 @@ struct Lexer {
             back = this;
             nextChr();
 
-            if (chr == '=') 
+            if (chr == '>') 
+            {
+                lexem.type = LexemType.Lambda;
+                lexem.end = cursor;
+                return;
+            }
+            else if (chr == '=') 
             {
                 lexem.type = LexemType.CmpOperator;
                 lexem.end = cursor;

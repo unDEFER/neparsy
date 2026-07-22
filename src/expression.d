@@ -1552,7 +1552,10 @@ class Expression
 
                 case "function":
                     this.arguments[0].saveD(resstr, pos, -tab-1, null, this.type);
-                    savePrint(resstr, pos, " ", pos);
+
+                    if (type_lexem.start.row == 0 && operator_lexem.start.row == 0)
+                        savePrint(resstr, pos, " ", pos);
+
                     if (this.operator.empty)
                     {
                         savePrint(resstr, pos, "function", type_lexem);
@@ -1659,6 +1662,7 @@ class Expression
                     break;
 
                 case "foreach":
+                case "foreach_reverse":
                     savePrint(resstr, pos, type, type_lexem);
                     savePrint(resstr, pos, "(", open_lexem);
                     if (!this.arguments[0].operator.empty)
@@ -2163,6 +2167,7 @@ class Expression
                         case "/=":
                         case "~=":
                         case "==":
+                        case "=>":
                         case "!=":
                         case "<":
                         case ">":
@@ -2341,9 +2346,6 @@ class Expression
                                     savePrint(resstr, pos, "!", this.arguments[0].type_lexem);
                                 }
 
-                                if (open_lexem.start.row > 0)
-                                    savePrint(resstr, pos, "(", open_lexem);
-
                                 foreach(i, arg; this.arguments)
                                 {
                                     if (arg.type == "!")
@@ -2352,6 +2354,8 @@ class Expression
                                     else if (first)
                                     {
                                         first = false;
+                                        if (open_lexem.start.row > 0)
+                                            savePrint(resstr, pos, "(", open_lexem);
                                     }
                                     else
                                         savePrint(resstr, pos, ", ", pos);

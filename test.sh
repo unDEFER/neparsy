@@ -14,8 +14,10 @@ test()
     diff -wq "src/$1.d" "$1.d"
 }
 
+ 
 test parser && 
     test main && 
     test lexer && 
     test iface && 
+    test expression &&
     echo "Test success" || echo "Test failed"

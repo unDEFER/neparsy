@@ -983,11 +983,11 @@ class Parser {
                 assert(0);
             }
         }
-        else if (lexer == "foreach") 
+        else if (lexer == "foreach" || lexer == "foreach_reverse") 
         {
             Expression expr = new Expression;
-            expr.type = "foreach";
             expr.type_lexem = lexer.lexem;
+            expr.type = expr.type_lexem.text;
             expr.addPosts(post);
             getLexem;
 
@@ -1185,6 +1185,7 @@ class Parser {
                 Expression label = new Expression;
                 label.operator_lexem = lexer.lexem;
                 label.operator = label.operator_lexem.text;
+                expr.arguments ~= label;
                 getLexem;
 
                 if (lexer == ";") 
@@ -1707,6 +1708,32 @@ class Parser {
                     assert(0);
                 }
             }
+            else if (lexer == "++"
+                    || lexer == "--") 
+            {
+                Expression expr = new Expression;
+                expr.operator_lexem = lexer.lexem;
+                expr.operator = expr.operator_lexem.text;
+                expr.type = "post";
+                Expression var = new Expression;
+                var.operator_lexem = name;
+                var.operator = var.operator_lexem.text;
+                expr.arguments ~= var;
+
+                getLexem;
+
+                if (lexer == ")"
+                 || lexer == ";") 
+                {
+                    back;
+                    return expr;
+                }
+                else 
+                {
+                    writefln("Expected ; not %s", lexer);
+                    assert(0);
+                }
+            }
             else 
             {
                 writefln("Expected . or Identifier or AssignOperator not %s", lexer);
@@ -2158,7 +2185,8 @@ class Parser {
          || lexer == "is"
          || lexer == LexemType.AssignOperator
          || lexer == LexemType.CmpOperator
-         || lexer == LexemType.Operator) 
+         || lexer == LexemType.Operator
+         || lexer == LexemType.Lambda)
         {
             Lexem op2 = lexer.lexem;
 
@@ -2172,9 +2200,29 @@ class Parser {
                     op2.text ~= lexer.lexem.text;
                     op2.end = lexer.lexem.end;
                 }
+                else if (lexer == "(")
+                {
+                    Expression em = new Expression;
+                    em.type_lexem = op2;
+                    em.type = em.type_lexem.text;
+                    em.open_lexem = lexer.lexem;
+                    em.arguments ~= getCallArgs;
+                    em.close_lexem = lexer.lexem;
+                    ed.arguments[$-1].arguments ~= em;
+
+                    getLexem;
+                    if (lexer == "(") 
+                    {
+                        ed.arguments[$-1].open_lexem = lexer.lexem;
+                        ed.arguments[$-1].addChilds(getCallArgs);
+                        ed.arguments[$-1].close_lexem = lexer.lexem;
+                        getLexem;
+                    }
+                    goto Operator;
+                }
                 else 
                 {
-                    writefln("Expected is or in not %s", lexer);
+                    writefln("Expected 'is', 'in' or '(' not %s", lexer);
                     assert(0);
                 }
             }
