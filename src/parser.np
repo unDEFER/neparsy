@@ -9,115 +9,95 @@
 
     (Parser#class
         (lexer Lexer)
-        (cexpr Expression)
-
-        (getNL#function int).
-        (#body
-            (#return (#\. lexer getNL))
-        )
 
         (getLexem#function void).
         (#body
-            (#if
-                backed.
+            (#if backed.
                 (#body
                     (= backed false)
                     #return
                 ))
-            (#do (|| (== lexer (#\. LexemType Blank)) (== lexer (#\. LexemType Comment)))).
-            (#body
-                lexer.(getLexem)
-                (lexer#if
-                    (#\. LexemType Comment).
-                    (#body
-                        (= (com#var Expression) (#new Expression))
-                        (= (#\. com bt) (#\. BlockType Comment))
-                        (= (#\. com operator) (#\. lexer lexem))
-                        (= (#\. com nl1) getNL)
-                        (~= (#\. cexpr arguments) com)
-                    ))
-            )
+
+            (#\. lexer getLexem#funcall)
         )
 
         (parse#function Expression).
         (#body
             (= (file#var Expression) (#new Expression))
             (= (#\. file bt) (#\. BlockType File))
-            (= cexpr file)
             (= (ret#var Expression) (#new Expression))
-            getLexem@Init
-            (lexer#if
-                "module".
+            (#label Init)
+            getLexem
+
+            (#if (== lexer "module").
                 (#body
                     (= (#\. ret type) "module")
-                    (= (#\. ret nl1) getNL)
-                    (= (#\. ret operator) getModuleName)
+                    (= (#\. ret type_lexem) (#\. lexer lexem))
+                    (= (#\. ret operator_lexem) getModuleName)
+                    (= (#\. ret operator) (#\. ret operator_lexem (#quote \.) text))
                     (= (#\. ret label) "D")
                     (~= (#\. file arguments) ret)
-                    (= cexpr ret)
-                    (= (#\. ret nl2) getNL)
                     (#goto Init)
                 )
-                "import".
+                (#quote else if) (== lexer "import").
                 (#body
                     (~= (#\. ret arguments) getImport)
                     (#goto Init)
                 )
-                "struct".
+                (#quote else if) (== lexer "struct").
                 (#body
                     (~= (#\. ret arguments) getStruct)
                     (#goto Init)
                 )
-                "class".
+                (#quote else if) (== lexer "class").
                 (#body
                     (~= (#\. ret arguments) getClass)
                     (#goto Init)
                 )
-                "enum".
+                (#quote else if) (== lexer "enum").
                 (#body
                     (~= (#\. ret arguments) getEnum)
                     (#goto Init)
                 )
-                (#\. LexemType Identifier).
+                (#quote else if) (== lexer (#\. LexemType Identifier)).
                 (#body
                     (~= (#\. ret arguments) getVar)
                     (#goto Init)
                 )
-                (#\. LexemType EndInput).
+                (#quote else if) (== lexer (#\. LexemType EndInput)).
                 (#body
-                    #noop
                 )
                 #else.
                 (#body
-                    (writefln (#" Unexpected %s) lexer)
-                    (assert 0)
+                    (writefln#funcall "Unexpected %s" lexer)
+                    (assert#funcall 0)
                 ))
             (#return file)
         )
 
-        (getModuleName#function string).
+        (getModuleName#function Lexem).
         (#body
             getLexem
-            (lexer#if
-                (#\. LexemType Identifier).
+
+            (#if (== lexer (#\. LexemType Identifier)).
                 (#body
-                    (= (ret string) (#\. lexer lexem))
+                    (= (ret#var Lexem) (#\. lexer lexem))
                     getLexem
-                    (lexer#if
-                        ";".
+
+                    (#if (== lexer ";").
                         (#body
                             (#return ret)
                         )
                         #else.
                         (#body
-                            (writefln (#" Expected ; after module name not %s) lexer)
-                            (assert 0)
+                            (writefln#funcall "Expected ; after module name not %s" lexer)
+                            (assert#funcall 0)
                         ))
                 )
                 #else.
                 (#body
-                    (writefln (#" Expected (#\. LexemType Identifier) after module, not %s) lexer)
-                    (assert 0)
+                    (writefln#funcall "Expected LexemType.Identifier after module, not %s" lexer)
+                    (assert#funcall 0)
                 ))
         )
 
@@ -125,566 +105,643 @@
         (#body
             (= (ret#var Expression) (#new Expression))
             (= (#\. ret type) "import")
-            (= (#\. ret nl1) getNL)
-            (modname#var string)
-            getLexem@Init
-            (lexer#if
-                (#\. LexemType Identifier).
+            (= (#\. ret type_lexem) (#\. lexer lexem))
+            (modname#var Lexem)
+            (#label Init)
+            getLexem
+
+            (#if (== lexer (#\. LexemType Identifier)).
                 (#body
-                    (~= modname (#\. lexer lexem))
+                    (#if (is (#\. modname text) null).
+                        (#body
+                            (= modname (#\. lexer lexem))
+                        )
+                        #else.
+                        (#body
+                            (~= (#\. modname text) (#\. lexer lexem (#quote \.) text))
+                            (= (#\. modname end) (#\. lexer lexem (#quote \.) end))
+                        ))
                 )
                 #else.
                 (#body
-                    (writefln (#" Expected identifier not %s) lexer)
-                    (assert 0)
+                    (writefln#funcall "Expected identifier not %s" lexer)
+                    (assert#funcall 0)
                 ))
             getLexem
-            (lexer#if
-                ".".
+
+            (#if (== lexer ".").
                 (#body
-                    (~= modname ".")
+                    (~= (#\. modname text) ".")
                     (#goto Init)
                 )
-                ":".
+                (#quote else if) (== lexer ":").
                 (#body
-                    (= (mod Expression) (#new Expression))
-                    (= (#\. mod operator) modname)
+                    (= (mod#var Expression) (#new Expression))
+                    (= (#\. mod operator_lexem) modname)
+                    (= (#\. mod operator) (#\. mod operator_lexem (#quote \.) text))
                     (~= (#\. ret arguments) mod)
-                    getLexem@Ident
-                    (lexer#if
-                        (#\. LexemType Identifier).
+
+                    (= (cexpr#var Expression) (#new Expression))
+                    (= (#\. cexpr operator_lexem) (#\. lexer lexem))
+                    (= (#\. cexpr operator) (#\. cexpr operator_lexem (#quote \.) text))
+
+                    (= (qexpr#var Expression) (#new Expression))
+                    (= (#\. qexpr type) "quote")
+                    (#\. qexpr (addChilds#funcall ([] cexpr)))
+
+                    (#\. mod (addChilds#funcall ([] qexpr)))
+
+                    (#label Ident)
+                    getLexem
+
+                    (#if (== lexer (#\. LexemType Identifier)).
                         (#body
                             (= (name#var Expression) (#new Expression))
-                            (= (#\. name operator) (#\. lexer lexem))
+                            (= (#\. name operator_lexem) (#\. lexer lexem))
+                            (= (#\. name operator) (#\. name operator_lexem (#quote \.) text))
                             (~= (#\. mod arguments) name)
                             getLexem
-                            (lexer#if
-                                "=".
+
+                            (#if (== lexer "=").
                                 (#body
+                                    (= (eexpr#var Expression) (#new Expression))
+                                    (= (#\. eexpr operator_lexem) (#\. lexer lexem))
+                                    (= (#\. eexpr operator) (#\. eexpr operator_lexem (#quote \.) text))
+
+                                    (= (qeexpr#var Expression) (#new Expression))
+                                    (= (#\. qeexpr type) "quote")
+                                    (#\. qeexpr (addChilds#funcall ([] eexpr)))
+
                                     getLexem
-                                    (lexer#if
-                                        (#\. LexemType Identifier).
+
+                                    (#if (== lexer (#\. LexemType Identifier)).
                                         (#body
                                             (= (rename#var Expression) (#new Expression))
-                                            (= (#\. rename operator) (#\. lexer lexem))
-                                            (= (#\. name postop) rename)
+                                            (= (#\. rename operator_lexem) (#\. lexer lexem))
+                                            (= (#\. rename operator) (#\. rename operator_lexem (#quote \.) text))
+                                            (= (#\. qeexpr postop) rename)
+                                            (= (#\. name postop) qeexpr)
                                             getLexem
-                                            (lexer#if
-                                                ",".
+
+                                            (#if (== lexer ",").
                                                 (#body
                                                     (#goto Ident)
                                                 )
-                                                ";".
+                                                (#quote else if) (== lexer ";").
                                                 (#body
                                                     (#return ret)
                                                 )
                                                 #else.
                                                 (#body
-                                                    (writefln (#" , or ; Expected not %s) lexer)
-                                                    (assert 0)
+                                                    (writefln#funcall ", or ; Expected not %s" lexer)
+                                                    (assert#funcall 0)
                                                 ))
                                         )
                                         #else.
                                         (#body
-                                            (writefln (#" Expected identifier not %s) lexer)
-                                            (assert 0)
+                                            (writefln#funcall "Expected identifier not %s" lexer)
+                                            (assert#funcall 0)
                                         ))
                                 )
-                                ",".
+                                (#quote else if) (== lexer ",").
                                 (#body
                                     (#goto Ident)
                                 )
-                                ";".
+                                (#quote else if) (== lexer ";").
                                 (#body
                                     (#return ret)
                                 )
                                 #else.
                                 (#body
-                                    (writefln (#" , or ; or = Expected not %s) lexer)
-                                    (assert 0)
+                                    (writefln#funcall ", or ; or () Expected not %s" lexer)
+                                    (assert#funcall 0)
                                 ))
                         )
                         #else.
                         (#body
-                            (writefln (#" Expected identifier not %s) lexer)
-                            (assert 0)
+                            (writefln#funcall "Expected identifier not %s" lexer)
+                            (assert#funcall 0)
                         ))
                 )
-                ";".
+                (#quote else if) (== lexer ";").
                 (#body
-                    (= (mod Expression) (#new Expression))
-                    (= (#\. mod operator) modname)
+                    (= (mod#var Expression) (#new Expression))
+                    (= (#\. mod operator_lexem) modname)
+                    (= (#\. mod operator) (#\. mod operator_lexem (#quote \.) text))
                     (~= (#\. ret arguments) mod)
-                    (= (#\. ret nl2) getNL)
                     (#return ret)
                 )
                 #else.
                 (#body
-                    (writefln (#" Expected \. or ; not %s) lexer)
-                    (assert 0)
+                    (writefln#funcall "Expected . or ; not %s" lexer)
+                    (assert#funcall 0)
                 ))
         )
 
         (getStruct#function Expression).
         (#body
             (= (ret#var Expression) (#new Expression))
-            (= (oexpr#var Expression) cexpr)
-            (= cexpr ret)
             (= (#\. ret type) "struct")
-            (= (#\. ret nl1) getNL)
+            (= (#\. ret type_lexem) (#\. lexer lexem))
             getLexem
-            (lexer#if
-                (#\. LexemType Identifier).
+
+            (#if (== lexer (#\. LexemType Identifier)).
                 (#body
-                    (= (#\. ret operator) (#\. lexer lexem))
+                    (= (#\. ret operator_lexem) (#\. lexer lexem))
+                    (= (#\. ret operator) (#\. ret operator_lexem (#quote \.) text))
                     getLexem
-                    #noop
                 ))
-            (lexer#if
-                "{".
+
+            (#if (== lexer "{").
                 (#body
-                    #noop
+                    (= (#\. ret open_lexem) (#\. lexer lexem))
                 )
                 #else.
                 (#body
-                    (writefln (#" { Expected not %s) lexer)
-                    (assert 0)
+                    (writefln#funcall "{ Expected not %s" lexer)
+                    (assert#funcall 0)
                 ))
+
             (= (#\. ret arguments) getDefinitions)
-            (= (#\. ret nl2) getNL)
-            (= cexpr oexpr)
+            (= (#\. ret close_lexem) (#\. lexer lexem))
             (#return ret)
         )
 
         (getClass#function Expression).
         (#body
             (= (ret#var Expression) (#new Expression))
-            (= (oexpr#var Expression) cexpr)
-            (= cexpr ret)
             (= (#\. ret type) "class")
-            (= (#\. ret nl1) getNL)
+            (= (#\. ret type_lexem) (#\. lexer lexem))
             getLexem
-            (lexer#if
-                (#\. LexemType Identifier).
+
+            (#if (== lexer (#\. LexemType Identifier)).
                 (#body
-                    (= (#\. ret operator) (#\. lexer lexem))
+                    (= (#\. ret operator_lexem) (#\. lexer lexem))
+                    (= (#\. ret operator) (#\. ret operator_lexem (#quote \.) text))
                     getLexem
-                    #noop
                 )
                 #else.
                 (#body
-                    #noop
                 ))
-            (lexer#if
-                "{".
+
+            (#if (== lexer "{").
                 (#body
-                    #noop
+                    (= (#\. ret open_lexem) (#\. lexer lexem))
                 )
-                ":".
+                (#quote else if) (== lexer ":").
                 (#body
+                    (= (type_lexem#var Lexem) (#\. lexer lexem))
                     getLexem
-                    (lexer#if
-                        (#\. LexemType Identifier).
+
+                    (#if (== lexer (#\. LexemType Identifier)).
                         (#body
-                            #noop
                         )
                         #else.
                         (#body
-                            (writefln (#" Expected Identifier not %s) lexer)
-                            (assert 0)
+                            (writefln#funcall "Expected Identifier not %s" lexer)
+                            (assert#funcall 0)
                         ))
+
                     (= (name#var Expression) (#new Expression))
-                    (= (#\. name operator) (#\. lexer lexem))
+                    (= (#\. name operator_lexem) (#\. lexer lexem))
+                    (= (#\. name operator) (#\. name operator_lexem (#quote \.) text))
                     (= (#\. name type) "superclass")
+                    (= (#\. name type_lexem) type_lexem)
                     (~= (#\. ret arguments) name)
-                    getLexem@Interface
-                    (lexer#if
-                        ",".
+                    (#label Interface)
+                    getLexem
+
+                    (#if (== lexer ",").
                         (#body
-                            getLexem
-                            (lexer#if
-                                (#\. LexemType Identifier).
+
+                            (#if (== lexer (#\. LexemType Identifier)).
                                 (#body
-                                    #noop
                                 )
                                 #else.
                                 (#body
-                                    (writefln (#" Expected Identifier not %s) lexer)
-                                    (assert 0)
+                                    (writefln#funcall "Expected Identifier not %s" lexer)
+                                    (assert#funcall 0)
                                 ))
                             (= (iname#var Expression) (#new Expression))
-                            (= (#\. iname operator) (#\. lexer lexem))
+                            (= (#\. iname operator_lexem) (#\. lexer lexem))
+                            (= (#\. iname operator) (#\. iname operator_lexem (#quote \.) text))
                             (~= (#\. name arguments) iname)
                             (#goto Interface)
                         )
-                        "{".
+                        (#quote else if) (== lexer "{").
                         (#body
-                            #noop
+                            (= (#\. ret open_lexem) (#\. lexer lexem))
                         )
                         #else.
                         (#body
-                            (writefln (#" Expected { or , not %s) lexer)
-                            (assert 0)
+                            (writefln#funcall "Expected { or , not %s" lexer)
+                            (assert#funcall 0)
                         ))
                 )
                 #else.
                 (#body
-                    (writefln (#" { or : Expected not %s) lexer)
-                    (assert 0)
+                    (writefln#funcall "{ or : Expected not %s" lexer)
+                    (assert#funcall 0)
                 ))
             (~= (#\. ret arguments) getDefinitions)
-            (= (#\. ret nl2) getNL)
-            (= cexpr oexpr)
+            (= (#\. ret close_lexem) (#\. lexer lexem))
             (#return ret)
         )
 
-        (getDefinitions#function Expression[]).
+        (getDefinitions#function ([]#type Expression)).
         (#body
             (= (ret#var Expression) (#new Expression))
-            (= (oexpr#var Expression) cexpr)
-            (= cexpr ret)
-            getLexem@Init
-            (lexer#if
-                "struct".
+            (#label Init)
+            getLexem
+
+            (#if (== lexer "struct").
                 (#body
                     (~= (#\. ret arguments) getStruct)
                     (#goto Init)
                 )
-                "class".
+                (#quote else if) (== lexer "class").
                 (#body
                     (~= (#\. ret arguments) getClass)
                     (#goto Init)
                 )
-                "enum".
+                (#quote else if) (== lexer "enum").
                 (#body
                     (~= (#\. ret arguments) getEnum)
                     (#goto Init)
                 )
-                (#\. LexemType Identifier).
+                (#quote else if) (== lexer (#\. LexemType Identifier)).
                 (#body
                     (~= (#\. ret arguments) getVar)
                     (#goto Init)
                 )
-                "}".
+                (#quote else if) (== lexer "}").
                 (#body
-                    (= cexpr oexpr)
                     (#return (#\. ret arguments))
                 )
                 #else.
                 (#body
-                    (writefln (#" (#\. LexemType Identifier) expected not %s) lexer)
-                    (assert 0)
+                    (writefln#funcall "LexemType.Identifier expected not %s" lexer)
+                    (assert#funcall 0)
                 ))
         )
 
         (getEnum#function Expression).
         (#body
             (= (ret#var Expression) (#new Expression))
-            (= (oexpr#var Expression) cexpr)
-            (= cexpr ret)
             (= (#\. ret type) "enum")
-            (= (#\. ret nl1) getNL)
+            (= (#\. ret type_lexem) (#\. lexer lexem))
             getLexem
-            (lexer#if
-                (#\. LexemType Identifier).
+
+            (#if (== lexer (#\. LexemType Identifier)).
                 (#body
-                    (= (#\. ret operator) (#\. lexer lexem))
+                    (= (#\. ret operator_lexem) (#\. lexer lexem))
+                    (= (#\. ret operator) (#\. ret operator_lexem (#quote \.) text))
                     getLexem
-                    #noop
                 )
                 #else.
                 (#body
-                    #noop
                 ))
-            (lexer#if
-                "{".
+
+            (#if (== lexer "{").
                 (#body
-                    #noop
+                    (= (#\. ret open_lexem) (#\. lexer lexem))
                 )
                 #else.
                 (#body
-                    (writefln (#" { Expected not %s) lexer)
-                    (assert 0)
+                    (writefln#funcall "{ Expected not %s" lexer)
+                    (assert#funcall 0)
                 ))
-            getLexem@Values
-            (lexer#if
-                (#\. LexemType Identifier).
+            (#label Values)
+            getLexem
+
+            (#if (== lexer (#\. LexemType Identifier)).
                 (#body
-                    (= (val Expression) (#new Expression))
-                    (= (#\. val operator) (#\. lexer lexem))
-                    (= (#\. val nl1) getNL)
+                    (= (val#var Expression) (#new Expression))
+                    (= (#\. val operator_lexem) (#\. lexer lexem))
+                    (= (#\. val operator) (#\. val operator_lexem (#quote \.) text))
                     getLexem
-                    (lexer#if
-                        "=".
+
+                    (#if (== lexer "=").
                         (#body
+                            (= (ilexem#var Lexem) (#\. lexer lexem))
                             getLexem
-                            (lexer#if (.
-                                (#\. LexemType Character)
-                                (#\. LexemType Number)).
+
+                            (#if (|| (== lexer (#\. LexemType Character))
+                                    (== lexer (#\. LexemType Number))).
                                 (#body
-                                    (= (init Expression) (#new Expression))
-                                    (= (#\. init operator) (#\. lexer lexem))
+                                    (= (einit#var Expression) (#new Expression))
+                                    (= (#\. einit operator_lexem) (#\. lexer lexem))
+                                    (= (#\. einit operator) (#\. einit operator_lexem (#quote \.) text))
+
+                                    (= (init#var Expression) (#new Expression))
                                     (= (#\. init type) "init")
+                                    (= (#\. init type_lexem) ilexem)
+                                    (#\. init (addChilds#funcall ([] einit)))
+                                    (#if (== lexer (#\. LexemType Character)).
+                                        (#body (= (#\. einit bt) (#\. BlockType Character))))
                                     (= (#\. val postop) init)
                                     getLexem
-                                    #noop
                                 )
                                 #else.
                                 (#body
-                                    (writefln (#" Number Expected not %s) lexer)
-                                    (assert 0)
+                                    (writefln#funcall "Number or Character Expected not %s" lexer)
+                                    (assert#funcall 0)
                                 ))
                         )
                         #else.
                         (#body
-                            #noop
                         ))
-                    (lexer#if
-                        ",".
+
+                    (#if (== lexer ",").
                         (#body
                             (~= (#\. ret arguments) val)
                             (#goto Values)
                         )
-                        "}".
+                        (#quote else if) (== lexer "}").
                         (#body
+                            (= (#\. ret close_lexem) (#\. lexer lexem))
                             (~= (#\. ret arguments) val)
-                            #noop
                         )
                         #else.
                         (#body
-                            (writefln (#" , or } Expected not %s) lexer)
-                            (assert 0)
+                            (writefln#funcall ", or } Expected not %s" lexer)
+                            (assert#funcall 0)
                         ))
-                    #noop
                 )
                 #else.
                 (#body
-                    (writefln (#" { Expected not %s) lexer)
-                    (assert 0)
+                    (writefln#funcall "{ Expected not %s" lexer)
+                    (assert#funcall 0)
                 ))
-            (= (#\. ret nl2) getNL)
-            (= cexpr oexpr)
+
             (#return ret)
         )
 
-        (getVar#function Expression[]).
+        (getVar#function ([]#type Expression)).
         (#body
             (= (ret#var Expression) (#new Expression))
-            (= (oexpr#var Expression) cexpr)
-            (= cexpr ret)
-            (= (#\. ret nl1) getNL)
             (= (type#var Expression) (#new Expression))
-            (pp#var Expression[])
-            (lexer#if@Init (.
-                "static"
-                "override"
-                "public"
-                "private"
-                "package"
-                "protected").
+            (pp#var ([]#type Expression))
+
+            (#label Init)
+            (#if (|| (== lexer "static")
+                    (== lexer "override")
+                    (#quote ||) (== lexer "public")
+                    (#quote ||) (== lexer "private")
+                    (#quote ||) (== lexer "package")
+                    (#quote ||) (== lexer "protected")).
                 (#body
                     (= (post#var Expression) (#new Expression))
-                    (= (#\. post operator) (#\. lexer lexem))
+                    (= (#\. post operator_lexem) (#\. lexer lexem))
+                    (= (#\. post operator) (#\. post operator_lexem (#quote \.) text))
                     (~= pp post)
                     getLexem
                     (#goto Init)
                 )
-                ":".
+                (#quote else if) (== lexer ":").
                 (#body
                     (= (#\. type nl1) (#\. ret nl1))
                     (~= (#\. type arguments) (#\. ret arguments))
                     (= (#\. type type) ":")
+                    (= (#\. type type_lexem) (#\. lexer lexem))
                     (~= (#\. type arguments) pp)
                     (= (#\. type postop) null)
-                    (= cexpr oexpr)
-                    (#return [type])
+                    (#return ([] type))
                 )
-                "this".
+                (#quote else if) (== lexer "this").
                 (#body
                     (= (#\. type type) "constructor")
+                    (= (#\. type type_lexem) (#\. lexer lexem))
                 )
-                (#\. LexemType Identifier).
+                (#quote else if) (== lexer (#\. LexemType Identifier)).
                 (#body
-                    (= (#\. type operator) (#\. lexer lexem))
+                    (= (#\. type operator_lexem) (#\. lexer lexem))
+                    (= (#\. type operator) (#\. type operator_lexem (#quote \.) text))
                     getLexem
                 )
                 #else.
                 (#body
-                    (writefln (#" Unexpected %s) lexer)
-                    (assert 0)
+                    (writefln#funcall "Unexpected %s" lexer)
+                    (assert#funcall 0)
                 ))
-            (lexer#if@Var
-                (#\. LexemType Identifier).
+
+            (#label Var)
+            (#if (== lexer (#\. LexemType Identifier)).
                 (#body
-                    (= (#\. ret operator) (#\. lexer lexem))
-                    (#\. type (addPosts pp))
+                    (= (#\. ret operator_lexem) (#\. lexer lexem))
+                    (= (#\. ret operator) (#\. ret operator_lexem (#quote \.) text))
                     (~= (#\. ret arguments) type)
                     getLexem
                 )
-                "*".
+                (#quote else if) (== lexer "*").
                 (#body
                     (= (nt#var Expression) (#new Expression))
                     (= (#\. nt operator) "*")
+                    (= (#\. nt operator_lexem) (#\. lexer lexem))
                     (= (#\. nt type) "type")
                     (~= (#\. nt arguments) type)
                     (= type nt)
                     getLexem
                     (#goto Var)
                 )
-                "[".
+                (#quote else if) (== lexer "[").
                 (#body
                     (= (nt#var Expression) (#new Expression))
                     (= (#\. nt operator) "[]")
+                    (= (#\. nt operator_lexem) (#\. lexer lexem))
+                    (= (#\. nt open_lexem) (#\. lexer lexem))
                     (= (#\. nt type) "type")
                     (~= (#\. nt arguments) type)
                     (= type nt)
                     getLexem
-                    (lexer#if
-                        "]".
+
+                    (#if (== lexer "]").
                         (#body
+                            (= (#\. nt operator_lexem (#quote \.) end) (#\. lexer lexem (#quote \.) end))
+                            (= (#\. nt close_lexem) (#\. lexer lexem))
                             getLexem
                             (#goto Var)
                         )
                         #else.
                         (#body
-                            (writefln (#" Unexpected %s) lexer)
-                            (assert 0)
+                            (writefln#funcall "Unexpected %s" lexer)
+                            (assert#funcall 0)
                         ))
                 )
                 #else.
                 (#body
-                    (writefln (#" Identifier Expected not %s) lexer)
-                    (assert 0)
+                    (writefln#funcall "Identifier Expected not %s" lexer)
+                    (assert#funcall 0)
                 ))
-            (lexer#if@Eq
-                "(".
+
+            (#label Eq)
+            (#if (== lexer "(").
                 (#body
                     (= (#\. ret type) "function")
+                    (= (#\. ret open_lexem) (#\. lexer lexem))
                     (~= (#\. ret arguments) getArguments)
-                    (#if
-                        (== (#\. ret operator) "function").
+                    (= (#\. ret close_lexem) (#\. lexer lexem))
+
+                    (#if (== (#\. ret operator) "function").
                         (#body
                             (= (#\. ret operator) "")
                             (= type ret)
-                            (= ret#var (#new Expression))
+                            (= ret (#new Expression))
                             getLexem
-                            (lexer#if
-                                (#\. LexemType Identifier).
+
+                            (#if (== lexer (#\. LexemType Identifier)).
                                 (#body
-                                    (= (#\. ret operator) (#\. lexer lexem))
+                                    (= (#\. ret operator_lexem) (#\. lexer lexem))
+                                    (= (#\. ret operator) (#\. ret operator_lexem (#quote \.) text))
                                     (~= (#\. ret arguments) type)
                                 )
                                 #else.
                                 (#body
-                                    (writefln (#" Identifier Expected not %s) lexer)
-                                    (assert 0)
+                                    (writefln#funcall "Identifier Expected not %s" lexer)
+                                    (assert#funcall 0)
                                 ))
                             getLexem
-                            (lexer#if
-                                ";".
+
+                            (#if (== lexer ";").
                                 (#body
-                                    (#return [ret])
+                                    (#if (!#unary (#\. pp empty)).
+                                        (#body
+                                            (= (attr#var Expression) (#new Expression))
+                                            (= (#\. attr type) "attr")
+                                            (= (#\. attr arguments) pp)
+                                            (= (#\. attr postop) ret)
+                                            (= ret attr)
+                                        ))
+
+                                    (#return ([] ret))
                                 )
                                 #else.
                                 (#body
-                                    (writefln (#" Expected ; not %s) lexer)
-                                    (assert 0)
+                                    (writefln#funcall "Expected ; not %s" lexer)
+                                    (assert#funcall 0)
                                 ))
                         ))
                     getLexem
-                    (lexer#if
-                        "{".
+
+                    (#if (== lexer "{").
                         (#body
                             back
                             (= (#\. ret postop) getBody)
                         )
-                        ";".
+                        (#quote else if) (== lexer ";").
                         (#body
-                            #noop
                         )
                         #else.
                         (#body
-                            (writefln (#" Expected { or ; not %s) lexer)
-                            (assert 0)
+                            (writefln#funcall "Expected { or ; not %s" lexer)
+                            (assert#funcall 0)
                         ))
                 )
-                ",".
+                (#quote else if) (== lexer ",").
                 (#body
                     (= (expr#var Expression) (#new Expression))
                     (= (#\. ret arguments) null)
                     (~= (#\. expr arguments) ret)
-                    (= ret cexpr expr)
-                    getLexem@Var2
-                    (lexer#if
-                        (#\. LexemType Identifier).
+                    (= ret expr)
+                    (#label Var2)
+                    getLexem
+
+                    (#if (== lexer (#\. LexemType Identifier)).
                         (#body
                             (= (var#var Expression) (#new Expression))
-                            (= (#\. var operator) (#\. lexer lexem))
+                            (= (#\. var operator_lexem) (#\. lexer lexem))
+                            (= (#\. var operator) (#\. var operator_lexem (#quote \.) text))
                             (~= (#\. expr arguments) var)
                         )
                         #else.
                         (#body
-                            (writefln (#" Identifier Expected not %s) lexer)
-                            (assert 0)
+                            (writefln#funcall "Identifier Expected not %s" lexer)
+                            (assert#funcall 0)
                         ))
                     getLexem
-                    (lexer#if@Comma
-                        ",".
+
+                    (#label Comma)
+                    (#if (== lexer ",").
                         (#body
                             (#goto Var2)
                         )
-                        "=".
+                        (#quote else if) (== lexer "=").
                         (#body
-                            (= (init Expression) getExpression)
+                            (= (init#var Expression) (#new Expression#funcall))
+                            (= (#\. init type_lexem) (#\. lexer lexem))
                             (= (#\. init type) "init")
-                            (= (#\. expr arguments (#[ (- $ 1)) postop) init)
+                            (#\. init (addChilds#funcall ([] getExpression)))
+                            (= (#\. expr arguments (#[ (#ord (- $ 1))) (#quote \.) postop) init)
                             (#goto Comma)
                         )
-                        ";".
+                        (#quote else if) (== lexer ";").
                         (#body
-                            (= (#\. type index) (-#unary (#\. ret arguments length)))
-                            (#\. ret arguments (#[ (- $ 1)) (addPosts [type]))
-                            (= cexpr oexpr)
+                            (= (#\. type index) (#ord (-#unary (#\. ret arguments (#quote \.) length))))
+                            (#\. ret arguments (#[ (#ord (- $ 1))) (#quote \.) (addPosts#funcall ([] type)))
+
+                            (#if (!#unary (#\. pp empty)).
+                                (#body
+                                    (= (attr#var Expression) (#new Expression))
+                                    (= (#\. attr type) "attr")
+                                    (= (#\. attr arguments) pp)
+                                    (= (#\. attr postop) ret)
+                                    (#return ([] attr))
+                                ))
+
                             (#return (#\. ret arguments))
                         )
                         #else.
                         (#body
-                            (writefln (#" = or , or ; Expected not %s) lexer)
-                            (assert 0)
+                            (writefln#funcall "() or , or ; Expected not %s" lexer)
+                            (assert#funcall 0)
                         ))
                 )
-                "=".
+                (#quote else if) (== lexer "=").
                 (#body
-                    (= (init Expression) getExpression)
+                    (= (init#var Expression) (#new Expression#funcall))
+                    (= (#\. init type_lexem) (#\. lexer lexem))
                     (= (#\. init type) "init")
+                    (#\. init (addChilds#funcall ([] getExpression)))
                     (= (#\. ret postop) init)
                     (#goto Eq)
                 )
-                ";".
+                (#quote else if) (== lexer ";").
                 (#body
-                    #noop
                 )
                 #else.
                 (#body
-                    (writefln (#" Expected or = or ; or , not %s) lexer)
-                    (assert 0)
+                    (writefln#funcall "Expected or () or ; or , not %s" lexer)
+                    (assert#funcall 0)
                 ))
-            (= (#\. ret nl2) getNL)
-            (= cexpr oexpr)
-            (#return [ret])
+
+            (#if (!#unary (#\. pp empty)).
+                (#body
+                    (= (attr#var Expression) (#new Expression))
+                    (= (#\. attr type) "attr")
+                    (= (#\. attr arguments) pp)
+                    (= (#\. attr postop) ret)
+                    (= ret attr)
+                ))
+
+            (#return ([] ret))
         )
 
         (getBody#function Expression).
         (#body
             (= (ret#var Expression) (#new Expression))
             (= (#\. ret type) "body")
-            (= (#\. ret nl1) getNL)
-            (= (oexpr#var Expression) cexpr)
-            (= cexpr ret)
-            (=@Init (s#var Expression[]) getStatement)
+
+            (#label Init)
+            (= (s#var ([]#type Expression)) getStatement)
+
+            (#if (&& (== (#\. s length) 1) (== (#\. s (#[ 0) (#quote \.) type) "{")).
+                (#body
+                    (= (#\. ret open_lexem) (#\. s (#[ 0) (#quote \.) type_lexem))
+                    (= (#\. ret close_lexem) (#\. s (#[ 0) (#quote \.) close_lexem))
+                    (= s (#\. s (#[ 0) (#quote \.) arguments))
+                ))
+
             (~= (#\. ret arguments) s)
-            (= cexpr oexpr)
-            (= (#\. ret nl2) getNL)
             (#return ret)
         )
 
@@ -692,80 +749,108 @@
         (#body
             (= (ret#var Expression) (#new Expression))
             (= (#\. ret type) "body")
-            (=@Init (s#var Expression[]) getStatement)
-            (#if
-                (is s null).
+            (#label Init)
+            (= (s#var ([]#type Expression)) getStatement)
+
+            (#if (&& (== (#\. s length) 1) (== (#\. s (#[ 0) (#quote \.) type) "{")).
                 (#body
-                    (return ret)
+                    (= (#\. ret type_lexem) (#\. s (#[ 0) (#quote \.) type_lexem))
+                    (= (#\. ret close_lexem) (#\. s (#[ 0) (#quote \.) close_lexem))
+                    (= s (#\. s (#[ 0) (#quote \.) arguments))
+                ))
+
+            (#if (is s null).
+                (#body
+                    (#return ret)
                 ))
             (~= (#\. ret arguments) s)
             (#goto Init)
         )
 
-        (getStatement#function Expression[]).
+        (getStatement#function ([]#type Expression)).
         (#body
-            (post#var Expression[])
-            (= (comments#var Expression) (#new Expression))
-            (= (oexpr#var Expression) cexpr)
-            (= (sargs#var Expression[]) (#\. cexpr arguments))
-            (= (back Lexer) lexer)
-            getLexem@Attr
-            (lexer#if
-                "static".
+            (post#var ([]#type Expression))
+            (= (back#var Lexer) lexer)
+            (#label Attr)
+            getLexem
+
+            (#if (== lexer "static").
                 (#body
-                    (= (s Expression) (#new Expression))
-                    (= (#\. s operator) (#\. lexer lexem))
+                    (= (s#var Expression) (#new Expression))
+                    (= (#\. s operator_lexem) (#\. lexer lexem))
+                    (= (#\. s operator) (#\. s operator_lexem (#quote \.) text))
                     (~= post s)
                     (#goto Attr)
                 )
-                "if".
+                (#quote else if) (== lexer "if").
                 (#body
                     (= (expr#var Expression) (#new Expression))
-                    (= (#\. expr type) "if")
-                    (= (#\. expr nl1) getNL)
-                    (= cexpr comments)
-                    (#\. expr (addPosts post))
-                    getLexem@Init
-                    (lexer#if
-                        "(".
+                    (#if (&& (> (#\. post length) 0) (== (#\. post (#[ (- $ 1)) (#quote \.) operator) "static")).
                         (#body
-                            (#\. expr (addChilds (#\. comments arguments)))
-                            (= (#\. comments arguments) [])
-                            (= (cond Expression) getExpression)
-                            (lexer#if
-                                ")".
+                            (= (#\. expr type_lexem) (#\. post (#[ (- $ 1)) (#quote \.) operator_lexem))
+                            (= (#\. expr type) "static-if")
+                            (= post (#\. post (#[ 0 \.\. (- $ 1))))
+                        )
+                        #else.
+                        (#body
+                            (= (#\. expr type) "if")
+                            (= (#\. expr type_lexem) (#\. lexer lexem))
+                        ))
+                    (#\. expr (addPosts#funcall post))
+                    (= (if_open_close#var Expression) expr)
+                    (#label Init)
+                    getLexem
+
+                    (#if (== lexer "(").
+                        (#body
+                            (= (#\. if_open_close open_lexem) (#\. lexer lexem))
+                            (= (cond#var Expression) getExpression)
+
+                            (#if (== lexer ")").
                                 (#body
-                                    #noop
+                                    (= (#\. if_open_close close_lexem) (#\. lexer lexem))
                                 )
                                 #else.
                                 (#body
-                                    (writefln (#" Expected \. not %s) lexer)
-                                    (assert 0)
+                                    (writefln#funcall "Expected . not %s" lexer)
+                                    (assert#funcall 0)
                                 ))
                             (= (#\. cond postop) getBody)
                             (~= (#\. expr arguments) cond)
-                            (#\. expr (addChilds (#\. comments arguments)))
-                            (= (#\. comments arguments) [])
                             (= back lexer)
                             getLexem
-                            (lexer#if
-                                "else".
+
+                            (#if (== lexer "else").
                                 (#body
-                                    (#\. expr (addChilds (#\. comments arguments)))
-                                    (= (#\. comments arguments) [])
+                                    (= (else_lexem#var Lexem) (#\. lexer lexem))
                                     (= back lexer)
                                     getLexem
-                                    (lexer#if
-                                        "if".
+
+                                    (#if (== lexer "if").
                                         (#body
+                                            (= (eexpr#var Expression) (#new Expression))
+                                            (= (#\. eexpr operator_lexem) else_lexem)
+                                            (= (#\. eexpr operator) (#\. eexpr operator_lexem (#quote \.) text))
+
+                                            (= (iexpr#var Expression) (#new Expression))
+                                            (= (#\. iexpr operator_lexem) (#\. lexer lexem))
+                                            (= (#\. iexpr operator) (#\. iexpr operator_lexem (#quote \.) text))
+
+                                            (= (qexpr#var Expression) (#new Expression))
+                                            (= (#\. qexpr type) "quote")
+                                            (#\. qexpr (addChilds#funcall ([] eexpr iexpr)))
+
+                                            (#\. expr (addChilds#funcall ([] qexpr)))
+                                            (= if_open_close qexpr)
+
                                             (#goto Init)
                                         )
                                         #else.
                                         (#body
-                                            (= (#\. comments arguments) [])
                                             (= lexer back)
-                                            (= (els Expression) (#new Expression))
+                                            (= (els#var Expression) (#new Expression))
                                             (= (#\. els type) "else")
+                                            (= (#\. els type_lexem) else_lexem)
                                             (= (#\. els postop) getBody)
                                             (~= (#\. expr arguments) els)
                                         ))
@@ -777,1428 +862,1588 @@
                         )
                         #else.
                         (#body
-                            (writefln (#" Expected not %s) lexer)
-                            (assert 0)
+                            (writefln#funcall "Expected not %s" lexer)
+                            (assert#funcall 0)
                         ))
-                    (= (#\. expr nl2) getNL)
-                    (= cexpr oexpr)
-                    (#return [expr])
+                    (#return ([] expr))
                 )
-                "switch".
+                (#quote else if) (== lexer "switch").
                 (#body
                     (= (expr#var Expression) (#new Expression))
                     (= (#\. expr type) "switch")
-                    (= (#\. expr nl1) getNL)
-                    (= cexpr comments)
-                    (#\. expr (addPosts post))
+                    (= (#\. expr type_lexem) (#\. lexer lexem))
+                    (#\. expr (addPosts#funcall post))
                     getLexem
-                    (lexer#if
-                        "(".
+
+                    (#if (== lexer "(").
                         (#body
-                            (#\. expr (addChilds (#\. comments arguments)))
-                            (= (#\. comments arguments) [])
-                            (= (var Expression) getExpression)
-                            (lexer#if
-                                ")".
+                            (= (#\. expr open_lexem) (#\. lexer lexem))
+                            (= (var#var Expression) getExpression)
+
+                            (#if (== lexer ")").
                                 (#body
-                                    #noop
+                                    (= (#\. expr close_lexem) (#\. lexer lexem))
                                 )
                                 #else.
                                 (#body
-                                    (writefln (#" Expected \. not %s) lexer)
-                                    (assert 0)
+                                    (writefln#funcall "Expected . not %s" lexer)
+                                    (assert#funcall 0)
                                 ))
-                            (= (#\. var postop) expr)
-                            getLexem
-                            (lexer#if
-                                "{".
-                                (#body
-                                    #noop
-                                )
-                                #else.
-                                (#body
-                                    (writefln (#" { Expected not %s) lexer)
-                                    (assert 0)
-                                ))
-                            (=@Case (ind long) (#\. expr arguments length))
-                            (=@Case2 back lexer)
-                            getLexem
-                            (lexer#if
-                                "case".
-                                (#body
-                                    (#\. expr (addChilds (#\. comments arguments)))
-                                    (= (#\. comments arguments) [])
-                                    (~= (#\. expr arguments) getCaseVal)
-                                )
-                                "default".
-                                (#body
-                                    (#\. expr (addChilds (#\. comments arguments)))
-                                    (= (#\. comments arguments) [])
-                                    (= (def Expression) (#new Expression))
-                                    (= (#\. def type) "default")
-                                    (~= (#\. expr arguments) def)
-                                    getLexem
-                                )
-                                "}".
-                                (#body
-                                    (#\. expr (addChilds (#\. comments arguments)))
-                                    (= (#\. comments arguments) [])
-                                    (= (#\. var nl2) getNL)
-                                    (= cexpr oexpr)
-                                    (#return [var])
-                                )
-                                #else.
-                                (#body
-                                    (= lexer back)
-                                    (= (#\. comments arguments) [])
-                                    (= (bod Expression) getCaseBody)
-                                    (= (#\. bod index) (- ind (#\. expr arguments length)))
-                                    (= (#\. expr arguments (#[ (- $ 1)) postop) bod)
-                                    (#goto Case)
-                                ))
-                            (lexer#if
-                                ":".
-                                (#body
-                                    (#goto Case2)
-                                )
-                                #else.
-                                (#body
-                                    (writefln (#" : Expected not) lexer)
-                                    (assert 0)
-                                ))
+                            (~= (#\. expr arguments) var)
+                            (= (#\. expr postop) getBody)
                         )
                         #else.
                         (#body
-                            (writefln (#" Expected not %s) lexer)
-                            (assert 0)
+                            (writefln#funcall "Expected not %s" lexer)
+                            (assert#funcall 0)
                         ))
+                    (#return ([] expr))
                 )
-                "for".
+                (#quote else if) (== lexer "case").
+                (#body
+                    (= (expr#var Expression) (#new Expression))
+                    (= (#\. expr type) "case")
+                    (= (#\. expr type_lexem) (#\. lexer lexem))
+                    (#\. expr (addPosts#funcall post))
+                    (~= (#\. expr arguments) getCaseVal)
+                    (= (#\. expr open_lexem) (#\. lexer lexem))
+                    (#return ([] expr))
+                )
+                (#quote else if) (== lexer "default").
+                (#body
+                    (= (expr#var Expression) (#new Expression))
+                    (= (#\. expr type) "default")
+                    (= (#\. expr type_lexem) (#\. lexer lexem))
+                    (#\. expr (addPosts#funcall post))
+
+                    getLexem
+                    (#if (== lexer ":").
+                        (#body
+                        )
+                        #else.
+                        (#body
+                            (writefln#funcall "Expected : not %s" lexer)
+                            (assert#funcall 0)
+                        ))
+                    (= (#\. expr open_lexem) (#\. lexer lexem))
+
+                    (#return ([] expr))
+                )
+                (#quote else if) (== lexer "for").
                 (#body
                     (= (expr#var Expression) (#new Expression))
                     (= (#\. expr type) "for")
-                    (= (#\. expr nl1) getNL)
-                    (#\. expr (addPosts post))
+                    (= (#\. expr type_lexem) (#\. lexer lexem))
+                    (#\. expr (addPosts#funcall post))
                     getLexem
-                    (lexer#if
-                        "(".
+
+                    (#if (== lexer "(").
                         (#body
-                            (= (iexpr Expression) getInnerStat)
+                            (= (#\. expr open_lexem) (#\. lexer lexem))
+                            (= (iexpr#var Expression) getInnerStat)
                             getLexem
-                            (lexer#if
-                                ";".
+
+                            (#if (== lexer ";").
                                 (#body
-                                    #noop
                                 )
                                 #else.
                                 (#body
-                                    (writefln (#" Expected ; not %s) lexer)
-                                    (assert 0)
+                                    (writefln#funcall "Expected ; not %s" lexer)
+                                    (assert#funcall 0)
                                 ))
-                            (= (cexpr Expression) getExpression)
-                            (lexer#if
-                                ";".
+                            (= (cexpr#var Expression) getExpression)
+
+                            (#if (== lexer ";").
                                 (#body
-                                    #noop
                                 )
                                 #else.
                                 (#body
-                                    (writefln (#" Expected ; not %s) lexer)
-                                    (assert 0)
+                                    (writefln#funcall "Expected ; not %s" lexer)
+                                    (assert#funcall 0)
                                 ))
-                            (= (pexpr Expression) getInnerStat)
+                            (= (pexpr#var Expression) getInnerStat)
                             getLexem
-                            (lexer#if
-                                ")".
+
+                            (#if (== lexer ")").
                                 (#body
-                                    #noop
+                                    (= (#\. expr close_lexem) (#\. lexer lexem))
                                 )
                                 #else.
                                 (#body
-                                    (writefln (#" Expected \. not %s) lexer)
-                                    (assert 0)
+                                    (writefln#funcall "Expected . not %s" lexer)
+                                    (assert#funcall 0)
                                 ))
                             (= (#\. expr postop) getBody)
-                            (= (#\. expr arguments) (#[ iexpr cexpr pexpr))
-                            (= (#\. expr nl2) getNL)
-                            (#return [expr])
+                            (= (#\. expr arguments) ([] iexpr cexpr pexpr))
+                            (#return ([] expr))
                         )
                         #else.
                         (#body
-                            (writefln (#" Expected not %s) lexer)
-                            (assert 0)
+                            (writefln#funcall "Expected not %s" lexer)
+                            (assert#funcall 0)
                         ))
                 )
-                "foreach".
+                (#quote else if) (|| (== lexer "foreach") (== lexer "foreach_reverse")).
                 (#body
                     (= (expr#var Expression) (#new Expression))
-                    (= (#\. expr type) "foreach")
-                    (= (#\. expr nl1) getNL)
-                    (#\. expr (addPosts post))
+                    (= (#\. expr type_lexem) (#\. lexer lexem))
+                    (= (#\. expr type) (#\. expr type_lexem (#quote \.) text))
+                    (#\. expr (addPosts#funcall post))
                     getLexem
-                    (lexer#if
-                        "(".
+
+                    (#if (== lexer "(").
                         (#body
-                            (= (avar Expression) (#new Expression))
-                            (= (bvar Expression) (#new Expression))
-                            (p1#var Expression[])
-                            getLexem@Avar
-                            (lexer#if
-                                "ref".
+                            (= (#\. expr open_lexem) (#\. lexer lexem))
+                            (= (avar#var Expression) (#new Expression))
+                            (= (bvar#var Expression) (#new Expression))
+                            (p1#var ([]#type Expression))
+                            (#label Avar)
+                            getLexem
+
+                            (#if (== lexer "ref").
                                 (#body
-                                    (= (aref Expression) (#new Expression))
-                                    (= (#\. aref operator) (#\. lexer lexem))
+                                    (= (aref#var Expression) (#new Expression))
+                                    (= (#\. aref operator_lexem) (#\. lexer lexem))
+                                    (= (#\. aref operator) (#\. aref operator_lexem (#quote \.) text))
                                     (~= p1 aref)
                                     (#goto Avar)
                                 )
-                                (#\. LexemType Identifier).
+                                (#quote else if) (== lexer (#\. LexemType Identifier)).
                                 (#body
-                                    (= (#\. avar operator) (#\. lexer lexem))
+                                    (= (#\. avar operator_lexem) (#\. lexer lexem))
+                                    (= (#\. avar operator) (#\. avar operator_lexem (#quote \.) text))
                                 )
                                 #else.
                                 (#body
-                                    (writefln (#" Expected Identifier not %s) lexer)
-                                    (assert 0)
+                                    (writefln#funcall "Expected Identifier not %s" lexer)
+                                    (assert#funcall 0)
                                 ))
                             getLexem
-                            (lexer#if
-                                ",".
+
+                            (#if (== lexer ",").
                                 (#body
-                                    getLexem@Bvar
-                                    (lexer#if
-                                        "ref".
+                                    (#label Bvar)
+                                    getLexem
+
+                                    (#if (== lexer "ref").
                                         (#body
-                                            (= (aref Expression) (#new Expression))
-                                            (= (#\. aref operator) (#\. lexer lexem))
+                                            (= (aref#var Expression) (#new Expression))
+                                            (= (#\. aref operator_lexem) (#\. lexer lexem))
+                                            (= (#\. aref operator) (#\. aref operator_lexem (#quote \.) text))
                                             (~= p1 aref)
                                             (#goto Bvar)
                                         )
-                                        (#\. LexemType Identifier).
+                                        (#quote else if) (== lexer (#\. LexemType Identifier)).
                                         (#body
-                                            (= (#\. bvar operator) (#\. lexer lexem))
+                                            (= (#\. bvar operator_lexem) (#\. lexer lexem))
+                                            (= (#\. bvar operator) (#\. bvar operator_lexem (#quote \.) text))
                                             getLexem
                                         )
                                         #else.
                                         (#body
-                                            (writefln (#" Expected Identifier not %s) lexer)
-                                            (assert 0)
+                                            (writefln#funcall "Expected Identifier not %s" lexer)
+                                            (assert#funcall 0)
                                         ))
                                 )
                                 #else.
                                 (#body
+                                    (= (#\. bvar operator_lexem) (#\. avar operator_lexem))
+                                    (= (#\. avar operator_lexem) (#\. Lexem init))
                                     (= (#\. bvar operator) (#\. avar operator))
                                     (= (#\. avar operator) null)
                                 ))
-                            (lexer#if
-                                ";".
+
+                            (#if (== lexer ";").
                                 (#body
-                                    #noop
                                 )
                                 #else.
                                 (#body
-                                    (writefln (#" Expected ; not %s) lexer)
-                                    (assert 0)
+                                    (writefln#funcall "Expected ; not %s" lexer)
+                                    (assert#funcall 0)
                                 ))
-                            (#\. bvar (addPosts p1))
-                            (= (cexpr Expression) getExpression)
-                            (lexer#if
-                                ")".
+                            (#\. bvar (addPosts#funcall p1))
+                            (= (cexpr#var Expression) getExpression)
+
+                            (#if (== lexer ")").
                                 (#body
-                                    #noop
+                                    (= (#\. expr close_lexem) (#\. lexer lexem))
                                 )
                                 #else.
                                 (#body
-                                    (writefln (#" Expected \. not %s) lexer)
-                                    (assert 0)
+                                    (writefln#funcall "Expected . not %s" lexer)
+                                    (assert#funcall 0)
                                 ))
                             (= (#\. expr postop) getBody)
-                            (= (#\. expr arguments) (#[ avar bvar cexpr))
-                            (= (#\. expr nl2) getNL)
-                            (#return [expr])
+                            (= (#\. expr arguments) ([] avar bvar cexpr))
+                            (#return ([] expr))
                         )
                         #else.
                         (#body
-                            (writefln (#" Expected not %s) lexer)
-                            (assert 0)
+                            (writefln#funcall "Expected not %s" lexer)
+                            (assert#funcall 0)
                         ))
                 )
-                "while".
+                (#quote else if) (== lexer "while").
                 (#body
                     (= (expr#var Expression) (#new Expression))
                     (= (#\. expr type) "while")
-                    (= (#\. expr nl1) getNL)
-                    (#\. expr (addPosts post))
+                    (= (#\. expr type_lexem) (#\. lexer lexem))
+                    (#\. expr (addPosts#funcall post))
                     getLexem
-                    (lexer#if
-                        "(".
+
+                    (#if (== lexer "(").
                         (#body
-                            (= (cexpr Expression) getExpression)
-                            (lexer#if
-                                ")".
+                            (= (#\. expr open_lexem) (#\. lexer lexem))
+                            (= (cexpr#var Expression) getExpression)
+
+                            (#if (== lexer ")").
                                 (#body
-                                    #noop
+                                    (= (#\. expr close_lexem) (#\. lexer lexem))
                                 )
                                 #else.
                                 (#body
-                                    (writefln (#" Expected \. not %s) lexer)
-                                    (assert 0)
+                                    (writefln#funcall "Expected . not %s" lexer)
+                                    (assert#funcall 0)
                                 ))
                             (= (#\. expr postop) getBody)
-                            (= (#\. expr arguments) (#[ cexpr))
-                            (= (#\. expr nl2) getNL)
-                            (#return [expr])
+                            (= (#\. expr arguments) ([] cexpr))
+                            (#return ([] expr))
                         )
                         #else.
                         (#body
-                            (writefln (#" Expected not %s) lexer)
-                            (assert 0)
+                            (writefln#funcall "Expected not %s" lexer)
+                            (assert#funcall 0)
                         ))
                 )
-                "do".
+                (#quote else if) (== lexer "do").
                 (#body
                     (= (expr#var Expression) (#new Expression))
                     (= (#\. expr type) "do")
-                    (= (#\. expr nl1) getNL)
-                    (#\. expr (addPosts post))
-                    (#\. expr (addPosts (#[ getBody)))
+                    (= (#\. expr type_lexem) (#\. lexer lexem))
+                    (#\. expr (addPosts#funcall post))
+                    (#\. expr (addPosts#funcall ([] getBody)))
                     getLexem
-                    (lexer#if
-                        "while".
+
+                    (= (wexpr#var Expression) (#new Expression))
+
+                    (#if (== lexer "while").
                         (#body
+                            (= (#\. wexpr type) "while")
+                            (= (#\. wexpr type_lexem) (#\. lexer lexem))
                             getLexem
                         )
                         #else.
                         (#body
-                            (writefln (#" Expected while not %s) lexer)
-                            (assert 0)
+                            (writefln#funcall "Expected while not %s" lexer)
+                            (assert#funcall 0)
                         ))
-                    (lexer#if
-                        "(".
+
+                    (#if (== lexer "(").
                         (#body
-                            (= (cexpr Expression) getExpression)
-                            (lexer#if
-                                ")".
+                            (= (#\. wexpr open_lexem) (#\. lexer lexem))
+                            (= (cexpr#var Expression) getExpression)
+
+                            (#if (== lexer ")").
                                 (#body
-                                    #noop
+                                    (= (#\. wexpr close_lexem) (#\. lexer lexem))
                                 )
                                 #else.
                                 (#body
-                                    (writefln (#" Expected \. not %s) lexer)
-                                    (assert 0)
+                                    (writefln#funcall "Expected . not %s" lexer)
+                                    (assert#funcall 0)
                                 ))
-                            (= (#\. expr arguments) (#[ cexpr))
+                            (~= (#\. wexpr arguments) cexpr)
+                            (#\. expr (addPosts#funcall ([] wexpr)))
                             getLexem
-                            (lexer#if
-                                ";".
+
+                            (#if (== lexer ";").
                                 (#body
-                                    #noop
                                 )
                                 #else.
                                 (#body
-                                    (writefln (#" Expected ; not %s) lexer)
-                                    (assert 0)
+                                    (writefln#funcall "Expected ; not %s" lexer)
+                                    (assert#funcall 0)
                                 ))
-                            (= (#\. expr nl2) getNL)
-                            (#return [expr])
+                            (#return ([] expr))
                         )
                         #else.
                         (#body
-                            (writefln (#" Expected not %s) lexer)
-                            (assert 0)
-                        ))
-                ) (.
-                "break"
-                "continue").
-                (#body
-                    (= (expr#var Expression) (#new Expression))
-                    (= (#\. expr type) (#\. lexer lexem))
-                    (= (#\. expr nl1) getNL)
-                    getLexem
-                    (lexer#if
-                        (#\. LexemType Identifier).
-                        (#body
-                            (= (label#var Expression) (#new Expression))
-                            (= (#\. label operator) (#\. lexer lexem))
-                            getLexem
-                            (lexer#if
-                                ";".
-                                (#body
-                                    (#return [expr])
-                                )
-                                #else.
-                                (#body
-                                    (writefln (#" ; Expected not %s) lexer)
-                                    (assert 0)
-                                ))
-                        )
-                        ";".
-                        (#body
-                            (= (#\. expr nl2) getNL)
-                            (#return [expr])
-                        )
-                        #else.
-                        (#body
-                            (writefln (#" Label or ; Expected not %s) lexer)
-                            (assert 0)
+                            (writefln#funcall "Expected not %s" lexer)
+                            (assert#funcall 0)
                         ))
                 )
-                "return".
+                (#quote else if
+                ) (|| (== lexer "break") (== lexer "continue")).
                 (#body
                     (= (expr#var Expression) (#new Expression))
+                    (= (#\. expr type_lexem) (#\. lexer lexem))
+                    (= (#\. expr type) (#\. expr type_lexem (#quote \.) text))
+                    getLexem
+
+                    (#if (== lexer (#\. LexemType Identifier)).
+                        (#body
+                            (= (label#var Expression) (#new Expression))
+                            (= (#\. label operator_lexem) (#\. lexer lexem))
+                            (= (#\. label operator) (#\. label operator_lexem (#quote \.) text))
+                            (~= (#\. expr arguments) label)
+                            getLexem
+
+                            (#if (== lexer ";").
+                                (#body
+                                    (#return ([] expr))
+                                )
+                                #else.
+                                (#body
+                                    (writefln#funcall "; Expected not %s" lexer)
+                                    (assert#funcall 0)
+                                ))
+                        )
+                        (#quote else if) (== lexer ";").
+                        (#body
+                            (#return ([] expr))
+                        )
+                        #else.
+                        (#body
+                            (writefln#funcall "Label or ; Expected not %s" lexer)
+                            (assert#funcall 0)
+                        ))
+                )
+                (#quote else if) (== lexer "goto").
+                (#body
+                    (= (expr#var Expression) (#new Expression))
+                    (= (#\. expr type_lexem) (#\. lexer lexem))
+                    (= (#\. expr type) (#\. expr type_lexem (#quote \.) text))
+                    getLexem
+
+                    (#if (== lexer (#\. LexemType Identifier)).
+                        (#body
+                            (= (label#var Expression) (#new Expression))
+                            (= (#\. label operator_lexem) (#\. lexer lexem))
+                            (= (#\. label operator) (#\. label operator_lexem (#quote \.) text))
+                            (~= (#\. expr arguments) label)
+                            getLexem
+
+                            (#if (== lexer ";").
+                                (#body
+                                    (#return ([] expr))
+                                )
+                                #else.
+                                (#body
+                                    (writefln#funcall "; Expected not %s" lexer)
+                                    (assert#funcall 0)
+                                ))
+                        )
+                        #else.
+                        (#body
+                            (writefln#funcall "Label Expected not %s" lexer)
+                            (assert#funcall 0)
+                        ))
+                )
+                (#quote else if) (== lexer "return").
+                (#body
+                    (= (expr#var Expression) (#new Expression))
+                    (= (#\. expr type_lexem) (#\. lexer lexem))
                     (= (#\. expr type) "return")
-                    (= (#\. expr nl1) getNL)
-                    (= (e Expression) getExpression)
-                    (#if
-                        (!is e null).
+                    (= (e#var Expression) getExpression)
+
+                    (#if (!is e null).
                         (#body
                             (~= (#\. expr arguments) e)
                         ))
-                    (lexer#if
-                        ";".
+
+                    (#if (== lexer ";").
                         (#body
-                            (= (#\. expr nl2) getNL)
-                            (#return [expr])
+                            (#return ([] expr))
                         )
                         #else.
                         (#body
-                            (writefln (#" ; Expected not %s) lexer)
-                            (assert 0)
+                            (writefln#funcall "; Expected not %s" lexer)
+                            (assert#funcall 0)
                         ))
                 )
-                "struct".
+                (#quote else if) (== lexer "struct").
                 (#body
-                    (#return [getStruct])
+                    (#return ([] getStruct))
                 )
-                "class".
+                (#quote else if) (== lexer "class").
                 (#body
-                    (#return [getClass])
+                    (#return ([] getClass))
                 )
-                "{".
+                (#quote else if) (== lexer "{").
                 (#body
-                    (= (a Expression) (#new Expression))
+                    (= (a#var Expression) (#new Expression))
                     (= (#\. a type) "{")
-                    (= cexpr a)
-                    (=@Body (b Expression[]) getStatement)
-                    (#if
-                        (!is b null).
+                    (= (#\. a type_lexem) (#\. lexer lexem))
+
+                    (#label Body)
+                    (= (b#var ([]#type Expression)) getStatement#funcall)
+
+                    (#if (!is b null).
                         (#body
                             (~= (#\. a arguments) b)
                             (#goto Body)
                         ))
                     getLexem
-                    (lexer#if
-                        "}".
+
+                    (#if (== lexer "}").
                         (#body
-                            (= cexpr oexpr)
-                            (#return (#\. a arguments))
+                            (= (#\. a close_lexem) (#\. lexer lexem))
+                            (#return ([] a))
                         )
                         #else.
                         (#body
-                            (writefln (#" } Expected not %s) lexer)
-                            (assert 0)
+                            (writefln#funcall "} Expected not %s" lexer)
+                            (assert#funcall 0)
                         ))
-                ) (.
-                "++"
-                "--"
-                "(").
+                )
+                (#quote else if
+
+                ) (|| (== lexer "++") (== lexer "--") (#quote ||) (== lexer "(")).
                 (#body
-                    (= (#\. cexpr arguments) sargs)
                     (= lexer back)
-                    (= (ret Expression) getExpression)
-                    (lexer#if
-                        ";".
+                    (= (ret#var Expression) getExpression)
+
+                    (#if (== lexer ";").
                         (#body
-                            #noop
                         )
                         #else.
                         (#body
-                            (writefln (#" Expected ; not %s) lexer)
-                            (assert 0)
+                            (writefln#funcall "Expected ; not %s" lexer)
+                            (assert#funcall 0)
                         ))
-                    (#return [ret])
-                ) (.
-                "case"
-                "default"
-                "}").
+                    (#return ([] ret))
+                )
+                (#quote else if
+
+                ) (|| (== lexer "case") (== lexer "default") (#quote ||) (== lexer "}")).
                 (#body
-                    (= (#\. cexpr arguments) sargs)
                     (= lexer back)
                     (#return null)
                 )
-                (#\. LexemType Identifier).
+                (#quote else if) (== lexer (#\. LexemType Identifier)).
                 (#body
-                    (= (name string) (#\. lexer lexem))
+                    (= (name#var string) (#\. lexer lexem (#quote \.) text))
                     (= (type#var Expression) (#new Expression))
                     (= (#\. type operator) name)
-                    (= cexpr comments)
-                    getLexem@Name
-                    (lexer#if (.
-                        "."
-                        "="
-                        "+="
-                        "-="
-                        "*="
-                        "/="
-                        "~="
-                        "++"
-                        "--"
-                        "(").
+                    (= (#\. type operator_lexem) (#\. lexer lexem))
+                    (#label Name)
+                    getLexem
+
+                    (#if (|| (== lexer ".")
+                            (== lexer "=")
+                            (#quote ||) (== lexer "+=")
+                            (#quote ||) (== lexer "-=")
+                            (#quote ||) (== lexer "*=")
+                            (#quote ||) (== lexer "/=")
+                            (#quote ||) (== lexer "~=")
+                            (#quote ||) (== lexer "++")
+                            (#quote ||) (== lexer "--")
+                            (#quote ||) (== lexer "(")).
                         (#body
-                            (#\. oexpr (addChilds (#\. comments arguments)))
-                            (= (#\. comments arguments) [])
                             (= lexer back)
                             (= (expr#var Expression) getExpression)
-                            (lexer#if
-                                ";".
+
+                            (#if (== lexer ";").
                                 (#body
-                                    (= cexpr oexpr)
-                                    (#return [expr])
+                                    (#\. expr (addPosts#funcall post))
+                                    (#return ([] expr))
                                 )
                                 #else.
                                 (#body
-                                    (writefln (#" Expected ; not %s) lexer)
-                                    (assert 0)
+                                    (writefln#funcall "Expected ; not %s" lexer)
+                                    (assert#funcall 0)
                                 ))
                         )
-                        "*".
+                        (#quote else if) (== lexer "*").
                         (#body
                             (= (ptr#var Expression) (#new Expression))
                             (= (#\. ptr operator) "*")
+                            (= (#\. ptr operator_lexem) (#\. lexer lexem))
                             (= (#\. ptr type) "type")
                             (~= (#\. ptr arguments) type)
                             (= type ptr)
                             (#goto Name)
                         )
-                        "[".
+                        (#quote else if) (== lexer "[").
                         (#body
                             (= (ar#var Expression) (#new Expression))
                             (= (#\. ar operator) "[]")
+                            (= (#\. ar operator_lexem) (#\. lexer lexem))
+                            (= (#\. ar open_lexem) (#\. lexer lexem))
                             (= (#\. ar type) "type")
                             (~= (#\. ar arguments) type)
                             (= type ar)
                             getLexem
-                            (lexer#if
-                                "]".
+
+                            (#if (== lexer "]").
                                 (#body
-                                    #noop
+                                    (= (#\. ar operator_lexem (#quote \.) end) (#\. lexer lexem (#quote \.) end))
+                                    (= (#\. ar close_lexem) (#\. lexer lexem))
                                 )
-                                (#\. LexemType Identifier).
+                                (#quote else if) (== lexer (#\. LexemType Identifier)).
                                 (#body
                                     (= (ty#var Expression) (#new Expression))
-                                    (= (#\. ty operator) (#\. lexer lexem))
+                                    (= (#\. ty operator_lexem) (#\. lexer lexem))
+                                    (= (#\. ty operator) (#\. ty operator_lexem (#quote \.) text))
                                     (~= (#\. ar arguments) ty)
                                     getLexem
-                                    (lexer#if
-                                        "]".
+
+                                    (#if (== lexer "]").
                                         (#body
-                                            #noop
+                                            (= (#\. ar operator_lexem (#quote \.) end) (#\. lexer lexem (#quote \.) end))
                                         )
                                         #else.
                                         (#body
                                             (= lexer back)
-                                            (= (#\. comments arguments) [])
-                                            (#return [getExpression])
+                                            (= (expr#var Expression) getExpression)
+                                            (#\. expr (addPosts#funcall post))
+                                            (#return ([] expr))
                                         ))
                                 )
                                 #else.
                                 (#body
                                     (= lexer back)
-                                    (= (#\. comments arguments) [])
-                                    (#return [getExpression])
+                                    (= (expr#var Expression) getExpression)
+                                    (#\. expr (addPosts#funcall post))
+                                    (#return ([] expr))
                                 ))
                             (#goto Name)
                         )
-                        ";".
+                        (#quote else if) (== lexer ";").
                         (#body
-                            (#\. oexpr (addChilds (#\. comments arguments)))
-                            (= cexpr oexpr)
-                            (#return [type])
+                            (#\. type (addPosts#funcall post))
+                            (#return ([] type))
                         )
-                        ":".
+                        (#quote else if) (== lexer ":").
                         (#body
-                            (#\. oexpr (addChilds (#\. comments arguments)))
-                            (= cexpr oexpr)
                             (= (label#var Expression) (#new Expression))
-                            (= (#\. label type) ":")
-                            (#\. label (addChild type))
-                            (#return [label])
+                            (= (#\. label type) "label")
+                            (= (#\. label type_lexem) (#\. lexer lexem))
+                            (#\. label (addChild#funcall type))
+                            (#return ([] label))
                         )
-                        (#\. (#\. LexemType Identifier)).
+                        (#quote else if) (== lexer (#\. LexemType Identifier)).
                         (#body
                             (= (expr#var Expression) (#new Expression))
-                            (= (#\. expr operator) (#\. lexer lexem))
+                            (= (#\. expr operator_lexem) (#\. lexer lexem))
+                            (= (#\. expr operator) (#\. expr operator_lexem (#quote \.) text))
                             (= (#\. expr type) "var")
-                            (= (#\. expr nl1) getNL)
                             (~= (#\. expr arguments) type)
                             getLexem
-                            (lexer#if
-                                ",".
+
+                            (#if (== lexer ",").
                                 (#body
                                     (= (#\. expr arguments) null)
                                     (= (multi#var Expression) (#new Expression))
                                     (~= (#\. multi arguments) expr)
                                     (= (#\. multi postop) type)
-                                    getLexem@Var
-                                    (lexer#if
-                                        (#\. LexemType Identifier).
+                                    (#label Var)
+                                    getLexem
+
+                                    (#if (== lexer (#\. LexemType Identifier)).
                                         (#body
                                             (= (var#var Expression) (#new Expression))
-                                            (= (#\. var operator) (#\. lexer lexem))
+                                            (= (#\. var operator_lexem) (#\. lexer lexem))
+                                            (= (#\. var operator) (#\. var operator_lexem (#quote \.) text))
                                             (= (#\. var type) "var")
                                             (~= (#\. multi arguments) var)
                                             getLexem
-                                            (lexer#if
-                                                ",".
+
+                                            (#if (== lexer ",").
                                                 (#body
                                                     (#goto Var)
                                                 )
-                                                ";".
+                                                (#quote else if) (== lexer ";").
                                                 (#body
-                                                    (= (#\. type index) (-#unary (#\. multi arguments length)))
+                                                    (= (#\. type index) (#ord (-#unary (#\. multi arguments (#quote \.) length))))
                                                     (= (#\. var postop) type)
-                                                    (= cexpr oexpr)
+                                                    (#\. multi (addPosts#funcall post))
                                                     (#return (#\. multi arguments))
                                                 )
-                                                "=".
+                                                (#quote else if) (== lexer "=").
                                                 (#body
                                                     (= (assign#var Expression) (#new Expression))
+                                                    (= (#\. assign operator_lexem) (#\. lexer lexem))
                                                     (= (#\. assign operator) "=")
                                                     (~= (#\. assign arguments) expr)
                                                     (~= (#\. assign arguments) getExpression)
-                                                    (lexer#if
-                                                        ";".
+
+                                                    (#if (== lexer ";").
                                                         (#body
-                                                            (#return [assign])
+                                                            (#\. assign (addPosts#funcall post))
+                                                            (#return ([] assign))
                                                         )
                                                         #else.
                                                         (#body
-                                                            (writefln (#" Expected ; not %s) lexer)
-                                                            (assert 0)
+                                                            (writefln#funcall "Expected ; not %s" lexer)
+                                                            (assert#funcall 0)
                                                         ))
                                                 )
                                                 #else.
                                                 (#body
-                                                    (writefln (#" ; or , or = Expected not %s) lexer)
-                                                    (assert 0)
+                                                    (writefln#funcall "; or , or () Expected not %s" lexer)
+                                                    (assert#funcall 0)
                                                 ))
                                         )
                                         #else.
                                         (#body
-                                            (writefln (#" Identifier Expected not %s) lexer)
-                                            (assert 0)
+                                            (writefln#funcall "Identifier Expected not %s" lexer)
+                                            (assert#funcall 0)
                                         ))
                                 )
-                                ";".
+                                (#quote else if) (== lexer ";").
                                 (#body
-                                    (#\. oexpr (addChilds (#\. comments arguments)))
-                                    (= cexpr oexpr)
-                                    (= (#\. expr nl2) getNL)
-                                    (#return [expr])
+                                    (#\. expr (addPosts#funcall post))
+                                    (#return ([] expr))
                                 )
-                                "=".
+                                (#quote else if) (== lexer "=").
                                 (#body
                                     (= (assign#var Expression) (#new Expression))
+                                    (= (#\. assign operator_lexem) (#\. lexer lexem))
                                     (= (#\. assign operator) "=")
-                                    (= (#\. assign nl1) getNL)
                                     (~= (#\. assign arguments) expr)
                                     (~= (#\. assign arguments) getExpression)
-                                    (lexer#if
-                                        ";".
+
+                                    (#if (== lexer ";").
                                         (#body
-                                            (#\. oexpr (addChilds (#\. comments arguments)))
-                                            (= cexpr oexpr)
-                                            (#return [assign])
+                                            (#\. assign (addPosts#funcall post))
+                                            (#return ([] assign))
                                         )
                                         #else.
                                         (#body
-                                            (writefln (#" Expected ; not %s) lexer)
-                                            (assert 0)
+                                            (writefln#funcall "Expected ; not %s" lexer)
+                                            (assert#funcall 0)
                                         ))
                                 )
-                                "(".
+                                (#quote else if) (== lexer "(").
                                 (#body
                                     (= (#\. expr type) "function")
+                                    (= (#\. expr type_lexem) (#\. lexer lexem))
                                     (~= (#\. expr arguments) getArguments)
-                                    (#if
-                                        (== (#\. expr operator) "function").
+
+                                    (#if (== (#\. expr operator) "function").
                                         (#body
                                             (= (#\. expr operator) "")
                                             (= type expr)
-                                            (= expr#var (#new Expression))
+                                            (= expr (#new Expression))
                                             getLexem
-                                            (lexer#if
-                                                (#\. LexemType Identifier).
+
+                                            (#if (== lexer (#\. LexemType Identifier)).
                                                 (#body
-                                                    (= (#\. expr operator) (#\. lexer lexem))
+                                                    (= (#\. expr operator_lexem) (#\. lexer lexem))
+                                                    (= (#\. expr operator) (#\. expr operator_lexem (#quote \.) text))
                                                     (~= (#\. expr arguments) type)
                                                 )
                                                 #else.
                                                 (#body
-                                                    (writefln (#" Identifier Expected not %s) lexer)
-                                                    (assert 0)
+                                                    (writefln#funcall "Identifier Expected not %s" lexer)
+                                                    (assert#funcall 0)
                                                 ))
+
                                             getLexem
-                                            (lexer#if
-                                                ";".
+
+                                            (#if (== lexer ";").
                                                 (#body
-                                                    (#return [expr])
+                                                    (#\. expr (addPosts#funcall post))
+                                                    (#return ([] expr))
                                                 )
                                                 #else.
                                                 (#body
-                                                    (writefln (#" Expected ; not %s) lexer)
-                                                    (assert 0)
+                                                    (writefln#funcall "Expected ; not %s" lexer)
+                                                    (assert#funcall 0)
                                                 ))
                                         ))
-                                    (#\. oexpr (addChilds (#\. comments arguments)))
-                                    (= (#\. comments arguments) [])
+
                                     (= back lexer)
                                     getLexem
-                                    (lexer#if
-                                        "{".
+
+                                    (#if (== lexer "{").
                                         (#body
                                             (= lexer back)
                                             (= (#\. expr postop) getBody)
-                                            (#return [expr])
+                                            (#\. expr (addPosts#funcall post))
+                                            (#return ([] expr))
                                         )
-                                        ";".
+                                        (#quote else if) (== lexer ";").
                                         (#body
-                                            (#return [expr])
+                                            (#\. expr (addPosts#funcall post))
+                                            (#return ([] expr))
                                         )
                                         #else.
                                         (#body
-                                            (writefln (#" Expected { or ; not %s) lexer)
-                                            (assert 0)
+                                            (writefln#funcall "Expected { or ; not %s" lexer)
+                                            (assert#funcall 0)
                                         ))
                                 )
                                 #else.
                                 (#body
-                                    (writefln (#" Expected , or ; or = not %s) lexer)
-                                    (assert 0)
+                                    (writefln#funcall "Expected , or ; or () not %s" lexer)
+                                    (assert#funcall 0)
                                 ))
                         )
-                        (#\. LexemType AssignOperator).
+                        (#quote else if) (== lexer (#\. LexemType AssignOperator)).
                         (#body
                             (= (expr#var Expression) (#new Expression))
-                            (= (#\. expr operator) (#\. lexer lexem))
+                            (= (#\. expr operator_lexem) (#\. lexer lexem))
+                            (= (#\. expr operator) (#\. expr operator_lexem (#quote \.) text))
                             (= (var#var Expression) (#new Expression))
                             (= (#\. var operator) name)
                             (~= (#\. expr arguments) var)
                             (~= (#\. expr arguments) getExpression)
-                            (lexer#if
-                                ";".
+
+                            (#if (== lexer ";").
                                 (#body
-                                    (#\. oexpr (addChilds (#\. comments arguments)))
-                                    (= cexpr oexpr)
-                                    (#return [expr])
+                                    (#\. expr (addPosts#funcall post))
+                                    (#return ([] expr))
                                 )
                                 #else.
                                 (#body
-                                    (writefln (#" Expected ; not %s) lexer)
-                                    (assert 0)
+                                    (writefln#funcall "Expected ; not %s" lexer)
+                                    (assert#funcall 0)
                                 ))
                         )
                         #else.
                         (#body
-                            (writefln (#" Expected \. or Identifier or AssignOperator not %s) lexer)
-                            (assert 0)
+                            (writefln#funcall "Expected . or Identifier or AssignOperator not %s" lexer)
+                            (assert#funcall 0)
                         ))
                 )
                 #else.
                 (#body
-                    (writefln (#" Statement Expected not %s) lexer)
-                    (assert 0)
+                    (writefln#funcall "Statement Expected not %s" lexer)
+                    (assert#funcall 0)
                 ))
         )
 
         (getInnerStat#function Expression).
         (#body
             getLexem
-            (lexer#if
-                (#\. LexemType Identifier).
+
+            (#if (== lexer (#\. LexemType Identifier)).
                 (#body
-                    (= (name string) (#\. lexer lexem))
+                    (= (name#var Lexem) (#\. lexer lexem))
                     getLexem
-                    (lexer#if
-                        "(".
+
+                    (#if (== lexer "(").
                         (#body
                             (= (expr#var Expression) (#new Expression))
-                            (= (#\. expr operator) name)
+                            (= (#\. expr operator_lexem) name)
+                            (= (#\. expr operator) (#\. expr operator_lexem (#quote \.) text))
                             (= (#\. expr arguments) getCallArgs)
                             getLexem
-                            (lexer#if
-                                ";".
+
+                            (#if (== lexer ";").
                                 (#body
                                     (#return expr)
                                 )
                                 #else.
                                 (#body
-                                    (writefln (#" Expected ; not %s) lexer)
-                                    (assert 0)
+                                    (writefln#funcall "Expected ; not %s" lexer)
+                                    (assert#funcall 0)
                                 ))
                         )
-                        (#\. (#\. LexemType Identifier)).
+                        (#quote else if) (== lexer (#\. LexemType Identifier)).
                         (#body
                             (= (expr#var Expression) (#new Expression))
-                            (= (#\. expr operator) (#\. lexer lexem))
+                            (= (#\. expr operator_lexem) (#\. lexer lexem))
+                            (= (#\. expr operator) (#\. expr operator_lexem (#quote \.) text))
                             (= (type#var Expression) (#new Expression))
-                            (= (#\. type operator) name)
+                            (= (#\. type operator_lexem) name)
+                            (= (#\. type operator) (#\. type operator_lexem (#quote \.) text))
                             (~= (#\. expr arguments) type)
                             getLexem
-                            (lexer#if
-                                ")"
-                                ";".
+
+                            (#if (|| (== lexer ")")
+                                    (== lexer ";")).
                                 (#body
                                     back
                                     (#return expr)
                                 )
-                                "=".
+                                (#quote else if) (== lexer "=").
                                 (#body
                                     (= (assign#var Expression) (#new Expression))
-                                    (= (#\. assign operator) "=")
+                                    (= (#\. assign operator_lexem) (#\. lexer lexem))
+                                    (= (#\. assign operator) (#\. assign operator_lexem (#quote \.) text))
                                     (~= (#\. assign arguments) expr)
                                     (~= (#\. assign arguments) getExpression)
-                                    (lexer#if
-                                        ")"
-                                        ";".
+
+                                    (#if (|| (== lexer ")")
+                                            (== lexer ";")).
                                         (#body
                                             back
                                             (#return assign)
                                         )
                                         #else.
                                         (#body
-                                            (writefln (#" Expected ; not %s) lexer)
-                                            (assert 0)
+                                            (writefln#funcall "Expected ; not %s" lexer)
+                                            (assert#funcall 0)
                                         ))
                                 )
                                 #else.
                                 (#body
-                                    (writefln (#" Expected ; or = not %s) lexer)
-                                    (assert 0)
+                                    (writefln#funcall "Expected ; or () not %s" lexer)
+                                    (assert#funcall 0)
                                 ))
                         )
-                        (#\. LexemType AssignOperator).
+                        (#quote else if) (== lexer (#\. LexemType AssignOperator)).
                         (#body
                             (= (expr#var Expression) (#new Expression))
-                            (= (#\. expr operator) (#\. lexer lexem))
+                            (= (#\. expr operator_lexem) (#\. lexer lexem))
+                            (= (#\. expr operator) (#\. expr operator_lexem (#quote \.) text))
                             (= (var#var Expression) (#new Expression))
-                            (= (#\. var operator) name)
+                            (= (#\. var operator_lexem) name)
+                            (= (#\. var operator) (#\. var operator_lexem (#quote \.) text))
                             (~= (#\. expr arguments) var)
                             (~= (#\. expr arguments) getExpression)
-                            (lexer#if (.
-                                ")"
-                                ";").
+
+                            (#if (|| (== lexer ")")
+                                    (== lexer ";")).
                                 (#body
                                     back
                                     (#return expr)
                                 )
                                 #else.
                                 (#body
-                                    (writefln (#" Expected ; not %s) lexer)
-                                    (assert 0)
+                                    (writefln#funcall "Expected ; not %s" lexer)
+                                    (assert#funcall 0)
+                                ))
+                        )
+                        (#quote else if
+                        ) (|| (== lexer "++") (== lexer "--")).
+                        (#body
+                            (= (expr#var Expression) (#new Expression))
+                            (= (#\. expr operator_lexem) (#\. lexer lexem))
+                            (= (#\. expr operator) (#\. expr operator_lexem (#quote \.) text))
+                            (= (#\. expr type) "post")
+                            (= (var#var Expression) (#new Expression))
+                            (= (#\. var operator_lexem) name)
+                            (= (#\. var operator) (#\. var operator_lexem (#quote \.) text))
+                            (~= (#\. expr arguments) var)
+
+                            getLexem
+
+                            (#if (|| (== lexer ")")
+                                    (== lexer ";")).
+                                (#body
+                                    back
+                                    (#return expr)
+                                )
+                                #else.
+                                (#body
+                                    (writefln#funcall "Expected ; not %s" lexer)
+                                    (assert#funcall 0)
                                 ))
                         )
                         #else.
                         (#body
-                            (writefln (#" Expected \. or Identifier or AssignOperator not %s) lexer)
-                            (assert 0)
+                            (writefln#funcall "Expected . or Identifier or AssignOperator not %s" lexer)
+                            (assert#funcall 0)
                         ))
                 )
                 #else.
                 (#body
                     back
-                    (= (expr Expression) getExpression)
+                    (= (expr#var Expression) getExpression)
                     back
                     (#return expr)
                 ))
         )
 
-        (getArguments#function Expression[]).
+        (getArguments#function ([]#type Expression)).
         (#body
-            (ret#var Expression[])
-            (post#var Expression[])
-            getLexem@Init
-            (lexer#if
-                ")".
+            (ret#var ([]#type Expression))
+            (post#var ([]#type Expression))
+            (#label Init)
+            getLexem
+
+            (#if (== lexer ")").
                 (#body
-                    #noop
-                ) (.
-                "in"
-                "out"
-                "ref").
+                )
+                (#quote else if
+
+                ) (|| (== lexer "in") (== lexer "out") (#quote ||) (== lexer "ref")).
                 (#body
-                    (= (expr Expression) (#new Expression))
-                    (= (#\. expr operator) (#\. lexer lexem))
+                    (= (expr#var Expression) (#new Expression))
+                    (= (#\. expr operator_lexem) (#\. lexer lexem))
+                    (= (#\. expr operator) (#\. expr operator_lexem (#quote \.) text))
                     (~= post expr)
                     (#goto Init)
                 )
-                (#\. LexemType Identifier).
+                (#quote else if) (== lexer (#\. LexemType Identifier)).
                 (#body
-                    (= (arg Expression) (#new Expression))
-                    (= (type Expression) (#new Expression))
-                    (= (#\. type operator) (#\. lexer lexem))
-                    getLexem@Name
-                    (lexer#if
-                        "*".
+                    (= (arg#var Expression) (#new Expression))
+                    (= (type#var Expression) (#new Expression))
+                    (= (#\. type operator_lexem) (#\. lexer lexem))
+                    (= (#\. type operator) (#\. type operator_lexem (#quote \.) text))
+
+                    (#label Name)
+                    getLexem
+
+                    (#if (== lexer "*").
                         (#body
-                            (= (ptr Expression) (#new Expression))
+                            (= (ptr#var Expression) (#new Expression))
+                            (= (#\. ptr type_lexem) (#\. lexer lexem))
                             (= (#\. ptr type) "*")
                             (~= (#\. ptr arguments) type)
                             (= type ptr)
                             (#goto Name)
                         )
-                        "[".
+                        (#quote else if) (== lexer "[").
                         (#body
-                            (= (ar Expression) (#new Expression))
+                            (= (ar#var Expression) (#new Expression))
+                            (= (#\. ar operator_lexem) (#\. lexer lexem))
                             (= (#\. ar operator) "[]")
+                            (= (#\. ar open_lexem) (#\. lexer lexem))
                             (= (#\. ar type) "type")
                             (~= (#\. ar arguments) type)
                             (= type ar)
-                            getLexem@Type
-                            (lexer#if
-                                "]".
+                            (#label Type)
+                            getLexem
+
+                            (#if (== lexer "]").
                                 (#body
-                                    #noop
+                                    (= (#\. ar operator_lexem (#quote \.) end) (#\. lexer lexem (#quote \.) end))
+                                    (= (#\. ar close_lexem) (#\. lexer lexem))
                                 )
-                                (#\. LexemType Identifier).
+                                (#quote else if) (== lexer (#\. LexemType Identifier)).
                                 (#body
-                                    (= (ty Expression) (#new Expression))
-                                    (= (#\. ty operator) (#\. lexer lexem))
+                                    (= (ty#var Expression) (#new Expression))
+                                    (= (#\. ty operator_lexem) (#\. lexer lexem))
+                                    (= (#\. ty operator) (#\. ty operator_lexem (#quote \.) text))
                                     (~= (#\. ar arguments) ty)
                                     (#goto Type)
                                 )
                                 #else.
                                 (#body
-                                    (writefln (#" ] Expected not %s) lexer)
-                                    (assert 0)
+                                    (writefln#funcall "] Expected not %s" lexer)
+                                    (assert#funcall 0)
                                 ))
                             (#goto Name)
                         )
-                        "!".
+                        (#quote else if) (== lexer "!").
                         (#body
-                            (= (q Expression) (#new Expression))
-                            (= (#\. q operator) (#\. lexer lexem))
-                            (= (eq Expression) (#new Expression))
-                            (= (#\. eq type) (#\. lexer lexem))
-                            (~= (#\. type arguments) q)
-                            getLexem
-                            (lexer#if
-                                (#\. LexemType Identifier).
-                                (#body
-                                    (= (a Expression) (#new Expression))
-                                    (= (#\. a operator) (#\. lexer lexem))
-                                    (~= (#\. type arguments) a)
-                                )
-                                "(".
-                                (#body
-                                    (~= (#\. type arguments) getArguments)
-                                ))
+                            (= (eq#var Expression) (#new Expression))
+                            (= (#\. eq type_lexem) (#\. lexer lexem))
+                            (= (#\. eq type) (#\. eq type_lexem (#quote \.) text))
                             (~= (#\. type arguments) eq)
+                            getLexem
+
+                            (#if (== lexer (#\. LexemType Identifier)).
+                                (#body
+                                    (= (a#var Expression) (#new Expression))
+                                    (= (#\. a operator_lexem) (#\. lexer lexem))
+                                    (= (#\. a operator) (#\. a operator_lexem (#quote \.) text))
+                                    (~= (#\. eq arguments) a)
+                                )
+                                (#quote else if) (== lexer "(").
+                                (#body
+                                    (= (#\. eq open_lexem) (#\. lexer lexem))
+                                    (~= (#\. eq arguments) getArguments)
+                                    (= (#\. eq close_lexem) (#\. lexer lexem))
+                                ))
                             (#goto Name)
                         )
-                        ")".
+                        (#quote else if) (== lexer ")").
                         (#body
                             (#return ret)
                         )
-                        (#\. LexemType Identifier).
+                        (#quote else if) (== lexer (#\. LexemType Identifier)).
                         (#body
-                            (= (#\. arg operator) (#\. lexer lexem))
+                            (= (#\. arg operator_lexem) (#\. lexer lexem))
+                            (= (#\. arg operator) (#\. arg operator_lexem (#quote \.) text))
                             (~= (#\. arg arguments) type)
                             (~= (#\. arg arguments) post)
                             (~= ret arg)
                         )
                         #else.
                         (#body
-                            (writefln (#" Identifier Expected not %s) lexer)
-                            (assert 0)
+                            (writefln#funcall "Identifier Expected not %s" lexer)
+                            (assert#funcall 0)
                         ))
                     getLexem
-                    (lexer#if
-                        "=".
+
+                    (#if (== lexer "=").
                         (#body
-                            (= (iarg Expression) (#new Expression))
-                            (= (init Expression) getExpression)
-                            (= (#\. iarg type) "init")
-                            (#\. iarg (addChild init))
-                            (= (#\. arg postop) iarg)
-                            (lexer#if
-                                ")".
+                            (= (init#var Expression) (#new Expression#funcall))
+                            (= (#\. init type_lexem) (#\. lexer lexem))
+                            (= (#\. init type) "init")
+                            (#\. init (addChilds#funcall ([] getExpression)))
+                            (= (#\. arg postop) init)
+
+                            (#if (== lexer ")").
                                 (#body
-                                    #noop
                                 )
-                                ",".
+                                (#quote else if) (== lexer ",").
                                 (#body
                                     (= post null)
                                     (#goto Init)
                                 )
                                 #else.
                                 (#body
-                                    (writefln (#" , or \. Expected not %s) lexer)
-                                    (assert 0)
+                                    (writefln#funcall ", or . Expected not %s" lexer)
+                                    (assert#funcall 0)
                                 ))
                         )
-                        ")".
+                        (#quote else if) (== lexer ")").
                         (#body
-                            #noop
                         )
-                        ",".
+                        (#quote else if) (== lexer ",").
                         (#body
                             (= post null)
                             (#goto Init)
                         )
                         #else.
                         (#body
-                            (writefln (#" , or \. or = Expected not %s) lexer)
-                            (assert 0)
+                            (writefln#funcall ", or . or () Expected not %s" lexer)
+                            (assert#funcall 0)
                         ))
                 )
                 #else.
                 (#body
-                    (writefln (#" Expected Identifier or \. not %s) lexer)
-                    (assert 0)
+                    (writefln#funcall "Expected Identifier or . not %s" lexer)
+                    (assert#funcall 0)
                 ))
             (#return ret)
         )
 
-        (getCallArgs#function Expression[]).
+        (getCallArgs#function ([]#type Expression)).
         (#body
-            (ret#var Expression[])
-            (=@Init (expr Expression) getExpression)
-            (#if
-                (!is expr null).
+            (ret#var ([]#type Expression))
+            (#label Init)
+            (= (expr#var Expression) getExpression)
+
+            (#if (!is expr null).
                 (#body
                     (~= ret expr)
-                    (lexer#if
-                        ",".
+
+                    (#if (== lexer ",").
                         (#body
                             (#goto Init)
                         )
-                        ")".
+                        (#quote else if) (== lexer ")").
                         (#body
                             (#return ret)
                         )
                         #else.
                         (#body
-                            (writefln (#" Expected , or \. not %s) lexer)
-                            (assert 0)
+                            (writefln#funcall "Expected , or . not %s" lexer)
+                            (assert#funcall 0)
                         ))
                 ))
-            (lexer#if
-                ")".
+
+            (#if (== lexer ")").
                 (#body
-                    #noop
                 )
                 #else.
                 (#body
-                    (writefln (#" Expected \. not %s) lexer)
-                    (assert 0)
+                    (writefln#funcall "Expected . not %s" lexer)
+                    (assert#funcall 0)
                 ))
             (#return ret)
         )
 
         (getExpression#function Expression).
         (#body
-            (= (ret Expression) (#new Expression))
-            (= (ed Expression) ret)
-            getLexem@Argument
-            (+= (#\. ret nl1) getNL)
-            (lexer#if
-                "cast".
+            (= (ret#var Expression) (#new Expression))
+            (= (ed#var Expression) ret)
+            (#label Argument)
+            getLexem
+
+            (#if (== lexer "cast").
                 (#body
-                    (= (ct Expression) (#new Expression))
-                    (= (#\. ct type) (#\. lexer lexem))
+                    (= (ct#var Expression) (#new Expression))
+                    (= (#\. ct type_lexem) (#\. lexer lexem))
+                    (= (#\. ct type) (#\. ct type_lexem (#quote \.) text))
                     getLexem
-                    (lexer#if
-                        "(".
+
+                    (#if (== lexer "(").
                         (#body
-                            #noop
+                            (= (#\. ct open_lexem) (#\. lexer lexem))
                         )
                         #else.
                         (#body
-                            (writefln (#" Bracket expected not %s) lexer)
-                            (assert 0)
+                            (writefln#funcall "Bracket expected not %s" lexer)
+                            (assert#funcall 0)
                         ))
-                    (#\. ct (addChilds getCallArgs))
-                    (#if
-                        (&& (#\. ed operator empty) (#\. ed type empty)).
+
+                    (#\. ct (addChilds#funcall getCallArgs))
+                    (= (#\. ct close_lexem) (#\. lexer lexem))
+
+                    (#if (&& (#\. ed operator (#quote \.) empty) (#\. ed type (#quote \.) empty)).
                         (#body
+                            (= (#\. ed open_lexem) (#\. ct open_lexem))
                             (= (#\. ed type) (#\. ct type))
-                            (#\. ed (addChilds (#\. ct arguments)))
+                            (= (#\. ed type_lexem) (#\. ct type_lexem))
+                            (= (#\. ed close_lexem) (#\. ct close_lexem))
+                            (#\. ed (addChilds#funcall (#\. ct arguments)))
                         )
                         #else.
                         (#body
-                            (#\. ed (addChild ct))
+                            (#\. ed (addChild#funcall ct))
                             (= ed ct)
                         ))
                     (#goto Argument)
                 )
-                "new".
+                (#quote else if) (== lexer "new").
                 (#body
-                    (#if
-                        (&& (#\. ed operator empty) (#\. ed type empty)).
+                    (#if (&& (#\. ed operator (#quote \.) empty) (#\. ed type (#quote \.) empty)).
                         (#body
-                            (= (#\. ed type) (#\. lexer lexem))
+                            (= (#\. ed type_lexem) (#\. lexer lexem))
+                            (= (#\. ed type) (#\. ed type_lexem (#quote \.) text))
                         )
                         #else.
                         (#body
-                            (= (n Expression) (#new Expression))
-                            (= (#\. n type) (#\. lexer lexem))
-                            (#\. ed (addChild n))
+                            (= (n#var Expression) (#new Expression))
+                            (= (#\. n type_lexem) (#\. lexer lexem))
+                            (= (#\. n type) (#\. n type_lexem (#quote \.) text))
+                            (#\. ed (addChild#funcall n))
                             (= ed n)
                         ))
                     (#goto Argument)
                 )
-                (#\. LexemType Identifier).
+                (#quote else if) (== lexer (#\. LexemType Identifier)).
                 (#body
-                    (= (name string) (#\. lexer lexem))
+                    (= (name#var Lexem) (#\. lexer lexem))
                     getLexem
-                    (lexer#if
-                        "(".
+
+                    (#if (== lexer "(").
                         (#body
-                            (= (funcall Expression) (#new Expression))
-                            (= (#\. funcall operator) name)
-                            (#\. funcall (addChilds getCallArgs))
-                            (#\. ed (addChild funcall))
+                            (= (funcall#var Expression) (#new Expression))
+                            (= (#\. funcall operator_lexem) name)
+                            (= (#\. funcall operator) (#\. funcall operator_lexem (#quote \.) text))
+                            (= (#\. funcall type_lexem) (#\. lexer lexem))
+                            (= (#\. funcall type) "funcall")
+                            (= (#\. funcall open_lexem) (#\. lexer lexem))
+                            (#\. funcall (addChilds#funcall getCallArgs))
+                            (= (#\. funcall close_lexem) (#\. lexer lexem))
+                            (#\. ed (addChild#funcall funcall))
                             getLexem
                         )
                         #else.
                         (#body
-                            (= (arg Expression) (#new Expression))
-                            (= (#\. arg operator) name)
-                            (= (#\. arg nl1) getNL)
-                            (#\. ed (addChild arg))
+                            (= (arg#var Expression) (#new Expression))
+                            (= (#\. arg operator_lexem) name)
+                            (= (#\. arg operator) (#\. arg operator_lexem (#quote \.) text))
+                            (#\. ed (addChild#funcall arg))
                         ))
                     (#goto Operator)
                 )
-                (#\. LexemType String).
+                (#quote else if) (== lexer (#\. LexemType String)).
                 (#body
-                    (= (arg Expression) (#new Expression))
-                    (= (#\. arg operator) (#\. lexer lexem))
+                    (= (arg#var Expression) (#new Expression))
+                    (= (#\. arg operator_lexem) (#\. lexer lexem))
+                    (= (#\. arg operator) (#\. arg operator_lexem (#quote \.) text))
                     (= (#\. arg bt) (#\. BlockType String))
-                    (#\. ed (addChild arg))
-                    getLexem
-                ) (.
-                (#\. LexemType Number)
-                (#\. LexemType Float)
-                (#\. LexemType Character)
-                (#\. LexemType LenOperator)).
-                (#body
-                    (= (arg Expression) (#new Expression))
-                    (= (#\. arg operator) (#\. lexer lexem))
-                    (#\. ed (addChild arg))
+                    (#\. ed (addChild#funcall arg))
                     getLexem
                 )
-                (#\. LexemType Operator).
+                (#quote else if
+
+
+                ) (|| (== lexer (#\. LexemType Number)) (== lexer (#\. LexemType Float)) (#quote ||) (== lexer (#\. LexemType Character)) (#quote ||) (== lexer (#\. LexemType LenOperator))).
                 (#body
-                    (= (op string) (#\. ed operator))
-                    (#if
-                        (#\. op empty).
+                    (= (arg#var Expression) (#new Expression))
+                    (= (#\. arg operator_lexem) (#\. lexer lexem))
+                    (= (#\. arg operator) (#\. arg operator_lexem (#quote \.) text))
+                    (#if (== lexer (#\. LexemType Character)).
+                        (#body (= (#\. arg bt) (#\. BlockType Character))))
+                    (#\. ed (addChild#funcall arg))
+                    getLexem
+                )
+                (#quote else if) (== lexer (#\. LexemType Operator)).
+                (#body
+                    (= (op#var Lexem) (#\. ed operator_lexem))
+
+                    (#if (#\. op text (#quote \.) empty).
                         (#body
-                            (= op (#\. ed type))
+                            (= (#\. op text) (#\. ed type))
                         ))
-                    (#if
-                        (#\. ed hidden).
+
+                    (#if (#\. ed hidden).
                         (#body
-                            (= op "P")
+                            (= (#\. op text) "P")
                         ))
-                    (#if
-                        (#\. op empty).
+
+                    (#if (#\. op text (#quote \.) empty).
                         (#body
-                            (= (#\. ed operator) (#\. lexer lexem))
+                            (= (#\. ed operator_lexem) (#\. lexer lexem))
+                            (= (#\. ed operator) (#\. ed operator_lexem (#quote \.) text))
                             (= (#\. ed type) "unary")
                         )
-                        (&& (== op "!") (|| (== lexer "is") (== lexer "in"))).
+                        (#quote else if) (&& (#ord (== (#\. op text) "!")) (#ord (|| (#ord (== lexer "is")) (#ord (== lexer "in"))))).
                         (#body
-                            (~= (#\. ed operator) (#\. lexer lexem))
+                            (~= (#\. ed operator) (#\. lexer lexem (#quote \.) text))
+                            (= (#\. ed operator_lexem (#quote \.) end) (#\. lexer lexem (#quote \.) end))
                         )
                         #else.
                         (#body
-                            (= (expr Expression) (#new Expression))
-                            (= (#\. expr operator) (#\. lexer lexem))
+                            (= (expr#var Expression) (#new Expression))
+                            (= (#\. expr operator_lexem) (#\. lexer lexem))
+                            (= (#\. expr operator) (#\. expr operator_lexem (#quote \.) text))
                             (= (#\. expr type) "unary")
-                            (#\. ed (addChild expr))
+                            (#\. ed (addChild#funcall expr))
                             (= ed expr)
                         ))
                     (#goto Argument)
                 )
-                "(".
+                (#quote else if) (== lexer "(").
                 (#body
-                    (= (expr Expression) getExpression)
-                    (#if
-                        (! (#\. expr arguments empty)).
-                        (#body
-                            (= (#\. expr hidden) true)
-                        ))
+                    (writefln#funcall "LEXEM %s" (#\. lexer lexem))
+                    (= (open_lexem#var Lexem) (#\. lexer lexem))
+                    (= (expr#var Expression) getExpression)
+                    (writefln#funcall "EXPR %s, open %s" expr (#\. expr open_lexem (#quote \.) start))
+                    /*if (expr.open_lexem.start.row == 0)
+            {
+                expr.open_lexem = open_lexem;
+            }
+            else*/
+                    (#{
+                        (= (brexpr#var Expression) (#new Expression))
+                        (= (#\. brexpr type) "ord")
+                        (= (#\. brexpr open_lexem) open_lexem)
+                        (~= (#\. brexpr arguments) expr)
+                        (= expr brexpr)
+                    )
+
                     (~= (#\. ed arguments) expr)
-                    (lexer#if
-                        ")".
+
+                    (#if (== lexer ")").
                         (#body
+                            (= (#\. expr close_lexem) (#\. lexer lexem))
                             getLexem
                         )
                         #else.
                         (#body
-                            (writefln (#" Expected \. not %s) lexer)
-                            (assert 0)
+                            (writefln#funcall "Expected . not %s" lexer)
+                            (assert#funcall 0)
                         ))
                 )
-                "[".
+                (#quote else if) (== lexer "[").
                 (#body
-                    (= (br Expression) (#new Expression))
+                    (= (br#var Expression) (#new Expression))
+                    (= (#\. br operator_lexem) (#\. lexer lexem))
+                    (= (#\. br open_lexem) (#\. lexer lexem))
                     (= (#\. br operator) "[]")
-                    (=@Array (expr Expression) getExpression)
-                    (#if
-                        (!is expr null).
+
+                    (#label Array)
+                    (= (expr#var Expression) getExpression)
+
+                    (#if (!is expr null).
                         (#body
-                            (#\. br (addChild expr))
+                            (#\. br (addChild#funcall expr))
                         ))
-                    (lexer#if
-                        ",".
+
+                    (#if (== lexer ",").
                         (#body
                             (#goto Array)
                         )
-                        "]".
+                        (#quote else if) (== lexer "]").
                         (#body
-                            (#if
-                                (&& (#\. ed operator empty) (#\. ed type empty)).
+                            (= (#\. br close_lexem) (#\. lexer lexem))
+                            (#if (&& (#\. ed operator (#quote \.) empty) (#\. ed type (#quote \.) empty)).
                                 (#body
+                                    (= (#\. ed operator_lexem) (#\. br operator_lexem))
                                     (= (#\. ed operator) (#\. br operator))
-                                    (#\. ed (addChilds (#\. br arguments)))
+                                    (= (#\. ed open_lexem) (#\. br open_lexem))
+                                    (= (#\. ed close_lexem) (#\. br close_lexem))
+                                    (#\. ed (addChilds#funcall (#\. br arguments)))
                                 )
                                 #else.
                                 (#body
-                                    (#\. ed (addChild br))
+                                    (#\. ed (addChild#funcall br))
                                 ))
                             getLexem
                         )
                         #else.
                         (#body
-                            (writefln (#" ] or ; expected not %s) lexer)
+                            (writefln#funcall "] or ; expected not %s" lexer)
                         ))
                 )
-                "]".
+                (#quote else if) (== lexer "]").
                 (#body
                     (#return null)
                 )
-                ";".
+                (#quote else if) (== lexer ";").
                 (#body
                     (#return null)
                 )
-                ")".
+                (#quote else if) (== lexer ")").
                 (#body
                     (#return null)
                 )
                 #else.
                 (#body
-                    (writefln (#" Unexpected %s) lexer)
-                    (assert 0)
+                    (writefln#funcall "Unexpected %s" lexer)
+                    (assert#funcall 0)
                 ))
-            (lexer#if@Operator (.
-                "."
-                "?"
-                ":"
-                "in"
-                "is"
-                (#\. LexemType AssignOperator)
-                (#\. LexemType CmpOperator)
-                (#\. LexemType Operator)).
+
+            (#label Operator)
+            (#if (|| (== lexer ".")
+                    (== lexer "?")
+                    (#quote ||) (== lexer ":")
+                    (#quote ||) (== lexer "in")
+                    (#quote ||) (== lexer "is")
+                    (#quote ||) (== lexer (#\. LexemType AssignOperator))
+                    (#quote ||) (== lexer (#\. LexemType CmpOperator))
+                    (#quote ||) (== lexer (#\. LexemType Operator))
+                    (#quote ||) (== lexer (#\. LexemType Lambda))).
                 (#body
-                    (= (op2 string) (#\. lexer lexem))
-                    (op2#if
-                        "!".
+                    (= (op2#var Lexem) (#\. lexer lexem))
+
+                    (#if (== (#\. op2 text) "!").
                         (#body
                             getLexem
-                            (lexer#if (.
-                                "is"
-                                "in").
+
+                            (#if (|| (== lexer "is")
+                                    (== lexer "in")).
                                 (#body
-                                    (~= op2 (#\. lexer lexem))
+                                    (~= (#\. op2 text) (#\. lexer lexem (#quote \.) text))
+                                    (= (#\. op2 end) (#\. lexer lexem (#quote \.) end))
+                                )
+                                (#quote else if) (== lexer "(").
+                                (#body
+                                    (= (em#var Expression) (#new Expression))
+                                    (= (#\. em type_lexem) op2)
+                                    (= (#\. em type) (#\. em type_lexem (#quote \.) text))
+                                    (= (#\. em open_lexem) (#\. lexer lexem))
+                                    (~= (#\. em arguments) getCallArgs)
+                                    (= (#\. em close_lexem) (#\. lexer lexem))
+                                    (~= (#\. ed arguments (#[ (- $ 1)) (#quote \.) arguments) em)
+
+                                    getLexem
+                                    (#if (== lexer "(").
+                                        (#body
+                                            (= (#\. ed arguments (#[ (- $ 1)) (#quote \.) open_lexem) (#\. lexer lexem))
+                                            (#\. ed arguments (#[ (- $ 1)) (#quote \.) (addChilds#funcall getCallArgs))
+                                            (= (#\. ed arguments (#[ (- $ 1)) (#quote \.) close_lexem) (#\. lexer lexem))
+                                            getLexem
+                                        ))
+                                    (#goto Operator)
                                 )
                                 #else.
                                 (#body
-                                    (writefln (#" Expected is or in not %s) lexer)
-                                    (assert 0)
+                                    (writefln#funcall "Expected 'is', 'in' or '(' not %s" lexer)
+                                    (assert#funcall 0)
                                 ))
                         ))
-                    (=@LookOp (op string) (#\. ed operator))
-                    (#if
-                        (#\. op empty).
+
+                    (#label LookOp)
+                    (= (op#var Lexem) (#\. ed operator_lexem))
+
+                    (#if (#\. op text (#quote \.) empty).
                         (#body
-                            (= op (#\. ed type))
-                        ))
-                    (#if
-                        (#\. ed hidden).
-                        (#body
-                            (= op "P")
-                        ))
-                    (#if
-                        (#\. op empty).
-                        (#body
-                            (op2#if (.
-                                "?"
-                                ":"
-                                ".").
+                            (#if (!#unary (#\. ed operator (#quote \.) empty)).
+                                (#body (= (#\. op text) (#\. ed operator)))
+                                #else.
                                 (#body
-                                    (= (#\. ed type) op2)
+                                    (= op (#\. ed type_lexem))
+                                    (#if (#\. op text (#quote \.) empty).
+                                        (#body
+                                            (#if (!#unary (#\. ed type (#quote \.) empty)).
+                                                (#body
+                                                    (= (#\. op text) (#\. ed type))
+                                                ))
+                                        ))
+                                ))
+                        ))
+
+                    (#if (#\. ed hidden).
+                        (#body
+                            (= (#\. op text) "P")
+                        ))
+
+                    (#if (#\. op text (#quote \.) empty).
+                        (#body
+                            (#if (|| (== (#\. op2 text) "?")
+                                    (== (#\. op2 text) ":")
+                                    (#quote ||) (== (#\. op2 text) ".")).
+                                (#body
+                                    (= (#\. ed type_lexem) op2)
+                                    (= (#\. ed type) (#\. ed type_lexem (#quote \.) text))
                                 )
                                 #else.
                                 (#body
-                                    (= (#\. ed operator) op2)
+                                    (= (#\. ed operator_lexem) op2)
+                                    (= (#\. ed operator) (#\. ed operator_lexem (#quote \.) text))
                                 ))
                         )
-                        (== op op2).
+                        (#quote else if) (== (#\. op text) (#\. op2 text)).
                         (#body
-                            #noop
+                            (= (oexpr#var Expression) (#new Expression))
+                            (= (#\. oexpr operator_lexem) op2)
+                            (= (#\. oexpr operator) (#\. op2 text))
+
+                            (= (qexpr#var Expression) (#new Expression))
+                            (= (#\. qexpr type) "quote")
+                            (#\. qexpr (addChilds#funcall ([] oexpr)))
+
+                            (#\. ed (addChilds#funcall ([] qexpr)))
                         )
-                        (>= (getPriority op2) (getPriority op)).
+                        (#quote else if) (>= (getPriority#funcall (#\. op2 text)) (getPriority#funcall (#\. op text))).
                         (#body
-                            (= (expr Expression) (#new Expression))
-                            (op2#if (.
-                                "?"
-                                ".").
+                            (= (expr#var Expression) (#new Expression))
+
+                            (#if (|| (== (#\. op2 text) "?")
+                                    (== (#\. op2 text) ".")).
                                 (#body
-                                    (= (#\. expr type) op2)
+                                    (= (#\. expr type_lexem) op2)
+                                    (= (#\. expr type) (#\. expr type_lexem (#quote \.) text))
                                 )
-                                ":".
+                                (#quote else if) (== (#\. op2 text) ":").
                                 (#body
+                                    (= (oexpr#var Expression) (#new Expression))
+                                    (= (#\. oexpr operator_lexem) op2)
+                                    (= (#\. oexpr operator) (#\. op2 text))
+
+                                    (= (qexpr#var Expression) (#new Expression))
+                                    (= (#\. qexpr type) "quote")
+                                    (#\. qexpr (addChilds#funcall ([] oexpr)))
+
+                                    (#\. ed (addChilds#funcall ([] qexpr)))
                                     (#goto Argument)
                                 )
                                 #else.
                                 (#body
-                                    (= (#\. expr operator) op2)
+                                    (= (#\. expr operator_lexem) op2)
+                                    (= (#\. expr operator) (#\. expr operator_lexem (#quote \.) text))
                                 ))
-                            (#if
-                                (== (getPriority op2) (getPriority op)).
+
+                            (#if (== (getPriority#funcall (#\. op2 text)) (getPriority#funcall (#\. op text))).
                                 (#body
-                                    (= (pared Expression) (#\. ed parent))
-                                    (#if
-                                        pared.
+                                    (= (pared#var Expression) (#\. ed parent))
+
+                                    (#if pared.
                                         (#body
                                             (#\. pared popChild)
-                                            (#\. pared (addChild expr))
+                                            (#\. pared (addChild#funcall expr))
                                         )
                                         #else.
                                         (#body
-                                            (+= (#\. expr nl1) (#\. ret nl1))
-                                            (= (#\. ret nl1) 0)
                                             (= ret expr)
                                         ))
-                                    (#\. expr (addChild ed))
+                                    (#\. expr (addChild#funcall ed))
                                 )
                                 #else.
                                 (#body
-                                    (= (ch Expression) (#\. ed popChild))
-                                    (#\. expr (addChild ch))
-                                    (#\. ed (addChild expr))
+                                    (= (ch#var Expression) (#\. ed popChild))
+                                    (#\. expr (addChild#funcall ch))
+                                    (#\. ed (addChild#funcall expr))
                                 ))
                             (= ed expr)
                         )
-                        (#\. ed parent).
+                        (#quote else if) (#\. ed parent).
                         (#body
                             (= ed (#\. ed parent))
                             (#goto LookOp)
                         )
                         #else.
                         (#body
-                            (= (expr Expression) (#new Expression))
-                            (= (#\. expr nl1) getNL)
-                            (op2#if (.
-                                "?"
-                                ":"
-                                ".").
+                            (= (expr#var Expression) (#new Expression))
+
+                            (#if (|| (== (#\. op2 text) "?")
+                                    (== (#\. op2 text) ":")
+                                    (#quote ||) (== (#\. op2 text) ".")).
                                 (#body
-                                    (= (#\. expr type) op2)
+                                    (= (#\. expr type_lexem) op2)
+                                    (= (#\. expr type) (#\. expr type_lexem (#quote \.) text))
                                 )
                                 #else.
                                 (#body
-                                    (= (#\. expr operator) op2)
+                                    (= (#\. expr operator_lexem) op2)
+                                    (= (#\. expr operator) (#\. expr operator_lexem (#quote \.) text))
                                 ))
-                            (+= (#\. expr nl1) (#\. ret nl1))
-                            (= (#\. ret nl1) 0)
                             (= ret expr)
-                            (#\. expr (addChild ed))
+                            (#\. expr (addChild#funcall ed))
                             (= ed expr)
                         ))
-                    (lexer#if (.
-                        "++"
-                        "--").
+
+                    (#if (|| (== lexer "++")
+                            (== lexer "--")).
                         (#body
                             (= (#\. ed type) "post")
                             getLexem
                             (#goto Operator)
                         ))
+
                     (#goto Argument)
                 )
-                "(".
+                (#quote else if) (== lexer "(").
                 (#body
-                    (#\. ed arguments (#[ (- $ 1)) (addChilds getCallArgs))
+                    (#\. ed arguments (#[ (#ord (- $ 1))) (#quote \.) (addChilds#funcall getCallArgs))
                     getLexem
                     (#goto Operator)
                 )
-                "[".
+                (#quote else if) (== lexer "[").
                 (#body
-                    (= (slice Expression) (#new Expression))
+                    (= (slice#var Expression) (#new Expression))
+                    (= (#\. slice type_lexem) (#\. lexer lexem))
+                    (= (#\. slice open_lexem) (#\. lexer lexem))
                     (= (#\. slice type) "[")
-                    (= (s1 Expression) getExpression)
-                    (#if
-                        s1.
+                    (= (s1#var Expression) getExpression)
+
+                    (#if s1.
                         (#body
-                            (#\. slice (addChild s1))
+                            (#\. slice (addChild#funcall s1))
                         ))
-                    (lexer#if
-                        "..".
+
+                    (#if (== lexer "..").
                         (#body
-                            (= (ss Expression) (#new Expression))
+                            (= (ss#var Expression) (#new Expression))
+                            (= (#\. ss operator_lexem) (#\. lexer lexem))
                             (= (#\. ss operator) "..")
-                            (= (s2 Expression) getExpression)
-                            (#\. slice (addChild ss))
-                            (#\. slice (addChild s2))
+                            (= (s2#var Expression) getExpression)
+                            (#\. slice (addChild#funcall ss))
+                            (#\. slice (addChild#funcall s2))
                         ))
-                    (lexer#if
-                        "]".
+
+                    (#if (== lexer "]").
                         (#body
-                            (=@LookOp2 (op string) (#\. ed operator))
-                            (#if
-                                (#\. op empty).
+                            (#label LookOp2)
+                            (= (op#var Lexem) (#\. ed operator_lexem))
+                            (= (#\. slice close_lexem) (#\. lexer lexem))
+
+                            (#if (#\. op text (#quote \.) empty).
                                 (#body
-                                    (= op (#\. ed type))
+                                    (= op (#\. ed type_lexem))
                                 ))
-                            (#if
-                                (#\. ed hidden).
+
+                            (#if (#\. ed hidden).
                                 (#body
-                                    (= op "P")
+                                    (= (#\. op text) "P")
                                 ))
-                            (#if
-                                (#\. op empty).
+
+                            (#if (#\. op text (#quote \.) empty).
                                 (#body
                                     (= (#\. ed type) ".")
-                                    (#\. ed (addChild slice))
+                                    (#\. ed (addChild#funcall slice))
                                 )
-                                (== op ".").
+                                (#quote else if) (== (#\. op text) ".").
                                 (#body
-                                    (#\. ed (addChild slice))
+                                    (#\. ed (addChild#funcall slice))
                                 )
-                                (>= (getPriority ".") (getPriority op)).
+                                (#quote else if) (>= (getPriority#funcall ".") (getPriority#funcall (#\. op text))).
                                 (#body
-                                    (= (expr Expression) (#new Expression))
+                                    (= (expr#var Expression) (#new Expression))
                                     (= (#\. expr type) ".")
-                                    (= (ch Expression) (#\. ed popChild))
-                                    (#\. expr (addChild ch))
-                                    (#\. expr (addChild slice))
-                                    (#\. ed (addChild expr))
+                                    (= (ch#var Expression) (#\. ed popChild))
+                                    (#\. expr (addChild#funcall ch))
+                                    (#\. expr (addChild#funcall slice))
+                                    (#\. ed (addChild#funcall expr))
                                     (= ed expr)
                                 )
-                                (#\. ed parent).
+                                (#quote else if) (#\. ed parent).
                                 (#body
                                     (= ed (#\. ed parent))
                                     (#goto LookOp2)
                                 )
                                 #else.
                                 (#body
-                                    (= (expr Expression) (#new Expression))
+                                    (= (expr#var Expression) (#new Expression))
                                     (= (#\. expr type) ".")
-                                    (#if
-                                        (#\. ed parent).
+
+                                    (#if (#\. ed parent).
                                         (#body
-                                            (#\. ed parent (addChild expr))
+                                            (#\. ed parent (#quote \.) (addChild#funcall expr))
                                         )
                                         #else.
                                         (#body
@@ -2206,8 +2451,8 @@
                                             (= (#\. ret nl1) 0)
                                             (= ret expr)
                                         ))
-                                    (#\. expr (addChild ed))
-                                    (#\. expr (addChild slice))
+                                    (#\. expr (addChild#funcall ed))
+                                    (#\. expr (addChild#funcall slice))
                                     (= ed expr)
                                 ))
                             getLexem
@@ -2215,63 +2460,66 @@
                         )
                         #else.
                         (#body
-                            (writefln (#" ] Expected not %s) lexer)
-                            (assert 0)
+                            (writefln#funcall "] Expected not %s" lexer)
+                            (assert#funcall 0)
                         ))
-                ) (.
-                ","
-                ".."
-                ")"
-                "]"
-                ";").
+                )
+                (#quote else if
+
+
+
+                ) (|| (== lexer ",") (== lexer "..") (#quote ||) (== lexer ")") (#quote ||) (== lexer "]") (#quote ||) (== lexer ";")).
                 (#body
-                    (#if
-                        (&& (is (#\. ret operator) null) (is (#\. ret type) null)).
+                    (#if (&& (#ord (is (#\. ret operator) null)) (#ord (is (#\. ret type) null))).
                         (#body
-                            (+= (#\. ret arguments (#[ 0) nl1) (#\. ret nl1))
+                            (+= (#\. ret arguments (#[ 0) (#quote \.) nl1) (#\. ret nl1))
                             (= ret (#\. ret arguments (#[ 0)))
                         ))
                     (#return ret)
                 )
                 #else.
                 (#body
-                    (writefln (#" Unexpected %s) lexer)
-                    (assert 0)
+                    (writefln#funcall "Unexpected %s" lexer)
+                    (assert#funcall 0)
                 ))
         )
 
         (getCaseVal#function Expression).
         (#body
-            (= (ret Expression) (#new Expression))
-            (= (ed Expression) ret)
-            getLexem@Argument
-            (lexer#if (.
-                (#\. LexemType String)
-                (#\. LexemType Number)
-                (#\. LexemType Character)
-                (#\. LexemType Identifier)).
+            (= (ret#var Expression) (#new Expression))
+            (= (ed#var Expression) ret)
+            (#label Argument)
+            getLexem
+
+            (#if (|| (== lexer (#\. LexemType String))
+                    (== lexer (#\. LexemType Number))
+                    (#quote ||) (== lexer (#\. LexemType Character))
+                    (#quote ||) (== lexer (#\. LexemType Identifier))).
                 (#body
-                    (= (arg Expression) (#new Expression))
-                    (= (#\. arg operator) (#\. lexer lexem))
+                    (= (arg#var Expression) (#new Expression))
+                    (= (#\. arg operator_lexem) (#\. lexer lexem))
+                    (= (#\. arg operator) (#\. arg operator_lexem (#quote \.) text))
+                    (#if (== lexer (#\. LexemType String)).
+                        (#body (= (#\. arg bt) (#\. BlockType String))))
                     (~= (#\. ed arguments) arg)
                     getLexem
                     (#goto Operator)
                 )
                 #else.
                 (#body
-                    (writefln (#" Unexpected %s) lexer)
-                    (assert 0)
+                    (writefln#funcall "Unexpected %s" lexer)
+                    (assert#funcall 0)
                 ))
-            (lexer#if@Operator
-                ".".
+            (#label Operator)
+            (#if (== lexer ".").
                 (#body
-                    (= (#\. ed type) (#\. lexer lexem))
+                    (= (#\. ed type_lexem) (#\. lexer lexem))
+                    (= (#\. ed type) (#\. ed type_lexem (#quote \.) text))
                     (#goto Argument)
                 )
-                ":".
+                (#quote else if) (== lexer ":").
                 (#body
-                    (#if
-                        (&& (is (#\. ret operator) null) (is (#\. ret type) null)).
+                    (#if (&& (#ord (is (#\. ret operator) null)) (#ord (is (#\. ret type) null))).
                         (#body
                             (= ret (#\. ret arguments (#[ 0)))
                         ))
@@ -2279,126 +2527,126 @@
                 )
                 #else.
                 (#body
-                    (writefln (#" Unexpected %s) lexer)
-                    (assert 0)
+                    (writefln#funcall "Unexpected %s" lexer)
+                    (assert#funcall 0)
                 ))
         )
 
         (getPriority#function int (op string)).
         (#body
-            (op#switch
-                "..".
-                (#body
+            (#switch op).(#body
+                (#case "..")
+                (#{
                     (#return 0)
                 )
-                ",".
-                (#body
+                (#case ",")
+                (#{
                     (#return 1)
                 )
-                "=>".
-                (#body
+                (#case "=>")
+                (#{
                     (#return 2)
-                ) (.
-                "="
-                "^^="
-                "*="
-                "/="
-                "%="
-                "+="
-                "-="
-                "~="
-                "<<="
-                ">>="
-                ">>>="
-                "&="
-                "|="
-                "^=").
-                (#body
+                )
+                (#case "=")
+                (#case "^^=")
+                (#case "*=")
+                (#case "/=")
+                (#case "%=")
+                (#case "+=")
+                (#case "-=")
+                (#case "~=")
+                (#case "<<=")
+                (#case ">>=")
+                (#case ">>>=")
+                (#case "&=")
+                (#case "|=")
+                (#case "^=")
+                (#{
                     (#return 3)
-                ) (.
-                "?"
-                ":").
-                (#body
+                )
+                (#case "?")
+                (#case ":")
+                (#{
                     (#return 4)
                 )
-                "||".
-                (#body
+                (#case "||")
+                (#{
                     (#return 5)
                 )
-                "&&".
-                (#body
+                (#case "&&")
+                (#{
                     (#return 6)
                 )
-                "|".
-                (#body
+                (#case "|")
+                (#{
                     (#return 7)
                 )
-                "^".
-                (#body
+                (#case "^")
+                (#{
                     (#return 8)
                 )
-                "&".
-                (#body
+                (#case "&")
+                (#{
                     (#return 9)
-                ) (.
-                "=="
-                "!="
-                ">"
-                "<"
-                ">="
-                "<="
-                "in"
-                "!in"
-                "is"
-                "!is").
-                (#body
+                )
+                (#case "==")
+                (#case "!=")
+                (#case ">")
+                (#case "<")
+                (#case ">=")
+                (#case "<=")
+                (#case "in")
+                (#case "!in")
+                (#case "is")
+                (#case "!is")
+                (#{
                     (#return 10)
-                ) (.
-                "<<"
-                ">>"
-                ">>>").
-                (#body
+                )
+                (#case "<<")
+                (#case ">>")
+                (#case ">>>")
+                (#{
                     (#return 11)
-                ) (.
-                "+"
-                "-"
-                "~").
-                (#body
+                )
+                (#case "+")
+                (#case "-")
+                (#case "~")
+                (#{
                     (#return 12)
-                ) (.
-                "*"
-                "/"
-                "%").
-                (#body
+                )
+                (#case "*")
+                (#case "/")
+                (#case "%")
+                (#{
                     (#return 13)
-                ) (.
-                "!"
-                "cast"
-                "unary").
-                (#body
+                )
+                (#case "!")
+                (#case "cast")
+                (#case "unary")
+                (#{
                     (#return 14)
                 )
-                "^^".
-                (#body
+                (#case "^^")
+                (#{
                     (#return 15)
-                ) (.
-                "."
-                "++"
-                "--"
-                "postfix").
-                (#body
+                )
+                (#case ".")
+                (#case "++")
+                (#case "--")
+                (#case "postfix")
+                (#{
                     (#return 16)
                 )
-                "lambda".
-                (#body
+                (#case "lambda")
+                (#{
                     (#return 17)
                 )
-                "templ".
-                (#body
+                (#case "templ")
+                (#{
                     (#return 18)
                 )
-                #default.
-                (#body
+                #default
+                (#{
                     (#return 100)
                 )
             )

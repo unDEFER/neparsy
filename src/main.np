@@ -6,7 +6,7 @@
 
     (#import iface)
 
-    (#import (gio\.Application GioApplication.(Application)))
+    (#import (gio\.Application (#quote :) GioApplication.(#quote =).(Application)))
     (#import gio\.FileT)
     (#import gtk\.Application)
     (#import gtk\.ApplicationWindow)
@@ -17,7 +17,7 @@
     (#import std\.array)
     (#import std\.string)
     (#import std\.conv)
-    (#import (std\.typecons Flag Yes No))
+    (#import (std\.typecons (#quote :) Flag Yes No))
     (#import std\.algorithm\.searching)
     (#import std\.math\.traits)
     (#import std\.math)
@@ -30,180 +30,180 @@
 
     (MyWindow#class ApplicationWindow#superclass
 
-        (this#function #constructor.(public) (gtkApplicationWindow (#* GtkApplicationWindow)) (ownedRef bool).(#init false)).
+        (#attr public).(this#function #constructor (gtkApplicationWindow (#* GtkApplicationWindow)) (ownedRef bool).(#init false)).
         (#body
-            (super gtkApplicationWindow ownedRef)
+            (super#funcall gtkApplicationWindow ownedRef)
         )
 
-        (this#function #constructor.(public) (application Application)).
+        (#attr public).(this#function #constructor (application Application)).
         (#body
-            (super application)
-            (addEvents (| (#\. EventMask KEY_PRESS_MASK) (#\. EventMask BUTTON_PRESS_MASK)))
-            (addOnKeyPress (&#unary keyPressCallback))
-            (addOnButtonPress (&#unary buttonPressCallback))
-            (addOnScroll (&#unary scrollCallback))
+            (super#funcall application)
+            (addEvents#funcall (| (#\. EventMask KEY_PRESS_MASK) (#\. EventMask BUTTON_PRESS_MASK)))
+            (addOnKeyPress#funcall (&#unary keyPressCallback))
+            (addOnButtonPress#funcall (&#unary buttonPressCallback))
+            (addOnScroll#funcall (&#unary scrollCallback))
         )
 
         (#: protected)
         (keyPressCallback#function bool (event Event) (widget Widget)).
         (#body
             (val#var uint)
-            (#\. event (getKeyval val)) (=
-                (unicode#var dchar) (#cast dchar (#\. Keymap (keyvalToUnicode val))))
+            (#\. event (getKeyval#funcall val))
+            (= (unicode#var dchar) (#cast dchar (#\. Keymap (keyvalToUnicode#funcall val))))
 
             (state#var GdkModifierType)
-            (#\. event (getState state))
+            (#\. event (getState#funcall state))
 
-            (#if (&& (& state (#\. GdkModifierType SHIFT_MASK)) (== val 65361)).(#body /*LEFT*/
-
+            (#if (&& (& state (#\. GdkModifierType SHIFT_MASK)) (== val 65361))./*LEFT*/
+                (#body
                     //write("S<");
-                    (#\. IFACE (moveleft))
+(#\. IFACE moveleft#funcall)
                 )
-                (&& (& state (#\. GdkModifierType SHIFT_MASK)) (== val 65363)).(#body /*RIGHT*/
-
+                (#quote else if) (&& (& state (#\. GdkModifierType SHIFT_MASK)) (== val 65363))./*RIGHT*/
+                (#body
                     //write("S>");
-                    (#\. IFACE (moveright))
+(#\. IFACE moveright#funcall)
                 )
-                (== val 65535).(#body
-
+                (#quote else if) (== val 65535).
+                (#body
                     //write("Del");
-                    (#\. IFACE (del))
+(#\. IFACE del#funcall)
                 )
-                (|| (== val 65307) (== val 65293)).(#body
-
+                /*Enter*/(#quote else if) /*Escape*/(|| (== val 65307) (== val 65293)).
+                (#body
                     //write('\n');
-                    (#\. IFACE (escape))
-                ) /*Escape*/ /*Enter*/
-                (== unicode '\ ').(#body
-
-                    //write(unicode);
-                    (#\. IFACE (space))
+(#\. IFACE escape#funcall)
                 )
-                (& state (#\. GdkModifierType CONTROL_MASK)).(#body
-
-                    (#if (== unicode ',').(#body
-
+                (#quote else if) (== unicode ' ').
+                (#body
+                    //write(unicode);
+(#\. IFACE space#funcall)
+                )
+                (#quote else if) (& state (#\. GdkModifierType CONTROL_MASK)).
+                (#body
+                    (#if (== unicode ',').
+                        (#body
                             //write("^<");
-                            (#\. IFACE (less))
+(#\. IFACE less#funcall)
                         )
-                        (== unicode '\.').(#body
-
+                        (#quote else if) (== unicode '.').
+                        (#body
                             //write("^>");
-                            (#\. IFACE (greater))
+(#\. IFACE greater#funcall)
                         )
-                        (== unicode 's').(#body
-
-                            (#\. IFACE (save))
+                        (#quote else if) (== unicode 's').
+                        (#body
+                            (#\. IFACE save#funcall)
                         )
-                        (== unicode 'd').(#body
-
-                            (#\. IFACE (saveD))
+                        (#quote else if) (== unicode 'd').
+                        (#body
+                            (#\. IFACE saveD#funcall)
                         )
-                        (== unicode 'f').(#body
-
-                            (#\. IFACE (fixIndent))
+                        (#quote else if) (== unicode 'f').
+                        (#body
+                            (#\. IFACE fixIndent#funcall)
                         )
-                        (== unicode 'c').(#body
-
+                        (#quote else if) (== unicode 'c').
+                        (#body
                             //write('C', unicode);
-                            (#\. IFACE (copy))
+(#\. IFACE copy#funcall)
                         )
-                        (== unicode 'x').(#body
-
+                        (#quote else if) (== unicode 'x').
+                        (#body
                             //write('C', unicode);
-                            (#\. IFACE (copy))
-                            (#\. IFACE (del))
+(#\. IFACE copy#funcall)
+                            (#\. IFACE del#funcall)
                         )
-                        (== unicode 'v').(#body
-
+                        (#quote else if) (== unicode 'v').
+                        (#body
                             //write('C', unicode);
-                            (#\. IFACE (insert))
+(#\. IFACE insert#funcall)
                         )
-                        (== unicode 'l').(#body
-
+                        (#quote else if) (== unicode 'l').
+                        (#body
                             //write('C', unicode);
-                            (#\. IFACE (toLexer))
+(#\. IFACE toLexer#funcall)
                         )
-                        (== unicode '=').(#body
-
+                        (#quote else if) (== unicode '=').
+                        (#body
                             (/= (#\. IFACE sx2) 1\.5)
                             (/= (#\. IFACE sy2) 1\.5)
-                            (#\. IFACE (redraw))
+                            (#\. IFACE redraw#funcall)
                         )
-                        (== unicode '-').(#body
-
+                        (#quote else if) (== unicode '-').
+                        (#body
                             (*= (#\. IFACE sx2) 1\.5)
                             (*= (#\. IFACE sy2) 1\.5)
-                            (#\. IFACE (redraw))
+                            (#\. IFACE redraw#funcall)
                         )
-                        (== val 65288).(#body
-
+                        (#quote else if) (== val 65288).
+                        (#body
                             //write("C<-");
-                            (#\. IFACE (remove))
+(#\. IFACE remove#funcall)
                         )
-                        (== val 65361).(#body /*LEFT*/
-
+                        (#quote else if) (== val 65361)./*LEFT*/
+                        (#body
                             //write("C<");
-                            (#\. IFACE (field_left))
+(#\. IFACE field_left#funcall)
                         )
-                        (== val 65363).(#body /*RIGHT*/
-
+                        (#quote else if) (== val 65363)./*RIGHT*/
+                        (#body
                             //write("C>");
-                            (#\. IFACE (field_right))
+(#\. IFACE field_right#funcall)
                         )
-                        (== val 65364).(#body /*DOWN*/
-
+                        (#quote else if) (== val 65364)./*DOWN*/
+                        (#body
                             //write("Cv");
-                            (#\. IFACE (field_down))
+(#\. IFACE field_down#funcall)
                         )
-                        (== val 65362).(#body /*UP*/
-
+                        (#quote else if) (== val 65362)./*UP*/
+                        (#body
                             //write("C^");
-                            (#\. IFACE (field_up))
+(#\. IFACE field_up#funcall)
                         ))
                 )
-                (== val 65288).(#body
-
+                (#quote else if) (== val 65288).
+                (#body
                     //write("<-");
-                    (#\. IFACE (backspace))
+(#\. IFACE backspace#funcall)
                 )
-                (== val 65361).(#body /*LEFT*/
-
+                (#quote else if) (== val 65361)./*LEFT*/
+                (#body
                     //write("<");
-                    (#\. IFACE (left))
+(#\. IFACE left#funcall)
                 )
-                (== val 65363).(#body /*RIGHT*/
-
+                (#quote else if) (== val 65363)./*RIGHT*/
+                (#body
                     //write(">");
-                    (#\. IFACE (right))
+(#\. IFACE right#funcall)
                 )
-                (== val 65364).(#body /*DOWN*/
-
+                (#quote else if) (== val 65364)./*DOWN*/
+                (#body
                     //write("v");
-                    (#\. IFACE (down))
+(#\. IFACE down#funcall)
                 )
-                (== val 65362).(#body /*UP*/
-
+                (#quote else if) (== val 65362)./*UP*/
+                (#body
                     //write("^");
-                    (#\. IFACE (up))
+(#\. IFACE up#funcall)
                 )
-                (== unicode '\.').(#body
-
+                (#quote else if) (== unicode '.').
+                (#body
                     //write(unicode);
-                    (#\. IFACE (dot))
+(#\. IFACE dot#funcall)
                 )
-                (== unicode ',').(#body
-
+                (#quote else if) (== unicode ',').
+                (#body
                     //write(unicode);
-                    (#\. IFACE (comma))
+(#\. IFACE comma#funcall)
                 )
-                (|| (isAlphaNum unicode) (isPunctuation unicode)).(#body
-
+                (#quote else if) (|| (isAlphaNum#funcall unicode) (isPunctuation#funcall unicode)).
+                (#body
                     //write(unicode);
-                    (#\. IFACE (print unicode))
+(#\. IFACE (print#funcall unicode))
                 ))
 
-            (#\. IFACE (redraw))
+            (#\. IFACE redraw#funcall)
 
             (#return false)
         )
@@ -211,19 +211,19 @@
         (buttonPressCallback#function bool (event Event) (widget Widget)).
         (#body
             (button#var uint)
-            (#\. event (getButton button)) (.
-            x#var y#var).(double)
-            (#\. event (getCoords x y))
+            (#\. event (getButton#funcall button))
+            (. x#var y#var).(double)
+            (#\. event (getCoords#funcall x y))
 
             //writefln("%s. %sx%s", button, x, y);
-            (#return (#\. IFACE (click button x y)))
+(#return (#\. IFACE (click#funcall button x y)))
         )
 
         (scrollCallback#function bool (event Event) (widget Widget)).
-        (#body (.
-            deltaX#var deltaY#var).(double)
-            (#\. event (getScrollDeltas deltaX deltaY))
-            (#return (#\. IFACE (scroll deltaX deltaY)))
+        (#body
+            (. deltaX#var deltaY#var).(double)
+            (#\. event (getScrollDeltas#funcall deltaX deltaY))
+            (#return (#\. IFACE (scroll#funcall deltaX deltaY)))
         )
     )
 
@@ -239,123 +239,131 @@
 
     (main#function int (args ([]#type string))).
     (#body
-        (#if (> (#\. args length) 1).(#body
-
-                (#if (|| (== (#\. args (#[ 1)) "-h") (== (#\. args (#[ 1)) "--help")).(#body
-
-                        (writefln
-
-                            (~ "usage: %s [file1] [file2]... -- for editing files in GUI\n" "   or: %s -c <source> <destination> -- for converting between neparsy/D formats\n" "where files must have '.np' or '.d' extension") (#\. args (#[ 0)) (#\. args (#[ 0)))
+        (#if (> (#\. args length) 1).
+            (#body
+                (#if (|| (== (#\. args (#[ 1)) "-h") (== (#\. args (#[ 1)) "--help")).
+                    (#body
+                        (writefln#funcall (~ "usage: %s [file1] [file2]... -- for editing files in GUI\n"
+                                "   or: %s -c <source> <destination> -- for converting between neparsy/D formats\n"
+                                (#quote ~) "where files must have '.np' or '.d' extension") (#\. args (#[ 0)) (#\. args (#[ 0)))
                         (#return 0)
                     )
-                    (&& (== (#\. args (#[ 1)) "-c") (== (#\. args length) 4)).(#body
-
+                    (#quote else if) (&& (== (#\. args (#[ 1)) "-c") (== (#\. args length) 4)).
+                    (#body
                         (expr#var Expression)
-                        (#if (#\. args (#[ 2) (endsWith ".d")).(#body
-
-                                (lex#var Lexer)
-                                (= (#\. lex file) (readText (#\. args (#[ 2)))) (=
-                                    (pars#var Parser) (#new Parser))
-                                (= (#\. pars lexer) lex)
-                                (= expr (#\. pars (parse)))
-                                (#\. expr (fixParents))
-                            )
-                            (#\. args (#[ 2) (endsWith ".np")).(#body (=
-
-                                    (mod#var string) (readText (#\. args (#[ 2))))
-                                (= expr (#new (Expression mod)))
-                            ) #else.
+                        (#if (#\. args (#[ 2) (#quote \.) (endsWith#funcall ".d")).
                             (#body
+                                (lex#var Lexer)
+                                (= (#\. lex file) (readText#funcall (#\. args (#[ 2))))
+                                (= (pars#var Parser) (#new Parser))
+                                (= (#\. pars lexer) lex)
+                                (= expr (#\. pars parse#funcall))
+                                (#\. expr fixParents#funcall)
+                            )
+                            (#quote else if) (#\. args (#[ 2) (#quote \.) (endsWith#funcall ".np")).
+                            (#body
+                                (= (mod#var string) (readText#funcall (#\. args (#[ 2))))
+                                (= expr (#new (Expression#funcall mod)))
 
-                                (writefln "Can't convert file with unknown extension: `%s`" (#\. args (#[ 2)))
+                                (= (imod#var string) (readText#funcall (~ (#\. args (#[ 2) (#[ 0 \.\. (- $ 3))) ".inp")))
+                                (= (iexpr#var Expression) (#new (Expression#funcall imod)))
+                                (#\. expr (merge_inp#funcall iexpr))
+                            )
+                            #else.
+                            (#body
+                                (writefln#funcall "Can't convert file with unknown extension: `%s`" (#\. args (#[ 2)))
                                 (#return 1)
                             ))
 
                         (savestr#var string)
 
-                        (#if (#\. args (#[ 3) (endsWith ".d")).(#body
-
+                        (#if (#\. args (#[ 3) (#quote \.) (endsWith#funcall ".d")).
+                            (#body
                                 (= savestr (#\. expr saveD))
                             )
-                            (#\. args (#[ 3) (endsWith ".np")).(#body
-
-                                (= savestr (#\. expr save))
-                            ) #else.
+                            (#quote else if) (#\. args (#[ 3) (#quote \.) (endsWith#funcall ".np")).
                             (#body
+                                (= savestr (#\. expr save))
+                                (= (inp#var string) (#\. expr (save#funcall true)))
 
-                                (writefln "Can't convert to file with unknown extension: `%s`" (#\. args (#[ 3)))
+                                (= (file#var auto) (File#funcall (~ (#\. args (#[ 3) (#[ 0 \.\. (- $ 3))) ".inp") "w"))
+                                (#\. file (writeln#funcall inp))
+                            )
+                            #else.
+                            (#body
+                                (writefln#funcall "Can't convert to file with unknown extension: `%s`" (#\. args (#[ 3)))
                                 (#return 1)
-                            )) (=
+                            ))
 
-                            (file#var auto) (File (#\. args (#[ 3)) "w"))
-                        (#\. file (writeln savestr))
+                        (= (file#var auto) (File#funcall (#\. args (#[ 3)) "w"))
+                        (#\. file (writeln#funcall savestr))
                         (#return 0)
                     ))
             ))
 
         (application#var Application)
 
-        (activateClock#function void (app GioApplication)).(#body (=
+        (activateClock#function void (app GioApplication)).
+        (#body
+            (= (win#var MyWindow) (#new (MyWindow#funcall application)))
 
-                (win#var MyWindow) (#new (MyWindow application)))
+            (#\. win (setTitle#funcall "Neparsy"))
+            (#\. win (setDefaultSize#funcall 640 480))
 
-            (#\. win (setTitle "Neparsy"))
-            (#\. win (setDefaultSize 640 480)) (=
+            (= (x#var real) 0\.0)
+            (= (y#var real) 0\.0)
 
-                (x#var real) 0\.0) (=
-                (y#var real) 0\.0) (=
+            (= (state#var int) 0)
+            (branches#var ([]#type BranchInfo))
 
-                (state#var int) 0)
-            (branches#var ([]#type BranchInfo)) (=
-
-                (root#var Expression) (#new (Expression)))
+            (= (root#var Expression) (#new Expression#funcall))
             (= (#\. root type) "root")
 
-            (#foreach i arg (#\. args (#[ 1 \.\. $))).(#body
-
-                (#if (#\. arg (endsWith ".d")).(#body
-
+            (#foreach i arg (#\. args (#[ 1 \.\. $))).
+            (#body
+                (#if (#\. arg (endsWith#funcall ".d")).
+                    (#body
                         (lex#var Lexer)
-                        (= (#\. lex file) (readText arg)) (=
-                            (pars#var Parser) (#new Parser))
-                        (= (#\. pars lexer) lex) (=
-                            (expr#var Expression) (#\. pars (parse)))
-                        (#\. expr (fixParents))
+                        (= (#\. lex file) (readText#funcall arg))
+                        (= (pars#var Parser) (#new Parser))
+                        (= (#\. pars lexer) lex)
+                        (= (expr#var Expression) (#\. pars parse#funcall))
+                        (#\. expr fixParents#funcall)
 
                         (= (#\. expr parent) root)
                         (= (#\. expr operator) (~ (#\. arg (#[ 0 \.\. (- $ 2))) ".np"))
                         (= (#\. expr type) "*")
-                        (= (#\. expr index) (#\. root arguments length))
+                        (= (#\. expr index) (#\. root arguments (#quote \.) length))
                         (~= (#\. root arguments) expr)
                     )
-                    (#\. arg (endsWith ".np")).(#body (=
-
-                            (mod#var string) (readText arg)) (=
-                            (expr#var Expression) (#new (Expression mod)))
+                    (#quote else if) (#\. arg (endsWith#funcall ".np")).
+                    (#body
+                        (= (mod#var string) (readText#funcall arg))
+                        (= (expr#var Expression) (#new (Expression#funcall mod)))
                         (= (#\. expr parent) root)
                         (= (#\. expr operator) arg)
                         (= (#\. expr index) i)
                         (~= (#\. root arguments) expr)
-                    ) #else.
+                    )
+                    #else.
                     (#body
-
-                        (writefln "Skip file with unknown extension: `%s`" arg)
+                        (writefln#funcall "Skip file with unknown extension: `%s`" arg)
                     ))
             )
 
-            (= IFACE (#new (Iface root)))
-            (#\. win (add IFACE))
-            (#\. IFACE (show))
-            (#\. win (showAll))
+            (= IFACE (#new (Iface#funcall root)))
+            (#\. win (add#funcall IFACE))
+            (#\. IFACE show#funcall)
+            (#\. win showAll#funcall)
         )
 
-        (handleOpen#function void (files ([]#type FileIF)) (name string) (app GioApplication)).(#body
-
-            (activateClock app)
+        (handleOpen#function void (files ([]#type FileIF)) (name string) (app GioApplication)).
+        (#body
+            (activateClock#funcall app)
         )
 
-        (= application (#new (Application "org.gtkd.demo.cairo.iface" (#\. GApplicationFlags HANDLES_OPEN))))
-        (#\. application (addOnOpen (&#unary handleOpen)))
-        (#\. application (addOnActivate (&#unary activateClock)))
-        (#return (#\. application (run args)))
+        (= application (#new (Application#funcall "org.gtkd.demo.cairo.iface" (#\. GApplicationFlags HANDLES_OPEN))))
+        (#\. application (addOnOpen#funcall (&#unary handleOpen)))
+        (#\. application (addOnActivate#funcall (&#unary activateClock)))
+        (#return (#\. application (run#funcall args)))
     ))

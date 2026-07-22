@@ -1,0 +1,752 @@
+(lexer#module@D
+    (#import std\.stdio)
+    (#import std\.range)
+    (#import std\.utf)
+    (#import std\.uni)
+    (#import std\.file)
+    (#import std\.conv)
+    (#import std\.algorithm\.searching)
+    (LexemType#enum
+        Identifier
+        AssignOperator
+        Comment
+        String
+        EndInput
+        Punctuation
+        Number
+        Float
+        CmpOperator
+        Blank
+        Operator
+        Character
+        LenOperator
+        Lambda
+    )
+
+    (#enum
+        EOF.(#init '\u0004')
+    )
+
+    (Position#struct
+
+        (row uint)
+        (col uint)
+
+        (opCmp#function int (b Position ref)).
+        (#body
+            (#return (#? (== (#\. b row) row) (- col (#\. b col)) (#quote :) (- row (#\. b row))))
+        )
+    )
+
+    (Lexem#struct
+
+        (text string)
+        (type LexemType)
+        (start Position)
+        (end Position)
+        (comments ([]#type Lexem))
+    )
+
+    (Lexer#struct
+        (file string)
+        (lexem Lexem)
+        (cursor Position).(#init (Position#funcall 1 1))
+        (chr dchar)
+
+        (isWhiteNL#function bool (chr dchar)).
+        (#body
+            (#return (isWhite#funcall chr))
+        )
+
+        (getLexemRaw#function void).
+        (#body
+            (= (#\. lexem text) file)
+            (back#var Lexer)
+            (back2#var Lexer)
+            (= back this)
+            (= (#\. lexem start) cursor)
+            nextChr#funcall
+
+            (#if (|| (isAlpha#funcall chr) (#ord (== chr '_'))).
+                (#body
+                    #do.
+                    (#body
+                        (= back this)
+                        nextChr
+                    ).(#while (|| (isAlphaNum#funcall chr) (#ord (== chr '_'))))
+
+                    (= this back)
+                    (= (#\. lexem type) (#\. LexemType Identifier))
+                    (= (#\. lexem end) cursor)
+                    #return
+                )
+                (#quote else if) (isNumber#funcall chr).
+                (#body
+                    #do.
+                    (#body
+                        (= back this)
+                        nextChr
+                    ).(#while (isNumber#funcall chr))
+                    (= this back)
+                    (= back2 this)
+                    (= back this)
+                    nextChr#funcall
+
+                    (#if (== chr '.').
+                        (#body
+                            (= back this)
+                            nextChr#funcall
+
+                            (#if (== chr '.').
+                                (#body
+                                    (= this back2)
+                                    (= (#\. lexem type) (#\. LexemType Number))
+                                    (= (#\. lexem end) cursor)
+                                    #return
+                                )
+                                #else.
+                                (#body
+                                    (= this back)
+                                    #do.
+                                    (#body
+                                        (= back this)
+                                        nextChr
+                                    ).(#while (isNumber#funcall chr))
+                                    (= this back)
+                                    (= (#\. lexem type) (#\. LexemType Float))
+                                    (= (#\. lexem end) cursor)
+                                    #return
+                                ))
+                        )
+                        #else.
+                        (#body
+                            (= this back)
+                            (= (#\. lexem type) (#\. LexemType Number))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        ))
+                )
+                (#quote else if) (== chr '.').
+                (#body
+                    (= back this)
+                    nextChr#funcall
+
+                    (#if (== chr '.').
+                        (#body
+                            (= (#\. lexem type) (#\. LexemType Punctuation))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        )
+                        (#quote else if) (isNumber#funcall chr).
+                        (#body
+                            #do.
+                            (#body
+                                (= back this)
+                                nextChr
+                            ).(#while (isNumber#funcall chr))
+
+                            (= this back)
+                            (= (#\. lexem type) (#\. LexemType Float))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        )
+                        #else.
+                        (#body
+                            (= this back)
+                            (= (#\. lexem type) (#\. LexemType Punctuation))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        ))
+                )
+                (#quote else if) (!#unary (#\. ",;:[]{}()?" (find#funcall chr) (#quote \.) empty)).
+                (#body
+                    (= (#\. lexem type) (#\. LexemType Punctuation))
+                    (= (#\. lexem end) cursor)
+                    #return
+                )
+                (#quote else if) (== chr '+').
+                (#body
+                    (= back this)
+                    nextChr#funcall
+
+                    (#if (== chr '+').
+                        (#body
+                            (= (#\. lexem type) (#\. LexemType Operator))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        )
+                        (#quote else if) (== chr '=').
+                        (#body
+                            (= (#\. lexem type) (#\. LexemType AssignOperator))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        )
+                        #else.
+                        (#body
+                            (= this back)
+                            (= (#\. lexem type) (#\. LexemType Operator))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        ))
+                )
+                (#quote else if) (== chr '-').
+                (#body
+                    (= back this)
+                    nextChr#funcall
+
+                    (#if (== chr '-').
+                        (#body
+                            (= (#\. lexem type) (#\. LexemType Operator))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        )
+                        (#quote else if) (== chr '=').
+                        (#body
+                            (= (#\. lexem type) (#\. LexemType AssignOperator))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        )
+                        #else.
+                        (#body
+                            (= this back)
+                            (= (#\. lexem type) (#\. LexemType Operator))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        ))
+                )
+                (#quote else if) (== chr '=').
+                (#body
+                    (= back this)
+                    nextChr#funcall
+
+                    (#if (== chr '>').
+                        (#body
+                            (= (#\. lexem type) (#\. LexemType Lambda))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        )
+                        (#quote else if) (== chr '=').
+                        (#body
+                            (= (#\. lexem type) (#\. LexemType CmpOperator))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        )
+                        #else.
+                        (#body
+                            (= this back)
+                            (= (#\. lexem type) (#\. LexemType AssignOperator))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        ))
+                )
+                (#quote else if) (== chr '*').
+                (#body
+                    (= back this)
+                    nextChr#funcall
+
+                    (#if (== chr '=').
+                        (#body
+                            (= (#\. lexem type) (#\. LexemType AssignOperator))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        )
+                        #else.
+                        (#body
+                            (= this back)
+                            (= (#\. lexem type) (#\. LexemType Operator))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        ))
+                )
+                (#quote else if) (== chr '/').
+                (#body
+                    (= back this)
+                    nextChr#funcall
+
+                    (#if (== chr '=').
+                        (#body
+                            (= (#\. lexem type) (#\. LexemType AssignOperator))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        )
+                        (#quote else if) (== chr '/').
+                        (#body
+                            #do.
+                            (#body
+                                nextChr
+                            ).(#while (!#unary (#ord (== chr '\n'))))
+
+                            (= (#\. lexem type) (#\. LexemType Comment))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        )
+                        (#quote else if) (== chr '*').
+                        (#body
+                            (#label Comment)
+                            (= back this)
+                            nextChr#funcall
+
+                            (#if (== chr '*').
+                                (#body
+                                    (= back this)
+                                    nextChr#funcall
+
+                                    (#if (== chr '/').
+                                        (#body
+                                            (= (#\. lexem type) (#\. LexemType Comment))
+                                            (= (#\. lexem end) cursor)
+                                            #return
+                                        )
+                                        (#quote else if) (!#unary (#\. chr isNonCharacter)).
+                                        (#body
+                                            (#goto Comment)
+                                        )
+                                        #else.
+                                        (#body
+                                            (= this back)
+                                        ))
+                                )
+                                (#quote else if) (!#unary (#\. chr isNonCharacter)).
+                                (#body
+                                    (#goto Comment)
+                                )
+                                #else.
+                                (#body
+                                    (= this back)
+                                ))
+                        )
+                        (#quote else if) (== chr '+').
+                        (#body
+                            (= (#\. lexem type) (#\. LexemType Comment))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        )
+                        #else.
+                        (#body
+                            (= this back)
+                            (= (#\. lexem type) (#\. LexemType Operator))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        ))
+                )
+                (#quote else if) (== chr '~').
+                (#body
+                    (= back this)
+                    nextChr#funcall
+
+                    (#if (== chr '=').
+                        (#body
+                            (= (#\. lexem type) (#\. LexemType AssignOperator))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        )
+                        #else.
+                        (#body
+                            (= this back)
+                            (= (#\. lexem type) (#\. LexemType Operator))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        ))
+                )
+                (#quote else if) (== chr '>').
+                (#body
+                    (= back2 this)
+                    (= back this)
+                    nextChr#funcall
+
+                    (#if (== chr '=').
+                        (#body
+                            (= (#\. lexem type) (#\. LexemType CmpOperator))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        )
+                        (#quote else if) (== chr '>').
+                        (#body
+                            (= back this)
+                            nextChr#funcall
+
+                            (#if (== chr '>').
+                                (#body
+                                    (= back this)
+                                    nextChr#funcall
+
+                                    (#if (== chr '=').
+                                        (#body
+                                            (= (#\. lexem type) (#\. LexemType CmpOperator))
+                                            (= (#\. lexem end) cursor)
+                                            #return
+                                        )
+                                        #else.
+                                        (#body
+                                            (= this back)
+                                            (= (#\. lexem type) (#\. LexemType Operator))
+                                            (= (#\. lexem end) cursor)
+                                            #return
+                                        ))
+                                )
+                                (#quote else if) (== chr '=').
+                                (#body
+                                    (= (#\. lexem type) (#\. LexemType CmpOperator))
+                                    (= (#\. lexem end) cursor)
+                                    #return
+                                )
+                                #else.
+                                (#body
+                                    (= this back)
+                                    (= (#\. lexem type) (#\. LexemType Operator))
+                                    (= (#\. lexem end) cursor)
+                                    #return
+                                ))
+                        )
+                        #else.
+                        (#body
+                            (= this back2)
+                            (= (#\. lexem type) (#\. LexemType CmpOperator))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        ))
+                )
+                (#quote else if) (== chr '<').
+                (#body
+                    (= back this)
+                    nextChr#funcall
+
+                    (#if (== chr '=').
+                        (#body
+                            (= (#\. lexem type) (#\. LexemType CmpOperator))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        )
+                        (#quote else if) (== chr '<').
+                        (#body
+                            (= back this)
+                            nextChr#funcall
+
+                            (#if (== chr '=').
+                                (#body
+                                    (= (#\. lexem type) (#\. LexemType Operator))
+                                    (= (#\. lexem end) cursor)
+                                    #return
+                                )
+                                #else.
+                                (#body
+                                    (= this back)
+                                    (= (#\. lexem type) (#\. LexemType Operator))
+                                    (= (#\. lexem end) cursor)
+                                    #return
+                                ))
+                        )
+                        #else.
+                        (#body
+                            (= this back)
+                            (= (#\. lexem type) (#\. LexemType CmpOperator))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        ))
+                )
+                (#quote else if) (== chr '&').
+                (#body
+                    (= back this)
+                    nextChr#funcall
+
+                    (#if (== chr '&').
+                        (#body
+                            (= (#\. lexem type) (#\. LexemType Operator))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        )
+                        (#quote else if) (== chr '=').
+                        (#body
+                            (= (#\. lexem type) (#\. LexemType AssignOperator))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        )
+                        #else.
+                        (#body
+                            (= this back)
+                            (= (#\. lexem type) (#\. LexemType Operator))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        ))
+                )
+                (#quote else if) (== chr '|').
+                (#body
+                    (= back this)
+                    nextChr#funcall
+
+                    (#if (== chr '|').
+                        (#body
+                            (= (#\. lexem type) (#\. LexemType Operator))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        )
+                        (#quote else if) (== chr '=').
+                        (#body
+                            (= (#\. lexem type) (#\. LexemType AssignOperator))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        )
+                        #else.
+                        (#body
+                            (= this back)
+                            (= (#\. lexem type) (#\. LexemType Operator))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        ))
+                )
+                (#quote else if) (== chr '^').
+                (#body
+                    (= back this)
+                    nextChr#funcall
+
+                    (#if (== chr '^').
+                        (#body
+                            (= (#\. lexem type) (#\. LexemType Operator))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        )
+                        (#quote else if) (== chr '=').
+                        (#body
+                            (= (#\. lexem type) (#\. LexemType AssignOperator))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        )
+                        #else.
+                        (#body
+                            (= this back)
+                            (= (#\. lexem type) (#\. LexemType Operator))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        ))
+                )
+                (#quote else if) (== chr '%').
+                (#body
+                    (= back this)
+                    nextChr#funcall
+
+                    (#if (== chr '=').
+                        (#body
+                            (= (#\. lexem type) (#\. LexemType AssignOperator))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        )
+                        #else.
+                        (#body
+                            (= this back)
+                            (= (#\. lexem type) (#\. LexemType Operator))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        ))
+                )
+                (#quote else if) (== chr '!').
+                (#body
+                    (= back this)
+                    nextChr#funcall
+
+                    (#if (== chr '=').
+                        (#body
+                            (= (#\. lexem type) (#\. LexemType AssignOperator))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        )
+                        #else.
+                        (#body
+                            (= this back)
+                            (= (#\. lexem type) (#\. LexemType Operator))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        ))
+                )
+                (#quote else if) (== chr '$').
+                (#body
+                    (= (#\. lexem type) (#\. LexemType LenOperator))
+                    (= (#\. lexem end) cursor)
+                    #return
+                )
+                (#quote else if) (== chr '"').
+                (#body
+                    (#label String)
+                    (= back this)
+                    nextChr#funcall
+
+                    (#if (== chr '\\').
+                        (#body
+                            (= back this)
+                            nextChr#funcall
+
+                            (#if (!#unary (#\. chr isNonCharacter)).
+                                (#body
+                                    (#goto String)
+                                )
+                                #else.
+                                (#body
+                                    (= this back)
+                                ))
+                        )
+                        (#quote else if) (== chr '"').
+                        (#body
+                            (= (#\. lexem type) (#\. LexemType String))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        )
+                        (#quote else if) (!#unary (#\. chr isNonCharacter)).
+                        (#body
+                            (#goto String)
+                        )
+                        #else.
+                        (#body
+                            (= this back)
+                        ))
+                )
+                (#quote else if) (== chr '\'').
+                (#body
+                    (#label Character)
+                    (= back this)
+                    nextChr#funcall
+
+                    (#if (== chr '\\').
+                        (#body
+                            (= back this)
+                            nextChr#funcall
+
+                            (#if (!#unary (#\. chr isNonCharacter)).
+                                (#body
+                                    (#goto Character)
+                                )
+                                #else.
+                                (#body
+                                    (= this back)
+                                ))
+                        )
+                        (#quote else if) (== chr '\'').
+                        (#body
+                            (= (#\. lexem type) (#\. LexemType Character))
+                            (= (#\. lexem end) cursor)
+                            #return
+                        )
+                        (#quote else if) (!#unary (#\. chr isNonCharacter)).
+                        (#body
+                            (#goto Character)
+                        )
+                        #else.
+                        (#body
+                            (= this back)
+                        ))
+                )
+                (#quote else if) (isWhiteNL#funcall chr).
+                (#body
+                    #do.
+                    (#body
+                        (= back this)
+                        nextChr
+                    ).(#while (isWhiteNL#funcall chr))
+
+                    (= this back)
+                    (= (#\. lexem type) (#\. LexemType Blank))
+                    (= (#\. lexem end) cursor)
+                    #return
+                )
+                (#quote else if) (== chr EOF).
+                (#body
+                    (= (#\. lexem type) (#\. LexemType EndInput))
+                    (= (#\. lexem end) cursor)
+                    #return
+                ))
+            (writefln#funcall "%s %s" lexem chr)
+            (assert#funcall 0)
+        )
+
+        (getLexem#function void).
+        (#body
+            (= (#\. lexem comments) null)
+            (comments#var ([]#type Lexem))
+
+            #do.
+            (#body
+                getLexemRaw#funcall
+                (#if (== (#\. lexem type) (#\. LexemType Comment)).
+                    (#body
+                        (~= comments lexem)
+                    ))
+            ).(#while (|| (== (#\. lexem type) (#\. LexemType Blank)) (== (#\. lexem type) (#\. LexemType Comment))))
+
+            (= (#\. lexem comments) comments)
+        )
+
+        (nextChr#function void).
+        (#body
+            (#if (#\. file empty).
+                (#body
+                    (= chr EOF)
+                )
+                #else.
+                (#body
+                    (= chr (decodeFront#funcall file))
+                ))
+
+            (#if (== chr '\n').
+                (#body
+                    (#\. (++#unary cursor) row)
+                    (= (#\. cursor col) 1)
+                )
+                #else.
+                (#body
+                    (#\. (++#unary cursor) col)
+                ))
+
+            (= (#\. lexem text) (#\. lexem text (#quote \.) ptr (#[ 0 \.\. (#ord (- (#\. file ptr) (#\. lexem text (#quote \.) ptr))))))
+        )
+
+        (opEquals#function bool (o string)).
+        (#body
+            (#return (== (#\. lexem text) o))
+        )
+
+        (opEquals#function bool (o LexemType)).
+        (#body
+            (#return (== (#\. lexem type) o))
+        )
+
+        (toString#function string).
+        (#body
+            (#return (~ (#\. lexem type (#quote \.) text) "." (#quote ~) (#\. lexem text) (#quote ~) ":" (#quote ~) (#\. lexem start (#quote \.) row (#quote \.) text) (#quote ~) ":" (#quote ~) (#\. lexem start (#quote \.) col (#quote \.) text)))
+        )
+
+        (CommentPlus#function void).
+        (#body
+            (back#var Lexer)
+            (back2#var Lexer)
+            (#label Comment)
+            (= back this)
+            nextChr#funcall
+
+            (#if (== chr '/').
+                (#body
+                    (= back this)
+                    nextChr#funcall
+
+                    (#if (== chr '+').
+                        (#body
+                        )
+                        #else.
+                        (#body
+                            (= this back)
+                            (#goto Comment)
+                        ))
+                )
+                (#quote else if) (== chr '+').
+                (#body
+                    (= back this)
+                    nextChr#funcall
+
+                    (#if (== chr '/').
+                        (#body
+                        )
+                        #else.
+                        (#body
+                            (= this back)
+                            (#goto Comment)
+                        ))
+                ))
+        )
+    ))
