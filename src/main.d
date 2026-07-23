@@ -265,9 +265,13 @@ int main(string[] args)
                 string mod = readText(args[2]);
                 expr = new Expression(mod);
 
-                string imod = readText(args[2][0..$-3] ~ ".inp");
-                Expression iexpr = new Expression(imod);
-                expr.merge_inp(iexpr);
+                string inp_filename = args[2][0..$-3] ~ ".inp";
+                if (exists(inp_filename) && isFile(inp_filename))
+                {
+                    string imod = readText(inp_filename);
+                    Expression iexpr = new Expression(imod);
+                    expr.merge_inp(iexpr);
+                }
             }
             else
             {

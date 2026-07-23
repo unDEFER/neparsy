@@ -12,6 +12,7 @@ import std.algorithm.mutation;
 import std.conv;
 import std.range.primitives;
 import std.utf;
+import std.uni;
 import std.algorithm;
 import std.range: repeat;
 import std.array;
@@ -48,6 +49,8 @@ struct ParserState
     string at = "@";
     string dot = ".";
     uint row = 1;
+    uint col = 1;
+    bool indent = true;
 }
 
 class Expression
@@ -78,6 +81,8 @@ class Expression
     uint[] start_comment_path;
     bool start_comment_calc;
     Lexem[] before_comments;
+
+    bool indent_merged;
 
     Position start_pos()
     {
@@ -336,7 +341,7 @@ class Expression
         return false;
     }
 
-    this(ref char[] line, ParserState ps = ParserState.init, Expression parent = null, bool nofile = false)
+    this(ref char[] line, ref ParserState ps, Expression parent = null, bool nofile = false)
     {
         if (parent is null)
         {
@@ -372,6 +377,17 @@ class Expression
         bool escaped_operator;
         while (!line.empty && (line[0] == ' ' || line[0] == '\n'))
         {
+            if (line[0] == '\n')
+            {
+                ps.row++;
+                ps.col = 1;
+                ps.indent = true;
+            }
+            else if (line[0] == ' ' && ps.indent)
+            {
+                ps.col++;
+            }
+
             line = line[1..$];
         }
 
@@ -379,8 +395,30 @@ class Expression
         {
             if ( line.startsWith(be.begin) )
             {
+                operator_lexem.start = Position(ps.row, ps.col);
                 operator = getBlock(line, be);
+                operator_lexem.text = operator;
+                operator_lexem.type = LexemType.Comment;
                 bt = BlockType.Comment;
+                string comment = operator;
+
+                while (1) {
+                    string newline = comment.find("\n");
+                    if (!newline.empty)
+                    {
+                        ps.row++;
+                        comment = newline;
+                        comment.decodeFront();
+                        ps.col = 1;
+                        ps.indent = comment.empty;
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+
+                operator_lexem.end = Position(ps.row, ps.col);
                 return;
             }
         }
@@ -390,7 +428,10 @@ class Expression
 
         if ( line.startsWith(ps.brackets.begin) )
         {
+            open_lexem.text = ps.brackets.begin;
+            open_lexem.start = Position(ps.row, ps.col);
             line = line[ps.brackets.begin.length .. $];
+            ps.indent = false;
             in_brackets = true;
             arguments = [null];
             arguments.length = 0;
@@ -401,8 +442,11 @@ class Expression
         {
             if ( line.startsWith(be.begin) )
             {
+                operator_lexem.start = Position(ps.row, ps.col);
                 operator = getBlock(line, be);
+                operator_lexem.end = Position(ps.row, ps.col);
                 bt = BlockType.String;
+                ps.indent = false;
 
                 if (line.startsWith(ps.sharp))
                 {
@@ -426,9 +470,15 @@ class Expression
             }
             else if (line.startsWith(ps.brackets.escape))
             {
+                if (operator.empty)
+                {
+                    operator_lexem.start = Position(ps.row, ps.col);
+                }
+                operator_lexem.end = Position(ps.row, ps.col);
                 line = line[ps.brackets.escape.length .. $];
                 dchar c = line.decodeFront();
                 operator ~= getEscape(c);
+                ps.indent = false;
                 escaped_operator = true;
             }
             else if (line[0] == ' ' || line[0] == '\n')
@@ -439,7 +489,11 @@ class Expression
             {
                 if (in_brackets)
                 {
+                    close_lexem.text = ps.brackets.end;
+                    close_lexem.start = Position(ps.row, ps.col);
+                    close_lexem.end = Position(ps.row, ps.col);
                     line = line[ps.brackets.end.length .. $];
+                    ps.indent = false;
                     goto Post;
                 }
                 goto End;
@@ -451,15 +505,25 @@ class Expression
             else if (line.startsWith(ps.sharp))
             {
                 line = line[ps.sharp.length .. $];
+                ps.indent = false;
                 goto Sharp;
             }
             else if (line.startsWith(ps.at))
             {
                 line = line[ps.at.length .. $];
+                ps.indent = false;
                 goto At;
             }
             else
+            {
+                if (operator.empty)
+                {
+                    operator_lexem.start = Position(ps.row, ps.col);
+                }
+                operator_lexem.end = Position(ps.row, ps.col);
                 operator ~= line.decodeFront();
+                ps.indent = false;
+            }
         }
 
         Sharp:
@@ -471,9 +535,16 @@ class Expression
             }
             else if (line.startsWith(ps.brackets.escape))
             {
+                if (type.empty)
+                {
+                    type_lexem.start = Position(ps.row, ps.col);
+                }
+                type_lexem.end = Position(ps.row, ps.col);
+
                 line = line[ps.brackets.escape.length .. $];
                 dchar c = line.decodeFront();
                 type ~= getEscape(c);
+                ps.indent = false;
             }
             else if (line[0] == ' ' || line[0] == '\n')
             {
@@ -483,7 +554,11 @@ class Expression
             {
                 if (in_brackets)
                 {
+                    close_lexem.text = ps.brackets.end;
+                    close_lexem.start = Position(ps.row, ps.col);
+                    close_lexem.end = Position(ps.row, ps.col);
                     line = line[ps.brackets.end.length .. $];
+                    ps.indent = false;
                     goto Post;
                 }
                 goto End;
@@ -495,10 +570,20 @@ class Expression
             else if (line.startsWith(ps.at))
             {
                 line = line[ps.at.length .. $];
+                ps.indent = false;
                 goto At;
             }
             else
+            {
+                if (type.empty)
+                {
+                    type_lexem.start = Position(ps.row, ps.col);
+                }
+                type_lexem.end = Position(ps.row, ps.col);
+
                 type ~= line.decodeFront();
+                ps.indent = false;
+            }
         }
 
         At:
@@ -508,7 +593,11 @@ class Expression
             {
                 if (in_brackets)
                 {
+                    close_lexem.text = ps.brackets.end;
+                    close_lexem.start = Position(ps.row, ps.col);
+                    close_lexem.end = Position(ps.row, ps.col);
                     line = line[ps.brackets.end.length .. $];
+                    ps.indent = false;
                     goto Post;
                 }
                 goto End;
@@ -518,6 +607,7 @@ class Expression
                 line = line[ps.brackets.escape.length .. $];
                 dchar c = line.decodeFront();
                 label ~= getEscape(c);
+                ps.indent = false;
             }
             else if (line.startsWith(ps.brackets.begin))
             {
@@ -532,7 +622,10 @@ class Expression
                 goto Post;
             }
             else
+            {
                 label ~= line.decodeFront();
+                ps.indent = false;
+            }
         }
 
         Arguments:
@@ -557,11 +650,26 @@ class Expression
             {
                 if ( line.startsWith(ps.brackets.end) )
                 {
+                    close_lexem.text = ps.brackets.end;
+                    close_lexem.start = Position(ps.row, ps.col);
+                    close_lexem.end = Position(ps.row, ps.col);
+                    ps.indent = false;
                     line = line[ps.brackets.end.length .. $];
                     goto Post;
                 }
                 else if (line[0] == ' ' || line[0] == '\n')
                 {
+                    if (line[0] == '\n')
+                    {
+                        ps.row++;
+                        ps.col = 1;
+                        ps.indent = true;
+                    }
+                    else if (line[0] == ' ' && ps.indent)
+                    {
+                        ps.col++;
+                    }
+
                     line = line[1..$];
                 }
                 else
@@ -569,7 +677,7 @@ class Expression
                     auto ne = new Expression(line, ps, this);
                     if (ne.bt == BlockType.Comment)
                     {
-                        comments ~= Lexem(ne.operator, LexemType.Comment);
+                        comments ~= ne.operator_lexem;
                         continue;
                     }
                     ne.open_lexem.comments = comments;
@@ -608,6 +716,7 @@ class Expression
         if (startsWithDotBracket(line, ps))
         {
             line = line[ps.dot.length .. $];
+            ps.indent = false;
             Expression ne;
             Lexem[] comments;
             while (true)
@@ -615,7 +724,7 @@ class Expression
                 ne = new Expression(line, ps, this);
                 if (ne.bt == BlockType.Comment)
                 {
-                    comments ~= Lexem(ne.operator, LexemType.Comment);
+                    comments ~= ne.operator_lexem;
                     continue;
                 }
                 break;
@@ -646,7 +755,8 @@ class Expression
     this(string line, bool nofile = false)
     {
         char[] l = line.dup;
-        this(l, ParserState.init, null, nofile);
+        ParserState ps;
+        this(l, ps, null, nofile);
         if (!l.empty)
             writefln("NOT PARSED TAIL: %s", l[0..min(30, $)]);
     }
@@ -1060,6 +1170,19 @@ class Expression
 
     void merge_inp(Expression inp)
     {
+        if (indent_merged) goto recurse;
+
+        operator_lexem.start = Position.init;
+        operator_lexem.end = Position.init;
+        type_lexem.start = Position.init;
+        type_lexem.end = Position.init;
+        {
+            auto save_comments = open_lexem.comments;
+            open_lexem = Lexem.init;
+            open_lexem.comments = save_comments;
+        }
+        close_lexem = Lexem.init;
+
         merge_indent_info(operator_lexem, inp.operator_lexem, open_lexem, close_lexem);
         merge_indent_info(type_lexem, inp.type_lexem, open_lexem, close_lexem);
 
@@ -1099,6 +1222,7 @@ class Expression
             i--;
         }
 
+        recurse:
         if (arguments.length != inp.arguments.length) return;
         foreach(i, arg; this.arguments)
         {
@@ -1109,6 +1233,8 @@ class Expression
         {
             postop.merge_inp(inp.postop);
         }
+
+        indent_merged = true;
     }
 
     string wrapWithSpaces(string str, string tabstr, ref Position pos)
@@ -1140,6 +1266,21 @@ class Expression
         {
             resstr ~= '\n'.repeat(spos.row - pos.row).array.idup() ~ ' '.repeat(spos.col-(spos.row > pos.row ? 1 : pos.col)).array.idup();
             pos = spos;
+        }
+
+        if (!indent_merged && !resstr.empty && !str.empty)
+        {
+            string last_char = resstr[$-resstr.strideBack..$];
+            string next_char = str[0..str.stride];
+
+            dchar last = decodeFront(last_char);
+            dchar next = decodeFront(next_char);
+
+            if ( (std.uni.isAlphaNum(last) || last == '_') &&
+                    (std.uni.isAlphaNum(next) || next == '_') )
+            {
+                resstr ~= " ";
+            }
         }
 
         resstr ~= str;
@@ -1329,7 +1470,7 @@ class Expression
                     handled = false;
                 else
                 {
-                    if (open_lexem.start.row > 0)
+                    if (open_lexem.start.row > 0 && indent_merged)
                         savePrint(resstr, pos, "(", open_lexem);
 
                     if (!this.arguments.empty)
@@ -1342,7 +1483,7 @@ class Expression
                         postop.saveD(resstr, pos, tab, null, this.type);
                     }
 
-                    if (close_lexem.start.row > 0)
+                    if (close_lexem.start.row > 0 && indent_merged)
                         savePrint(resstr, pos, ")", close_lexem);
                 }
                 break;
@@ -1476,7 +1617,7 @@ class Expression
 
                     if (this.arguments.length > 0)
                     {
-                        if (open_lexem.start.row > 0)
+                        if (open_lexem.start.row > 0 && indent_merged)
                             savePrint(resstr, pos, "(", open_lexem);
                         foreach(i, arg; this.arguments)
                         {
@@ -1486,7 +1627,7 @@ class Expression
                             }
                             arg.saveD(resstr, pos, -tab-1, null, this.type);
                         }
-                        if (close_lexem.start.row > 0)
+                        if (close_lexem.start.row > 0 && indent_merged)
                             savePrint(resstr, pos, ")", close_lexem);
                     }
                     break;
@@ -1694,7 +1835,14 @@ class Expression
 
                     this.arguments[0].saveD(resstr, pos, tab, null, "if");
 
-                    savePrint(resstr, pos, ")", close_lexem);
+                    if (arguments[0].postop !is null && !indent_merged)
+                    {
+                        savePrint(resstr, pos, ")", pos);
+                    }
+                    else
+                    {
+                        savePrint(resstr, pos, ")", close_lexem);
+                    }
 
                     if (arguments[0].postop !is null)
                         arguments[0].postop.saveD(resstr, pos, tab, null);
@@ -2119,7 +2267,7 @@ class Expression
                 case "?":
                     if (arguments.length >= 3)
                     {
-                        if (open_lexem.start.row > 0) savePrint(resstr, pos, "(", open_lexem);
+                        if (open_lexem.start.row > 0 && indent_merged) savePrint(resstr, pos, "(", open_lexem);
                         arguments[0].saveD(resstr, pos, -tab-1, null, "op");
                         savePrint(resstr, pos, "?", type_lexem);
                         arguments[1].saveD(resstr, pos, -tab-1, null, "op");
@@ -2133,7 +2281,7 @@ class Expression
                             savePrint(resstr, pos, ":", pos);
                             arguments[2].saveD(resstr, pos, -tab-1, null, "op");
                         }
-                        if (close_lexem.start.row > 0) savePrint(resstr, pos, ")", close_lexem);
+                        if (close_lexem.start.row > 0 && indent_merged) savePrint(resstr, pos, ")", close_lexem);
                     }
                     break;
 
@@ -2177,7 +2325,7 @@ class Expression
                         case "!is":
                         case "in":
                         case "!in":
-                            if (open_lexem.start.row > 0)
+                            if (open_lexem.start.row > 0 && indent_merged)
                             {
                                 savePrint(resstr, pos, "(", open_lexem);
                             }
@@ -2209,7 +2357,7 @@ class Expression
                                     savePrint(resstr, pos, operator, operator_lexem);
                             }
 
-                            if (close_lexem.start.row > 0)
+                            if (close_lexem.start.row > 0 && indent_merged)
                             {
                                 savePrint(resstr, pos, ")", close_lexem);
                             }
@@ -2354,7 +2502,7 @@ class Expression
                                     else if (first)
                                     {
                                         first = false;
-                                        if (open_lexem.start.row > 0)
+                                        if (indent_merged ? open_lexem.start.row > 0 : type == "funcall" || type == "!" || this.arguments[0].type == "!" || type == "ord")
                                             savePrint(resstr, pos, "(", open_lexem);
                                     }
                                     else
@@ -2362,10 +2510,10 @@ class Expression
                                     arg.saveD(resstr, pos, -tab-1, null, this.type);
                                 }
 
-                                if (close_lexem.start.row > 0)
+                                if (!first && (indent_merged ? close_lexem.start.row > 0 : type == "funcall" || type == "!" || this.arguments[0].type == "!" || type == "ord"))
                                     savePrint(resstr, pos, ")", close_lexem);
                             }
-                            else if (open_lexem.start.row > 0 && (arguments !is null || type == "funcall"))
+                            else if (open_lexem.start.row > 0 && indent_merged && (arguments !is null || type == "funcall"))
                             {
                                 savePrint(resstr, pos, "(", open_lexem);
                                 savePrint(resstr, pos, ")", close_lexem);

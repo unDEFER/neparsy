@@ -32,7 +32,7 @@ struct Position
     uint row;
     uint col;
 
-    int opCmp(ref Position b)
+    int opCmp(Position b)
     {
         return b.row == row ? col - b.col : row - b.row;
     }
