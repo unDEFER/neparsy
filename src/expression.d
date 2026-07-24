@@ -2562,6 +2562,107 @@ class Expression
         return savestr;
     }
 
+    void replace(Expression replacement, string[string] vars)
+    {
+        if (replacement.operator.startsWith("$"))
+        {
+            operator = vars[replacement.operator];
+        }
+        else
+        {
+            operator = replacement.operator;
+        }
+
+        type = replacement.type;
+        label = replacement.label;
+        bt = replacement.bt;
+
+        if (arguments.length < replacement.arguments.length)
+            arguments.length = replacement.arguments.length;
+
+        foreach(i, arg; replacement.arguments)
+        {
+            arguments[i].replace(arg, vars);
+        }
+
+        if (replacement.postop !is null)
+        {
+            if (postop is null) postop = new Expression;
+            postop.replace(replacement.postop, vars);
+        }
+    }
+
+    void apply_rule(Expression rule, string modname)
+    {
+        if (rule.type == "replace")
+        {
+            Expression needle = rule.arguments[0];
+            Expression replacement = rule.arguments[1];
+            string[string] vars;
+            vars["$modname"] = modname;
+
+            if (!needle.operator.empty)
+            {
+                if (needle.operator[0] == '$')
+                {
+                    vars[needle.operator] = operator;
+                }
+                else if (needle.operator != operator)
+                {
+                    goto recurse;
+                }
+            }
+
+            if (!needle.type.empty && needle.type != type)
+            {
+                goto recurse;
+            }
+
+            if (!needle.label.empty && needle.label != label)
+            {
+                goto recurse;
+            }
+
+            replace(replacement, vars);
+        }
+        else
+        {
+            assert(0, format("wrong rule %s", this));
+        }
+
+recurse:
+        foreach(i, arg; arguments)
+        {
+            arg.apply_rule(rule, modname);
+        }
+
+        if (postop !is null)
+        {
+            postop.apply_rule(rule, modname);
+        }
+    }
+
+    void apply(Expression nprules)
+    {
+        assert (this.bt == BlockType.File);
+        string modname = this.operator;
+        ptrdiff_t dot = modname.lastIndexOf('.');
+        if (dot > 0) modname = modname[0..dot];
+        ptrdiff_t slash = modname.lastIndexOf('/');
+        if (slash >= 0) modname = modname[slash+1..$];
+
+        assert (nprules.bt == BlockType.File);
+        assert (nprules.arguments.length == 1);
+        nprules = nprules.arguments[0];
+        assert (nprules.type == "module");
+        assert (nprules.label == "Neparsy");
+
+        foreach (rule; nprules.arguments)
+        {
+            apply_rule(rule, modname);
+        }
+    }
+
     void fixIndent()
     {
         if (type == "body")

@@ -57,3 +57,9 @@ swap_dirs src src_recreated && dub build &&
     test expression &&
     { echo "3. Test success"; dub build; } ||
     { echo "3. Test failed"; dub build; exit 1; }
+
+echo ./neparsy -b test_code/c2d.np test_code/c/hello.c test_code/c/hello.d
+./neparsy -b test_code/c2d.np test_code/c/hello.c test_code/c/hello.d > /dev/null
+dmd -of=test_code/c/hello test_code/c/hello.d
+test_code/c/hello | grep -q "Hello, world!" &&
+    echo "4. Test success" || { echo "4. Test failed" && exit 1; }

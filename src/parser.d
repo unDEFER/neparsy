@@ -26,17 +26,19 @@ class Parser {
         Expression file = new Expression;
         file.bt = BlockType.File;
         Expression ret = new Expression;
+        file.arguments ~= ret;
+        ret.type = "module";
+        ret.label = "C";
+
         Init:
         getLexem;
 
         if (lexer == "module")
         {
-            ret.type = "module";
             ret.type_lexem = lexer.lexem;
             ret.operator_lexem = getModuleName;
             ret.operator = ret.operator_lexem.text;
             ret.label = "D";
-            file.arguments ~= ret;
             goto Init;
         }
         else if (lexer == "import")
@@ -62,6 +64,11 @@ class Parser {
         else if (lexer == LexemType.Identifier)
         {
             ret.arguments ~= getVar;
+            goto Init;
+        }
+        else if (lexer == "#include")
+        {
+            ret.arguments ~= getCInclude();
             goto Init;
         }
         else if (lexer == LexemType.EndInput)
@@ -724,6 +731,31 @@ class Parser {
         }
 
         return [ret];
+    }
+
+    Expression getCInclude()
+    {
+        Expression ret = new Expression;
+        ret.operator = "include";
+        ret.operator_lexem = lexer.lexem;
+        ret.type = "cpreprocessor";
+        Init:
+        getLexem;
+
+        if (lexer == LexemType.String)
+        {
+            Expression mod = new Expression;
+            mod.operator_lexem = lexer.lexem;
+            mod.operator = mod.operator_lexem.text;
+            mod.bt = BlockType.String;
+            ret.arguments ~= mod;
+            return ret;
+        }
+        else
+        {
+            writefln("Expected String not %s", lexer);
+            assert(0);
+        }
     }
 
     Expression getBody()

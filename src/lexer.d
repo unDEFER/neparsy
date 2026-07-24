@@ -20,7 +20,8 @@ enum LexemType {
     Operator,
     Character,
     LenOperator,
-    Lambda
+    Lambda,
+    CPreprocessor
 }
 
 enum  {
@@ -632,6 +633,19 @@ struct Lexer {
             {
                 this = back;
             }
+        }
+        else if (chr == '#')
+        {
+            do
+            {
+                back = this;
+                nextChr;
+            } while (isAlpha(chr));
+
+            this = back;
+            lexem.type = LexemType.CPreprocessor;
+            lexem.end = cursor;
+            return;
         }
         else if (isWhiteNL(chr))
         {

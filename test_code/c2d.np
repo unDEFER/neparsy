@@ -1,0 +1,17 @@
+(c2d#module@Neparsy
+
+    (#replace
+        (#module@C)
+        ($modname#module@D)
+    )
+
+    (#replace
+        (include#cpreprocessor "stdio.h")
+        (#import std.stdio)
+    )
+
+    (#replace
+        (printf#funcall)
+        (writef#funcall)
+    )
+)

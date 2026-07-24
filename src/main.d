@@ -245,13 +245,14 @@ int main(string[] args)
         {
             writefln("usage: %s [file1] [file2]... -- for editing files in GUI\n"
                     ~"   or: %s -c <source> <destination> -- for converting between neparsy/D formats\n"
-                    ~"where files must have '.np' or '.d' extension", args[0], args[0]);
+                    ~"   or: %s -b <np-program> <source> <destination> -- for converting between languages with neparsy-rules\n"
+                    ~"where files must have '.np' or '.d' extension", args[0], args[0], args[0]);
             return 0;
         }
         else if (args[1] == "-c" && args.length == 4)
         {
             Expression expr;
-            if (args[2].endsWith(".d"))
+            if (args[2].endsWith(".d") || args[2].endsWith(".c"))
             {
                 Lexer lex;
                 lex.file = readText(args[2]);
@@ -300,6 +301,77 @@ int main(string[] args)
             }
 
             auto file = File(args[3], "w");
+            file.writeln(savestr);
+            return 0;
+        }
+        else if (args[1] == "-b" && args.length == 5)
+        {
+            Expression nprules;
+            if (args[2].endsWith(".np"))
+            {
+                string mod = readText(args[2]);
+                nprules = new Expression(mod);
+            }
+            else
+            {
+                writefln("Neparsy-rules files must have `.np` extension: `%s`", args[2]);
+                return 1;
+            }
+
+            Expression expr;
+            if (args[3].endsWith(".d") || args[3].endsWith(".c"))
+            {
+                Lexer lex;
+                lex.file = readText(args[3]);
+                Parser pars = new Parser;
+                pars.lexer = lex;
+                expr = pars.parse();
+                expr.fixParents();
+                expr.operator = args[3];
+            }
+            else if (args[3].endsWith(".np"))
+            {
+                string mod = readText(args[3]);
+                expr = new Expression(mod);
+
+                string inp_filename = args[3][0..$-3] ~ ".inp";
+                if (exists(inp_filename) && isFile(inp_filename))
+                {
+                    string imod = readText(inp_filename);
+                    Expression iexpr = new Expression(imod);
+                    expr.merge_inp(iexpr);
+                }
+                expr.operator = args[3];
+            }
+            else
+            {
+                writefln("Can't read file with unknown extension: `%s`", args[3]);
+                return 1;
+            }
+
+            expr.apply(nprules);
+
+            string savestr;
+
+            if (args[4].endsWith(".d"))
+            {
+                savestr = expr.saveD;
+            }
+            else if (args[4].endsWith(".np"))
+            {
+                savestr = expr.save;
+                string inp = expr.save(true);
+
+                auto file = File(args[4][0..$-3] ~ ".inp", "w");
+                file.writeln(inp);
+            }
+            else
+            {
+                writefln("Can't convert to file with unknown extension: `%s`", args[4]);
+                return 1;
+            }
+
+            auto file = File(args[4], "w");
             file.writeln(savestr);
             return 0;
         }
