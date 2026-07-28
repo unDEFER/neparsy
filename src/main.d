@@ -257,6 +257,7 @@ int main(string[] args)
                 Lexer lex;
                 lex.file = readText(args[2]);
                 Parser pars = new Parser;
+                pars.is_c = args[2].endsWith(".c");
                 pars.lexer = lex;
                 expr = pars.parse();
                 expr.fixParents();
@@ -282,7 +283,7 @@ int main(string[] args)
 
             string savestr;
 
-            if (args[3].endsWith(".d"))
+            if (args[3].endsWith(".d") || args[3].endsWith(".c"))
             {
                 savestr = expr.saveD;
             }
@@ -324,6 +325,7 @@ int main(string[] args)
                 Lexer lex;
                 lex.file = readText(args[3]);
                 Parser pars = new Parser;
+                pars.is_c = args[3].endsWith(".c");
                 pars.lexer = lex;
                 expr = pars.parse();
                 expr.fixParents();
@@ -353,7 +355,7 @@ int main(string[] args)
 
             string savestr;
 
-            if (args[4].endsWith(".d"))
+            if (args[4].endsWith(".d") || args[4].endsWith(".c"))
             {
                 savestr = expr.saveD;
             }

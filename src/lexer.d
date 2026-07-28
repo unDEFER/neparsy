@@ -21,7 +21,8 @@ enum LexemType {
     Character,
     LenOperator,
     Lambda,
-    CPreprocessor
+    CPreprocessor,
+    EndOfCMacros
 }
 
 enum  {
@@ -53,6 +54,7 @@ struct Lexer {
     Lexem lexem;
     Position cursor = Position(1, 1);
     dchar chr;
+    bool is_cpreprocessor_line;
 
     bool isWhiteNL(dchar chr)
     {
@@ -70,10 +72,22 @@ struct Lexer {
 
         if (isAlpha(chr) || (chr == '_'))
         {
+            if (chr == 'L')
+            {
+                back = this;
+                nextChr;
+                if (chr == '\'')
+                {
+                    goto Character;
+                }
+                else goto Identifier;
+            }
+
             do
             {
                 back = this;
                 nextChr;
+                Identifier:
             } while (isAlphaNum(chr) || (chr == '_'));
 
             this = back;
@@ -83,10 +97,31 @@ struct Lexer {
         }
         else if (isNumber(chr))
         {
+            if (chr == '0')
+            {
+                back = this;
+                nextChr;
+                if (chr == 'x')
+                {
+                    do
+                    {
+                        if (chr != 'x') back = this;
+                        nextChr;
+                    } while (isNumber(chr) || (chr >= 'a' && chr <= 'f') || (chr >= 'A' && chr <= 'F'));
+
+                    this = back;
+                    lexem.type = LexemType.Number;
+                    lexem.end = cursor;
+                    return;
+                }
+                else goto Number;
+            }
+
             do
             {
                 back = this;
                 nextChr;
+                Number:
             } while (isNumber(chr));
             this = back;
             back2 = this;
@@ -326,6 +361,16 @@ struct Lexer {
             {
                 this = back;
                 lexem.type = LexemType.Operator;
+                lexem.end = cursor;
+                return;
+            }
+        }
+        else if (is_cpreprocessor_line && chr == '\\')
+        {
+            nextChr();
+            if (chr == '\n')
+            {
+                lexem.type = LexemType.Blank;
                 lexem.end = cursor;
                 return;
             }
@@ -644,6 +689,14 @@ struct Lexer {
 
             this = back;
             lexem.type = LexemType.CPreprocessor;
+            lexem.end = cursor;
+            is_cpreprocessor_line = true;
+            return;
+        }
+        else if (is_cpreprocessor_line && chr == '\n')
+        {
+            is_cpreprocessor_line = false;
+            lexem.type = LexemType.EndOfCMacros;
             lexem.end = cursor;
             return;
         }

@@ -346,7 +346,7 @@ class Expression
         if (parent is null)
         {
             ps.comments = [BlockBE("/*", "*/")];
-            ps.strings = [BlockBE("\"", "\"", "\\"), BlockBE("'", "'", "\\")];
+            ps.strings = [BlockBE("\"", "\"", "\\"), BlockBE("'", "'", "\\"), BlockBE("L'", "'", "\\")];
 
             if (!nofile)
             {
@@ -375,6 +375,8 @@ class Expression
 
         Init:
         bool escaped_operator;
+        auto save_strings = ps.strings;
+
         while (!line.empty && (line[0] == ' ' || line[0] == '\n'))
         {
             if (line[0] == '\n')
@@ -629,6 +631,7 @@ class Expression
         }
 
         Arguments:
+
         if (type == "module")
         {
             switch(label)
@@ -640,6 +643,13 @@ class Expression
                     break;
                 default:
                     break;
+            }
+        }
+        else if (type == "cpreprocessor")
+        {
+            if (operator == "include")
+            {
+                ps.strings = [BlockBE("\"", "\"", "\\"), BlockBE("<", ">", null)];
             }
         }
 
@@ -737,6 +747,10 @@ class Expression
         }
 
         End:
+        if (type == "cpreprocessor" && operator == "include")
+        {
+            ps.strings = save_strings;
+        }
 
         if (operator == ps.dot && !escaped_operator && arguments.length == 0)
             operator = null;
@@ -810,6 +824,7 @@ class Expression
 
         foreach (ind, arg; arguments)
         {
+            assert(arg !is null);
             arg.fixParents(this, ind);
         }
 
@@ -1328,7 +1343,7 @@ class Expression
         }
 
         if (tab > 0) tabstr = ' '.repeat(tab*4).array;
-        writefln("%s %s %s %s => %s", tabstr, bt, this, start_pos(), end_pos());
+        writefln("%s %s %s ptype %s %s => %s", tabstr, bt, this, ptype, start_pos(), end_pos());
 
         bool handled = true;
         switch(ptype)
@@ -1346,7 +1361,7 @@ class Expression
 
                 foreach_reverse(i, arg; this.arguments)
                 {
-                    arg.saveD(resstr, pos, -tab-1, null, (i == 0 ? "type" : "attr"));
+                    arg.saveD(resstr, pos, -tab-1);
                 }
 
                 if (parent !is null && index >= 0 && parent.arguments.length > index)
@@ -1466,7 +1481,7 @@ class Expression
                 break;
 
             case "var":
-                if (this.type == ".")
+                if (this.type == "." || this.type == "type")
                     handled = false;
                 else
                 {
@@ -1478,13 +1493,51 @@ class Expression
 
                     savePrint(resstr, pos, this.operator, operator_lexem);
 
-                    if (postop !is null)
+                    if (postop !is null && postop.type != "carray")
                     {
                         postop.saveD(resstr, pos, tab, null, this.type);
                     }
 
                     if (close_lexem.start.row > 0 && indent_merged)
                         savePrint(resstr, pos, ")", close_lexem);
+                }
+                break;
+
+            case "var2":
+                    if (postop !is null && postop.type == "carray")
+                    {
+                        postop.saveD(resstr, pos, tab, null, this.type);
+                    }
+
+                break;
+
+            case "type":
+                if (this.operator == "[]")
+                {
+                    savePrint(resstr, pos, "[", open_lexem);
+
+                    if (!this.arguments.empty)
+                        this.arguments[0].saveD(resstr, pos, -tab-1);
+
+                    savePrint(resstr, pos, "]", close_lexem);
+                }
+                else
+                {
+                    if (!this.type.empty)
+                        savePrint(resstr, pos, this.type, type_lexem);
+
+                    if (!this.operator.empty)
+                        savePrint(resstr, pos, this.operator, operator_lexem);
+
+                    foreach (arg; arguments)
+                    {
+                        arg.saveD(resstr, pos, -tab-1);
+                    }
+
+                    if (postop !is null)
+                    {
+                        postop.saveD(resstr, pos, -tab-1, null, this.type);
+                    }
                 }
                 break;
 
@@ -1549,9 +1602,12 @@ class Expression
             else switch(this.type)
             {
                 case "module":
-                    savePrint(resstr, pos, "module ", type_lexem);
-                    savePrint(resstr, pos, this.operator, operator_lexem);
-                    savePrint(resstr, pos, ";", pos);
+                    if (label == "D")
+                    {
+                        savePrint(resstr, pos, "module ", type_lexem);
+                        savePrint(resstr, pos, this.operator, operator_lexem);
+                        savePrint(resstr, pos, ";", pos);
+                    }
 
                     foreach(i, arg; this.arguments)
                     {
@@ -1648,7 +1704,7 @@ class Expression
 
                     if (postop !is null)
                     {
-                        postop.saveD(resstr, pos, -tab-1, null, this.type);
+                        postop.saveD(resstr, pos, tab, null, this.type);
                     }
                     break;
 
@@ -1738,7 +1794,7 @@ class Expression
                         savePrint(resstr, pos, "{", open_lexem.start.row > 0 ? open_lexem : type_lexem);
                     foreach(i, arg; this.arguments)
                     {
-                        arg.saveD(resstr, pos, tab+1, getPost(i), this.type);
+                        arg.saveD(resstr, pos, tab+1, getPost(i), ptype == "cpreprocessor" ? ptype : this.type);
                     }
                     if (this.arguments.length > 1 || close_lexem.start.row > 0)
                         savePrint(resstr, pos, "}", close_lexem);
@@ -1937,24 +1993,26 @@ class Expression
                     {
                         foreach(i, arg; parent.arguments[index..$])
                         {
-                            if (arg.postop !is null)
+                            auto _postop = arg.postop;
+                            while (_postop !is null)
                             {
-                                //writefln("%s -- %s (%s == %s)", this, arg2.app_args, arg.index - arg2.app_args + 1, this.index);
-                                if (arg.index + arg.postop.index + 1 == this.index)
+                                if (arg.index + _postop.index + 1 == this.index)
                                 {
-                                    if (arg.postop.operator == "[]")
+                                    if (_postop.operator == "[]")
                                     {
                                     }
-                                    else if (arg.postop.type == "init")
+                                    else if (_postop.type == "init")
                                     {
                                     }
                                     else
                                     {
-                                        arg.postop.saveD(resstr, pos, -tab-1, null, "var");
+                                        _postop.saveD(resstr, pos, -tab-1);
                                     }
                                 }
-                                else if (ptype != "ctype" && this.index <= arg.index && this.index > arg.index + arg.postop.index + 1)
+                                else if (ptype != "ctype" && this.index <= arg.index && this.index > arg.index + _postop.index + 1)
                                     return "";
+
+                                _postop = _postop.postop;
                             }
                         }
                     }
@@ -1977,21 +2035,22 @@ class Expression
 
                     foreach(i, arg; this.arguments)
                     {
-                        arg.saveD(resstr, pos, -tab-1);
+                        arg.saveD(resstr, pos, -tab-1, null, "var");
                     }
 
                     if (parent !is null && index >= 0 && parent.arguments.length > index)
                     {
                         foreach(i, arg; parent.arguments[index..$])
                         {
-                            if (arg.postop !is null)
+                            auto _postop = arg.postop;
+                            while (_postop !is null)
                             {
                                 //writefln("%s -- %s (%s == %s)", this, arg2.app_args, arg.index - arg2.app_args + 1, this.index);
-                                if (arg.index + arg.postop.index + 1 == this.index)
+                                if (arg.index + _postop.index + 1 == this.index)
                                 {
-                                    if (arg.postop.operator == "[]")
+                                    if (_postop.operator == "[]")
                                     {
-                                        arg.postop.saveD(resstr, pos, tab);
+                                        _postop.saveD(resstr, pos, tab);
                                     }
                                     else if (arg.postop.type == "init")
                                     {
@@ -2000,8 +2059,9 @@ class Expression
                                     {
                                     }
                                 }
-                                else if (ptype != "ctype" && this.index <= arg.index && this.index > arg.index + arg.postop.index + 1)
+                                else if (ptype != "ctype" && this.index <= arg.index && this.index > arg.index + _postop.index + 1)
                                     return "";
+                                _postop = _postop.postop;
                             }
                         }
                     }
@@ -2022,6 +2082,8 @@ class Expression
                         }
                     }
 
+                    savePrint(resstr, pos, operator, operator_lexem);
+
                     foreach(i, arg; post ~ (postop is null ? [] : [postop]))
                     {
                         if (arg.index == -1)
@@ -2033,18 +2095,23 @@ class Expression
                         }
                     }
 
-                    savePrint(resstr, pos, operator, operator_lexem);
+                    //For C-Style arrays
+                    foreach(i, arg; this.arguments)
+                    {
+                        arg.saveD(resstr, pos, -tab-1, null, "var2");
+                    }
 
                     if (parent !is null && index >= 0 && parent.arguments.length > index)
                     {
                         foreach(i, arg; parent.arguments[index..$])
                         {
-                            if (arg.postop !is null)
+                            auto _postop = arg.postop;
+                            while (_postop !is null)
                             {
                                 //writefln("%s -- %s (%s == %s)", this, arg2.app_args, arg.index - arg2.app_args + 1, this.index);
-                                if (arg.index + arg.postop.index + 1 == this.index)
+                                if (arg.index + _postop.index + 1 == this.index)
                                 {
-                                    if (arg.postop.operator == "[]")
+                                    if (_postop.operator == "[]")
                                     {
                                         foreach(i3, arg3; parent.arguments[index+1..arg.index+1])
                                         {
@@ -2052,7 +2119,7 @@ class Expression
                                             arg3.saveD(resstr, pos, -tab-1, null, "ctype");
                                         }
                                     }
-                                    else if (arg.postop.type == "init")
+                                    else if (_postop.type == "init")
                                     {
                                     }
                                     else
@@ -2064,8 +2131,9 @@ class Expression
                                         }
                                     }
                                 }
-                                else if (ptype != "ctype" && this.index <= arg.index && this.index > arg.index + arg.postop.index + 1)
+                                else if (ptype != "ctype" && this.index <= arg.index && this.index > arg.index + _postop.index + 1)
                                     return "";
+                                _postop = _postop.postop;
                             }
                         }
                     }
@@ -2293,6 +2361,114 @@ class Expression
                     savePrint(resstr, pos, ":", pos);
                     break;
 
+                case "cpreprocessor":
+                    savePrint(resstr, pos, "#" ~ this.operator, operator_lexem);
+                    if (!this.arguments.empty)
+                    {
+                        this.arguments[0].saveD(resstr, pos, -tab-1, null, this.type);
+                        foreach(i, arg; this.arguments[1..$])
+                        {
+                            savePrint(resstr, pos, ",", pos);
+                            arg.saveD(resstr, pos, -tab-1, null, this.type);
+                        }
+                    }
+
+                    if (postop !is null)
+                    {
+                        postop.saveD(resstr, pos, -tab-1, null, this.type);
+                    }
+                    break;
+
+                case "type":
+                    foreach_reverse(arg; this.arguments)
+                    {
+                        arg.saveD(resstr, pos, -tab-1, null, this.type);
+                    }
+                    break;
+
+                case "cinit":
+                    savePrint(resstr, pos, "{", open_lexem);
+                    if (!arguments.empty)
+                    {
+                        bool quoted_sep;
+                        this.arguments[0].saveD(resstr, pos, -tab-1, null, "op");
+                        string sep = ",";
+                        foreach(i, arg; this.arguments[1..$])
+                        {
+                            if (arg.type == "quote" && arg.arguments[0].operator == sep)
+                            {
+                                savePrint(resstr, pos, sep, arg.arguments[0].operator_lexem);
+                                quoted_sep = true;
+                            }
+                            else
+                            {
+                                if (arg.operator == "..") sep = "";
+                                if (!quoted_sep && !sep.empty)
+                                    savePrint(resstr, pos, sep, operator_lexem);
+                                arg.saveD(resstr, pos, -tab-1, null, "op");
+                                quoted_sep = false;
+                            }
+                        }
+                    }
+                    savePrint(resstr, pos, "}", close_lexem);
+
+                    if (ptype != "if" && postop !is null)
+                    {
+                        postop.saveD(resstr, pos, tab, null, "op");
+                    }
+
+                    if (ptype != "if" && !negtab && postop is null)
+                    {
+                        savePrint(resstr, pos, ";", pos);
+                    }
+                    break;
+
+                case "!":
+                    bool first = true;
+                    savePrint(resstr, pos, "!", this.arguments[0].type_lexem);
+
+                    foreach(i, arg; this.arguments)
+                    {
+                        if (first)
+                        {
+                            first = false;
+                            if (indent_merged ? open_lexem.start.row > 0 : type == "funcall" || type == "!" || this.arguments[0].type == "!" || type == "ord")
+                                savePrint(resstr, pos, "(", open_lexem);
+                        }
+                        else
+                            savePrint(resstr, pos, ", ", pos);
+                        arg.saveD(resstr, pos, -tab-1, null, this.type);
+                    }
+
+                    if (!first && (indent_merged ? close_lexem.start.row > 0 : type == "funcall" || type == "!" || this.arguments[0].type == "!" || type == "ord"))
+                        savePrint(resstr, pos, ")", close_lexem);
+
+                    break;
+
+                case "sizeof":
+                    savePrint(resstr, pos, type, type_lexem);
+
+                    if (!this.arguments.empty)
+                    {
+                        bool first = true;
+                        foreach(i, arg; this.arguments)
+                        {
+                            if (first)
+                            {
+                                first = false;
+                                if (!indent_merged || open_lexem.start.row > 0)
+                                    savePrint(resstr, pos, "(", open_lexem);
+                            }
+                            else
+                                savePrint(resstr, pos, ", ", pos);
+                            arg.saveD(resstr, pos, -tab-1, null, this.type);
+                        }
+
+                        if (!first && (!indent_merged || close_lexem.start.row > 0))
+                            savePrint(resstr, pos, ")", close_lexem);
+                    }
+                    break;
+
                 default:
                     switch (this.operator)
                     {
@@ -2473,7 +2649,6 @@ class Expression
                             }
                             break;
 
-
                         default:
                             if (ptype == "postop")
                             {
@@ -2486,14 +2661,10 @@ class Expression
                             }
 
                             savePrint(resstr, pos, operator, operator_lexem);
+
                             if (!this.arguments.empty)
                             {
                                 bool first = true;
-                                if (this.arguments[0].type == "!")
-                                {
-                                    savePrint(resstr, pos, "!", this.arguments[0].type_lexem);
-                                }
-
                                 foreach(i, arg; this.arguments)
                                 {
                                     if (arg.type == "!")
@@ -2538,15 +2709,15 @@ class Expression
                                 }
                                 else
                                 {
-                                    if (postop.operator != "[]")
+                                    /*if (postop.operator != "[]")
                                     {
                                         savePrint(resstr, pos, ".", pos);
-                                    }
+                                    }*/
                                     postop.saveD(resstr, pos, -tab-1, null, this.type);
                                 }
                             }
 
-                            if (ptype != "if" && ptype != "foreach" && ptype != "case" && !negtab && !body_)
+                            if (ptype != "if" && ptype != "foreach" && ptype != "case" && ptype != "cpreprocessor" && !negtab && !body_)
                             {
                                 savePrint(resstr, pos, ";", pos);
                             }
@@ -2592,6 +2763,50 @@ class Expression
         }
     }
 
+    bool compare(Expression needle, ref string[string] vars)
+    {
+        if (!needle.operator.empty)
+        {
+            if (needle.operator[0] == '$')
+            {
+                vars[needle.operator] = operator;
+            }
+            else if (needle.operator != operator)
+            {
+                return false;
+            }
+        }
+
+        if (!needle.type.empty && needle.type != type)
+        {
+            return false;
+        }
+
+        if (!needle.label.empty && needle.label != label)
+        {
+            return false;
+        }
+
+        if (arguments.length < needle.arguments.length)
+            return false;
+
+        foreach(i, arg; needle.arguments)
+        {
+            if (!arguments[i].compare(arg, vars))
+                return false;
+        }
+
+        if (needle.postop !is null)
+        {
+            if (postop is null)
+                return false;
+            if (!postop.compare(needle.postop, vars))
+                return false;
+        }
+
+        return true;
+    }
+
     void apply_rule(Expression rule, string modname)
     {
         if (rule.type == "replace")
@@ -2601,29 +2816,36 @@ class Expression
             string[string] vars;
             vars["$modname"] = modname;
 
-            if (!needle.operator.empty)
-            {
-                if (needle.operator[0] == '$')
-                {
-                    vars[needle.operator] = operator;
-                }
-                else if (needle.operator != operator)
-                {
-                    goto recurse;
-                }
-            }
-
-            if (!needle.type.empty && needle.type != type)
-            {
+            if (!compare(needle, vars))
                 goto recurse;
-            }
-
-            if (!needle.label.empty && needle.label != label)
-            {
-                goto recurse;
-            }
 
             replace(replacement, vars);
+        }
+        else if (rule.type == "remove")
+        {
+            Expression needle = rule.arguments[0];
+            string[string] vars;
+
+            if (!compare(needle, vars))
+                goto recurse;
+
+            if (parent !is null && this.index >= 0)
+            {
+                if (this.index >= 0)
+                {
+                    parent.arguments = parent.arguments[0..this.index] ~ parent.arguments[this.index+1..$];
+                    foreach (i, arg; parent.arguments[this.index..$])
+                    {
+                        arg.index = this.index+i;
+                    }
+                }
+                else
+                {
+                    parent.postop = null;
+                }
+            }
+
+            return;
         }
         else
         {

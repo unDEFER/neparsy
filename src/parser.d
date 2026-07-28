@@ -9,6 +9,7 @@ import expression;
 
 class Parser {
     Lexer lexer;
+    bool is_c = false;
 
     void getLexem()
     {
@@ -69,7 +70,61 @@ class Parser {
         else if (lexer == "#include")
         {
             ret.arguments ~= getCInclude();
-            goto Init;
+            getLexem;
+
+            if (lexer == LexemType.EndOfCMacros)
+            {
+                goto Init;
+            }
+            else
+            {
+                writefln("Expected End Of Line not %s", lexer);
+                assert(0);
+            }
+        }
+        else if (lexer == "#define")
+        {
+            ret.arguments ~= getCDefine();
+
+            if (lexer == LexemType.EndOfCMacros)
+            {
+                goto Init;
+            }
+            else
+            {
+                writefln("Expected End Of Line not %s", lexer);
+                assert(0);
+            }
+        }
+        else if (lexer == "#if" || lexer == "#ifdef" || lexer == "#ifndef" || lexer == "#elif")
+        {
+            ret.arguments ~= getCIf();
+            getLexem;
+
+            if (lexer == LexemType.EndOfCMacros)
+            {
+                goto Init;
+            }
+            else
+            {
+                writefln("Expected End Of Line not %s", lexer);
+                assert(0);
+            }
+        }
+        else if (lexer == "#else" || lexer == "#endif")
+        {
+            ret.arguments ~= getCEndIf();
+            getLexem;
+
+            if (lexer == LexemType.EndOfCMacros)
+            {
+                goto Init;
+            }
+            else
+            {
+                writefln("Expected End Of Line not %s", lexer);
+                assert(0);
+            }
         }
         else if (lexer == LexemType.EndInput)
         {
@@ -488,6 +543,7 @@ class Parser {
     {
         Expression ret = new Expression;
         Expression type = new Expression;
+        type.type = "type";
         Expression[]  pp;
 
         Init:
@@ -522,8 +578,10 @@ class Parser {
         }
         else if (lexer == LexemType.Identifier)
         {
-            type.operator_lexem = lexer.lexem;
-            type.operator = type.operator_lexem.text;
+            Expression typename = new Expression;
+            typename.operator_lexem = lexer.lexem;
+            typename.operator = typename.operator_lexem.text;
+            type.arguments ~= typename;
             getLexem;
         }
         else
@@ -537,17 +595,16 @@ class Parser {
         {
             ret.operator_lexem = lexer.lexem;
             ret.operator = ret.operator_lexem.text;
+            ret.type = "var";
             ret.arguments ~= type;
             getLexem;
         }
         else if (lexer == "*")
         {
             Expression nt = new Expression;
-            nt.operator = "*";
-            nt.operator_lexem = lexer.lexem;
-            nt.type = "type";
-            nt.arguments ~= type;
-            type = nt;
+            nt.type = "*";
+            nt.type_lexem = lexer.lexem;
+            type.arguments = [nt] ~ type.arguments;
             getLexem;
             goto Var;
         }
@@ -555,11 +612,8 @@ class Parser {
         {
             Expression nt = new Expression;
             nt.operator = "[]";
-            nt.operator_lexem = lexer.lexem;
             nt.open_lexem = lexer.lexem;
-            nt.type = "type";
-            nt.arguments ~= type;
-            type = nt;
+            type.arguments = [nt] ~ type.arguments;
             getLexem;
 
             if (lexer == "]")
@@ -715,6 +769,30 @@ class Parser {
         else if (lexer == ";")
         {
         }
+        else if (lexer == "[")
+        {
+            Expression nt = new Expression;
+            nt.operator = "[]";
+            nt.open_lexem = lexer.lexem;
+            nt.type = "carray";
+            Expression args = getExpression;
+            if (args !is null)
+                nt.arguments ~= args;
+            type.addPosts([nt]);
+
+            if (lexer == "]")
+            {
+                nt.operator_lexem.end = lexer.lexem.end;
+                nt.close_lexem = lexer.lexem;
+                getLexem;
+                goto Eq;
+            }
+            else
+            {
+                writefln("Expected ']', not %s", lexer);
+                assert(0);
+            }
+        }
         else
         {
             writefln("Expected or () or ; or , not %s", lexer);
@@ -751,11 +829,157 @@ class Parser {
             ret.arguments ~= mod;
             return ret;
         }
+        else if (lexer == "<")
+        {
+            Expression mod = new Expression;
+            mod.operator_lexem = lexer.lexem;
+            mod.operator = mod.operator_lexem.text;
+            mod.bt = BlockType.String;
+            ret.arguments ~= mod;
+
+            HeaderFileName:
+            getLexem;
+            if (lexer == LexemType.Identifier || lexer == ".")
+            {
+                mod.operator ~= lexer.lexem.text;
+                mod.operator_lexem.text ~= lexer.lexem.text;
+                mod.operator_lexem.end = lexer.lexem.end;
+                goto HeaderFileName;
+            }
+            else if (lexer == ">")
+            {
+                mod.operator ~= lexer.lexem.text;
+                mod.operator_lexem.text ~= lexer.lexem.text;
+                mod.operator_lexem.end = lexer.lexem.end;
+                return ret;
+            }
+            else
+            {
+                writefln("Expected Identifier or '>' not %s", lexer);
+                assert(0);
+            }
+        }
         else
         {
-            writefln("Expected String not %s", lexer);
+            writefln("Expected String or '<' not %s", lexer);
             assert(0);
         }
+    }
+
+    Expression getCDefine()
+    {
+        Expression ret = new Expression;
+        ret.operator = "define";
+        ret.operator_lexem = lexer.lexem;
+        ret.type = "cpreprocessor";
+
+        Expression macros = new Expression;
+        ret.arguments ~= macros;
+        Init:
+        getLexem;
+
+        if (lexer == LexemType.Identifier)
+        {
+            macros.operator_lexem = lexer.lexem;
+            macros.operator = macros.operator_lexem.text;
+        }
+        else
+        {
+            writefln("Expected Identifier not %s", lexer);
+            assert(0);
+        }
+
+        if (lexer == "(")
+        {
+            macros.open_lexem = lexer.lexem;
+            getLexem;
+
+            if (lexer == ")")
+            {
+                macros.close_lexem = lexer.lexem;
+                getLexem;
+            }
+            else if (lexer == LexemType.Identifier)
+            {
+                Argument:
+                Expression arg = new Expression;
+                arg.operator_lexem = lexer.lexem;
+                arg.operator = arg.operator_lexem.text;
+
+                macros.arguments ~= arg;
+                getLexem;
+
+                if (lexer == ")")
+                {
+                    macros.close_lexem = lexer.lexem;
+                    getLexem;
+                }
+                else if (lexer == ",")
+                {
+                    getLexem;
+
+                    if (lexer == LexemType.Identifier)
+                    {
+                        goto Argument;
+                    }
+                    else
+                    {
+                        writefln("Expected Identifier not %s", lexer);
+                        assert(0);
+                    }
+                }
+                else
+                {
+                    writefln("Expected ')' or ',' not %s", lexer);
+                    assert(0);
+                }
+            }
+            else
+            {
+                writefln("Expected ')' or Identifier not %s", lexer);
+                assert(0);
+            }
+        }
+
+        ret.postop = getBody;
+
+        return ret;
+    }
+
+    Expression getCIf()
+    {
+        Expression ret = new Expression;
+        ret.operator = lexer.lexem.text[1..$];
+        ret.operator_lexem = lexer.lexem;
+        ret.type = "cpreprocessor";
+
+        getLexem;
+        if (lexer != LexemType.EndOfCMacros)
+        {
+            writefln("Expected End Of Line, not %s", lexer);
+            assert(0);
+        }
+
+        ret.arguments ~= getExpression;
+
+        return ret;
+    }
+
+    Expression getCEndIf()
+    {
+        Expression ret = new Expression;
+        ret.operator = lexer.lexem.text[1..$];
+        ret.operator_lexem = lexer.lexem;
+        ret.type = "cpreprocessor";
+
+        getLexem;
+        if (lexer != LexemType.EndOfCMacros)
+        {
+            writefln("Expected End Of Line, not %s", lexer);
+            assert(0);
+        }
+
+        return ret;
     }
 
     Expression getBody()
@@ -1352,12 +1576,70 @@ class Parser {
             lexer = back;
             return null;
         }
+        else if (lexer == "*")
+        {
+            lexer = back;
+            Expression expr = getExpression;
+
+            if (lexer == ";")
+            {
+                expr.addPosts(post);
+                return [expr];
+            }
+            else
+            {
+                writefln("Expected ; not %s", lexer);
+                assert(0);
+            }
+        }
         else if (lexer == LexemType.Identifier)
         {
-            string name = lexer.lexem.text;
             Expression type = new Expression;
-            type.operator = name;
-            type.operator_lexem = lexer.lexem;
+            type.type = "type";
+
+            Expression typename = new Expression;
+
+            if (is_c && (lexer == "signed" || lexer == "unsigned"))
+            {
+                typename.type_lexem = lexer.lexem;
+                typename.type = typename.type_lexem.text;
+
+                getLexem;
+                if (lexer == LexemType.Identifier)
+                {
+                }
+                else
+                {
+                    writefln("Identifier Expected not %s", lexer);
+                    assert(0);
+                }
+            }
+            else if (lexer == "const")
+            {
+                Expression a = new Expression;
+                a.operator_lexem = lexer.lexem;
+                a.operator = a.operator_lexem.text;
+                if (type.arguments.empty)
+                    type.arguments ~= a;
+                else
+                    type.arguments[0].postop = a;
+
+                getLexem;
+                if (lexer == LexemType.Identifier)
+                {
+                }
+                else
+                {
+                    writefln("Identifier Expected not %s", lexer);
+                    assert(0);
+                }
+            }
+
+            string name = lexer.lexem.text;
+            typename.operator = name;
+            typename.operator_lexem = lexer.lexem;
+            type.arguments = [typename] ~ type.arguments;
+
             Name:
             getLexem;
 
@@ -1389,22 +1671,17 @@ class Parser {
             else if (lexer == "*")
             {
                 Expression ptr = new Expression;
-                ptr.operator = "*";
-                ptr.operator_lexem = lexer.lexem;
-                ptr.type = "type";
-                ptr.arguments ~= type;
-                type = ptr;
+                ptr.type = "*";
+                ptr.type_lexem = lexer.lexem;
+                type.arguments = [ptr] ~ type.arguments;
                 goto Name;
             }
             else if (lexer == "[")
             {
                 Expression ar = new Expression;
                 ar.operator = "[]";
-                ar.operator_lexem = lexer.lexem;
                 ar.open_lexem = lexer.lexem;
-                ar.type = "type";
-                ar.arguments ~= type;
-                type = ar;
+                type.arguments = [ar] ~ type.arguments;
                 getLexem;
 
                 if (lexer == "]")
@@ -1441,10 +1718,10 @@ class Parser {
                 }
                 goto Name;
             }
-            else if (lexer == ";")
+            else if (lexer == ";" || lexer == LexemType.EndOfCMacros)
             {
-                type.addPosts(post);
-                return [type];
+                type.arguments[0].addPosts(post);
+                return [type.arguments[0]];
             }
             else if (lexer == ":")
             {
@@ -1457,6 +1734,20 @@ class Parser {
             else if (lexer == LexemType.Identifier)
             {
                 Expression expr = new Expression;
+
+                if (lexer == "const")
+                {
+                    Expression a = new Expression;
+                    a.operator_lexem = lexer.lexem;
+                    a.operator = a.operator_lexem.text;
+                    if (type.arguments.empty)
+                        type.arguments ~= a;
+                    else
+                        type.arguments[0].postop = a;
+
+                    goto Name;
+                }
+
                 expr.operator_lexem = lexer.lexem;
                 expr.operator = expr.operator_lexem.text;
                 expr.type = "var";
@@ -1609,7 +1900,7 @@ class Parser {
                 }
                 else
                 {
-                    writefln("Expected , or ; or () not %s", lexer);
+                    writefln("Expected , or ; or = or ( not %s", lexer);
                     assert(0);
                 }
             }
@@ -1793,7 +2084,8 @@ class Parser {
         }
         else if (lexer == "in"
          || lexer == "out"
-         || lexer == "ref")
+         || lexer == "ref"
+         || lexer == "const")
         {
             Expression expr = new Expression;
             expr.operator_lexem = lexer.lexem;
@@ -1804,9 +2096,13 @@ class Parser {
         else if (lexer == LexemType.Identifier)
         {
             Expression arg = new Expression;
+            Expression typename = new Expression;
+            typename.operator_lexem = lexer.lexem;
+            typename.operator = typename.operator_lexem.text;
+
             Expression type = new Expression;
-            type.operator_lexem = lexer.lexem;
-            type.operator = type.operator_lexem.text;
+            type.type = "type";
+            type.arguments ~= typename;
 
             Name:
             getLexem;
@@ -1816,19 +2112,17 @@ class Parser {
                 Expression ptr = new Expression;
                 ptr.type_lexem = lexer.lexem;
                 ptr.type = "*";
-                ptr.arguments ~= type;
-                type = ptr;
+                type.arguments = [ptr] ~ type.arguments;
+                ptr.addPosts(post);
+                post = [];
                 goto Name;
             }
             else if (lexer == "[")
             {
                 Expression ar = new Expression;
-                ar.operator_lexem = lexer.lexem;
                 ar.operator = "[]";
                 ar.open_lexem = lexer.lexem;
-                ar.type = "type";
-                ar.arguments ~= type;
-                type = ar;
+                type.arguments = [ar] ~ type.arguments;
                 Type:
                 getLexem;
 
@@ -1857,7 +2151,8 @@ class Parser {
                 Expression eq = new Expression;
                 eq.type_lexem = lexer.lexem;
                 eq.type = eq.type_lexem.text;
-                type.arguments ~= eq;
+                writefln("! %s", lexer.lexem);
+                type.arguments[$-1].arguments ~= eq;
                 getLexem;
 
                 if (lexer == LexemType.Identifier)
@@ -1877,7 +2172,20 @@ class Parser {
             }
             else if (lexer == ")")
             {
+                if (typename.operator == "void")
+                    ret ~= type;
                 return ret;
+            }
+            else if (lexer == "const")
+            {
+                Expression a = new Expression;
+                a.operator_lexem = lexer.lexem;
+                a.operator = a.operator_lexem.text;
+                if (type.arguments.empty)
+                    type.arguments ~= a;
+                else
+                    type.arguments[0].postop = a;
+                goto Name;
             }
             else if (lexer == LexemType.Identifier)
             {
@@ -1926,7 +2234,7 @@ class Parser {
             }
             else
             {
-                writefln(", or . or () Expected not %s", lexer);
+                writefln(", or ) or = Expected not %s", lexer);
                 assert(0);
             }
         }
@@ -1981,7 +2289,7 @@ class Parser {
         Argument:
         getLexem;
 
-        if (lexer == "cast")
+        if (!is_c && lexer == "cast")
         {
             Expression ct = new Expression;
             ct.type_lexem = lexer.lexem;
@@ -2016,7 +2324,24 @@ class Parser {
             }
             goto Argument;
         }
-        else if (lexer == "new")
+        else if (!is_c && lexer == "new")
+        {
+            if (ed.operator.empty && ed.type.empty)
+            {
+                ed.type_lexem = lexer.lexem;
+                ed.type = ed.type_lexem.text;
+            }
+            else
+            {
+                Expression n = new Expression;
+                n.type_lexem = lexer.lexem;
+                n.type = n.type_lexem.text;
+                ed.addChild(n);
+                ed = n;
+            }
+            goto Argument;
+        }
+        else if (is_c && lexer == "sizeof")
         {
             if (ed.operator.empty && ed.type.empty)
             {
@@ -2153,9 +2478,8 @@ class Parser {
         else if (lexer == "[")
         {
             Expression br = new Expression;
-            br.operator_lexem = lexer.lexem;
-            br.open_lexem = lexer.lexem;
             br.operator = "[]";
+            br.open_lexem = lexer.lexem;
 
             Array:
             Expression expr = getExpression;
@@ -2188,7 +2512,50 @@ class Parser {
             }
             else
             {
-                writefln("] or ; expected not %s", lexer);
+                writefln("] or , expected not %s", lexer);
+            }
+        }
+        else if (lexer == "{")
+        {
+            Expression br = new Expression;
+            br.operator = "{}";
+            br.operator_lexem = lexer.lexem;
+            br.open_lexem = lexer.lexem;
+            br.type = "cinit";
+
+            CInit:
+            Expression expr = getExpression;
+
+            if (expr !is null)
+            {
+                br.addChild(expr);
+            }
+
+            if (lexer == ",")
+            {
+                goto CInit;
+            }
+            else if (lexer == "}")
+            {
+                br.close_lexem = lexer.lexem;
+                if (ed.operator.empty && ed.type.empty)
+                {
+                    ed.operator_lexem = br.operator_lexem;
+                    ed.operator = br.operator;
+                    ed.open_lexem = br.open_lexem;
+                    ed.close_lexem = br.close_lexem;
+                    ed.type = br.type;
+                    ed.addChilds(br.arguments);
+                }
+                else
+                {
+                    ed.addChild(br);
+                }
+                getLexem;
+            }
+            else
+            {
+                writefln("} or , expected not %s", lexer);
             }
         }
         else if (lexer == "]")
@@ -2500,6 +2867,7 @@ class Parser {
          || lexer == ".."
          || lexer == ")"
          || lexer == "]"
+         || lexer == "}"
          || lexer == ";")
         {
             if ((ret.operator is null) && (ret.type is null))
