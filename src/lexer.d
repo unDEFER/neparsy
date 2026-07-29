@@ -22,7 +22,8 @@ enum LexemType {
     LenOperator,
     Lambda,
     CPreprocessor,
-    EndOfCMacros
+    EndOfCMacros,
+    CPtrAccess
 }
 
 enum  {
@@ -239,6 +240,12 @@ struct Lexer {
             else if (chr == '=')
             {
                 lexem.type = LexemType.AssignOperator;
+                lexem.end = cursor;
+                return;
+            }
+            else if (chr == '>')
+            {
+                lexem.type = LexemType.CPtrAccess;
                 lexem.end = cursor;
                 return;
             }

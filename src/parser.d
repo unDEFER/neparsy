@@ -49,7 +49,21 @@ class Parser {
         }
         else if (lexer == "struct")
         {
-            ret.arguments ~= getStruct;
+            Expression sexpr = getStruct;
+            if (sexpr.open_lexem.text is null)
+            {
+                writefln("{ Expected not %s", lexer);
+                assert(0);
+            }
+
+            ret.arguments ~= sexpr;
+
+            if (!sexpr.arguments.empty && sexpr.arguments[$-1].type == "quote")
+            {
+                ret.arguments ~= sexpr.arguments[$-1];
+                sexpr.arguments.length--;
+            }
+
             goto Init;
         }
         else if (lexer == "class")
@@ -320,12 +334,33 @@ class Parser {
         }
         else
         {
-            writefln("{ Expected not %s", lexer);
-            assert(0);
+            assert(ret.open_lexem.text is null);
+            return ret;
         }
 
         ret.arguments = getDefinitions;
         ret.close_lexem = lexer.lexem;
+
+        getLexem;
+
+        if (lexer == ";")
+        {
+            Expression sexpr = new Expression;
+            sexpr.operator_lexem = lexer.lexem;
+            sexpr.operator = sexpr.operator_lexem.text;
+
+            Expression qexpr = new Expression;
+            qexpr.type = "quote";
+            qexpr.addChilds([sexpr]);
+
+            ret.arguments ~= qexpr;
+        }
+        else
+        {
+            back;
+        }
+
+        assert(ret.open_lexem.text !is null);
         return ret;
     }
 
@@ -418,7 +453,13 @@ class Parser {
 
         if (lexer == "struct")
         {
-            ret.arguments ~= getStruct;
+            Expression sexpr = getStruct;
+            if (sexpr.open_lexem.text is null)
+            {
+                writefln("{ Expected not %s", lexer);
+                assert(0);
+            }
+            ret.arguments ~= sexpr;
             goto Init;
         }
         else if (lexer == "class")
@@ -1230,6 +1271,9 @@ class Parser {
                     assert(0);
                 }
                 expr.postop = getBody;
+                if (iexpr is null) iexpr = new Expression;
+                if (cexpr is null) cexpr = new Expression;
+                if (pexpr is null) pexpr = new Expression;
                 expr.arguments = [iexpr, cexpr, pexpr];
                 return [expr];
             }
@@ -1517,10 +1561,6 @@ class Parser {
                 assert(0);
             }
         }
-        else if (lexer == "struct")
-        {
-            return [getStruct];
-        }
         else if (lexer == "class")
         {
             return [getClass];
@@ -1551,6 +1591,13 @@ class Parser {
                 writefln("} Expected not %s", lexer);
                 assert(0);
             }
+        }
+        else if (lexer == ";")
+        {
+            Expression a = new Expression;
+            a.type = ";";
+            a.type_lexem = lexer.lexem;
+            return [a];
         }
         else if (lexer == "++"
          || lexer == "--"
@@ -1598,8 +1645,20 @@ class Parser {
             type.type = "type";
 
             Expression typename = new Expression;
+            string name;
 
-            if (is_c && (lexer == "signed" || lexer == "unsigned"))
+            if (lexer == "struct")
+            {
+                Expression sexpr = getStruct;
+                if (sexpr.open_lexem.text is null)
+                {
+                    typename = sexpr;
+                    type.arguments = [typename] ~ type.arguments;
+                    goto Assign;
+                }
+                return [sexpr];
+            }
+            else if (is_c && (lexer == "signed" || lexer == "unsigned"))
             {
                 typename.type_lexem = lexer.lexem;
                 typename.type = typename.type_lexem.text;
@@ -1635,15 +1694,18 @@ class Parser {
                 }
             }
 
-            string name = lexer.lexem.text;
+            name = lexer.lexem.text;
             typename.operator = name;
             typename.operator_lexem = lexer.lexem;
+
             type.arguments = [typename] ~ type.arguments;
 
             Name:
             getLexem;
+            Assign:
 
             if (lexer == "."
+             || lexer == "->"
              || lexer == "="
              || lexer == "+="
              || lexer == "-="
@@ -1756,6 +1818,7 @@ class Parser {
 
                 if (lexer == ",")
                 {
+                    Expression var;
                     expr.arguments = null;
                     Expression multi = new Expression;
                     multi.arguments ~= expr;
@@ -1765,7 +1828,7 @@ class Parser {
 
                     if (lexer == LexemType.Identifier)
                     {
-                        Expression var = new Expression;
+                        if (var is null) var = new Expression;
                         var.operator_lexem = lexer.lexem;
                         var.operator = var.operator_lexem.text;
                         var.type = "var";
@@ -1774,6 +1837,7 @@ class Parser {
 
                         if (lexer == ",")
                         {
+                            var = null;
                             goto Var;
                         }
                         else if (lexer == ";")
@@ -1807,6 +1871,15 @@ class Parser {
                             writefln("; or , or () Expected not %s", lexer);
                             assert(0);
                         }
+                    }
+                    else if (lexer == "*")
+                    {
+                        if (var is null) var = new Expression;
+                        Expression ptr = new Expression;
+                        ptr.type = "*";
+                        ptr.type_lexem = lexer.lexem;
+                        var.arguments ~= ptr;
+                        goto Var;
                     }
                     else
                     {
@@ -2097,6 +2170,23 @@ class Parser {
         {
             Expression arg = new Expression;
             Expression typename = new Expression;
+
+            if (lexer == "struct")
+            {
+                typename.type_lexem = lexer.lexem;
+                typename.type = typename.type_lexem.text;
+
+                getLexem;
+                if (lexer == LexemType.Identifier)
+                {
+                }
+                else
+                {
+                    writefln("Identifier Expected not %s", lexer);
+                    assert(0);
+                }
+            }
+
             typename.operator_lexem = lexer.lexem;
             typename.operator = typename.operator_lexem.text;
 
@@ -2578,6 +2668,7 @@ class Parser {
 
         Operator:
         if (lexer == "."
+         || lexer == "->"
          || lexer == "?"
          || lexer == ":"
          || lexer == "in"
@@ -2655,7 +2746,8 @@ class Parser {
             {
                 if (op2.text == "?"
                  || op2.text == ":"
-                 || op2.text == ".")
+                 || op2.text == "."
+                 || op2.text == "->")
                 {
                     ed.type_lexem = op2;
                     ed.type = ed.type_lexem.text;
@@ -2683,7 +2775,8 @@ class Parser {
                 Expression expr = new Expression;
 
                 if (op2.text == "?"
-                 || op2.text == ".")
+                 || op2.text == "."
+                 || op2.text == "->")
                 {
                     expr.type_lexem = op2;
                     expr.type = expr.type_lexem.text;
@@ -2741,7 +2834,8 @@ class Parser {
 
                 if (op2.text == "?"
                  || op2.text == ":"
-                 || op2.text == ".")
+                 || op2.text == "."
+                 || op2.text == "->")
                 {
                     expr.type_lexem = op2;
                     expr.type = expr.type_lexem.text;
@@ -3031,6 +3125,7 @@ class Parser {
                 return 15;
             }
             case ".":
+            case "->":
             case "++":
             case "--":
             case "postfix":

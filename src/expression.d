@@ -1481,7 +1481,7 @@ class Expression
                 break;
 
             case "var":
-                if (this.type == "." || this.type == "type")
+                if (this.type == "." || this.type == "->" || this.type == "type")
                     handled = false;
                 else
                 {
@@ -1637,7 +1637,7 @@ class Expression
                         {
                             if (i > 0)
                             {
-                                savePrint(resstr, pos, ", ", pos);
+                                savePrint(resstr, pos, ",", pos);
                             }
                             savePrint(resstr, pos, arg.operator, arg.operator_lexem);
                             if (arg.postop !is null)
@@ -1810,7 +1810,7 @@ class Expression
                         this.arguments[0].saveD(resstr, pos, -tab-1, null, this.type);
                         foreach(i, arg; this.arguments[1..$])
                         {
-                            savePrint(resstr, pos, ", ", pos);
+                            savePrint(resstr, pos, ",", pos);
                             arg.saveD(resstr, pos, -tab-1, null, this.type);
                         }
                     }
@@ -2035,7 +2035,14 @@ class Expression
 
                     foreach(i, arg; this.arguments)
                     {
-                        arg.saveD(resstr, pos, -tab-1, null, "var");
+                        if (arg.type == "*")
+                        {
+                            savePrint(resstr, pos, arg.type, arg.type_lexem);
+                        }
+                        else
+                        { 
+                            arg.saveD(resstr, pos, -tab-1, null, "var");
+                        }
                     }
 
                     if (parent !is null && index >= 0 && parent.arguments.length > index)
@@ -2115,7 +2122,7 @@ class Expression
                                     {
                                         foreach(i3, arg3; parent.arguments[index+1..arg.index+1])
                                         {
-                                            savePrint(resstr, pos, ", ", pos);
+                                            savePrint(resstr, pos, ",", pos);
                                             arg3.saveD(resstr, pos, -tab-1, null, "ctype");
                                         }
                                     }
@@ -2126,7 +2133,7 @@ class Expression
                                     {
                                         foreach(i3, arg3; parent.arguments[index+1..arg.index+1])
                                         {
-                                            savePrint(resstr, pos, ", ", pos);
+                                            savePrint(resstr, pos, ",", pos);
                                             arg3.saveD(resstr, pos, -tab-1, null, "ctype");
                                         }
                                     }
@@ -2153,8 +2160,10 @@ class Expression
                     break;
 
                 case ".":
+                case "->":
                     if (!arguments.empty)
                     {
+                        writefln("HELLO %s", this.type);
                         bool quoted_op;
                         this.arguments[0].saveD(resstr, pos, -tab-1, null, "op");
                         foreach(i, arg; this.arguments[1..$])
@@ -2436,7 +2445,7 @@ class Expression
                                 savePrint(resstr, pos, "(", open_lexem);
                         }
                         else
-                            savePrint(resstr, pos, ", ", pos);
+                            savePrint(resstr, pos, ",", pos);
                         arg.saveD(resstr, pos, -tab-1, null, this.type);
                     }
 
@@ -2460,12 +2469,19 @@ class Expression
                                     savePrint(resstr, pos, "(", open_lexem);
                             }
                             else
-                                savePrint(resstr, pos, ", ", pos);
+                                savePrint(resstr, pos, ",", pos);
                             arg.saveD(resstr, pos, -tab-1, null, this.type);
                         }
 
                         if (!first && (!indent_merged || close_lexem.start.row > 0))
                             savePrint(resstr, pos, ")", close_lexem);
+                    }
+                    break;
+
+                case "quote":
+                    foreach(i, arg; this.arguments)
+                    {
+                        savePrint(resstr, pos, arg.operator, arg.operator_lexem);
                     }
                     break;
 
@@ -2616,7 +2632,7 @@ class Expression
                                 }
                                 else
                                 {
-                                    string sep = ", ";
+                                    string sep = ",";
                                     foreach(i, arg; this.arguments[1..$])
                                     {
                                         if (arg.operator == "..") sep = "";
@@ -2677,7 +2693,7 @@ class Expression
                                             savePrint(resstr, pos, "(", open_lexem);
                                     }
                                     else
-                                        savePrint(resstr, pos, ", ", pos);
+                                        savePrint(resstr, pos, ",", pos);
                                     arg.saveD(resstr, pos, -tab-1, null, this.type);
                                 }
 

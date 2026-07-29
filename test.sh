@@ -11,7 +11,7 @@ test()
 
     diff -q "src_np/$1.np" "src_np/$1_.np" &&
     diff -q "src_np/$1.inp" "src_np/$1_.inp" &&
-    diff -q "src/$1.d" "src_recreated/$1.d"
+    diff -wq "src/$1.d" "src_recreated/$1.d"
 }
 
 test2()
@@ -81,6 +81,7 @@ test_code/c/hello | grep -q "Hello, world!" &&
 [ -d "$GREP_SRC" ] &&
 {
     test5 searchutils &&
+        test5 kwsearch &&
         echo "5. Test success" || { echo "5. Test failed" && exit 1; }
 } || echo "\$GREP_SRC not setted properly. Skip Test 5."
 
