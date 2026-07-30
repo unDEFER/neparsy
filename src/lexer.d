@@ -688,13 +688,6 @@ struct Lexer {
         }
         else if (chr == '#')
         {
-            do
-            {
-                back = this;
-                nextChr;
-            } while (isAlpha(chr));
-
-            this = back;
             lexem.type = LexemType.CPreprocessor;
             lexem.end = cursor;
             is_cpreprocessor_line = true;

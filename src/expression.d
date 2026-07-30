@@ -707,9 +707,8 @@ class Expression
                         {
                             ne.postop.parent = arguments[$-1];
                             ne.postop.index = -ne.arguments.length;
+                            arguments[$-1].addPosts([ne.postop]);
                         }
-
-                        arguments[$-1].addPosts([ne.postop]);
                     }
                     else
                     {
@@ -799,6 +798,7 @@ class Expression
         while (pp.postop !is null) pp = pp.postop;
         foreach(i, c; cc)
         {
+            assert(c !is null);
             pp.postop = c;
             c.parent = pp;
             if (c.index >= 0) c.index = -1;
@@ -1480,37 +1480,6 @@ class Expression
                 }
                 break;
 
-            case "var":
-                if (this.type == "." || this.type == "->" || this.type == "type")
-                    handled = false;
-                else
-                {
-                    if (open_lexem.start.row > 0 && indent_merged)
-                        savePrint(resstr, pos, "(", open_lexem);
-
-                    if (!this.arguments.empty)
-                        this.arguments[0].saveD(resstr, pos, -tab-1);
-
-                    savePrint(resstr, pos, this.operator, operator_lexem);
-
-                    if (postop !is null && postop.type != "carray")
-                    {
-                        postop.saveD(resstr, pos, tab, null, this.type);
-                    }
-
-                    if (close_lexem.start.row > 0 && indent_merged)
-                        savePrint(resstr, pos, ")", close_lexem);
-                }
-                break;
-
-            case "var2":
-                    if (postop !is null && postop.type == "carray")
-                    {
-                        postop.saveD(resstr, pos, tab, null, this.type);
-                    }
-
-                break;
-
             case "type":
                 if (this.operator == "[]")
                 {
@@ -2105,7 +2074,8 @@ class Expression
                     //For C-Style arrays
                     foreach(i, arg; this.arguments)
                     {
-                        arg.saveD(resstr, pos, -tab-1, null, "var2");
+                        if (arg.type == "type")
+                            arg.saveD(resstr, pos, -tab-1, null, "var2");
                     }
 
                     if (parent !is null && index >= 0 && parent.arguments.length > index)
@@ -2371,7 +2341,8 @@ class Expression
                     break;
 
                 case "cpreprocessor":
-                    savePrint(resstr, pos, "#" ~ this.operator, operator_lexem);
+                    savePrint(resstr, pos, "#", type_lexem);
+                    savePrint(resstr, pos, this.operator, operator_lexem);
                     if (!this.arguments.empty)
                     {
                         this.arguments[0].saveD(resstr, pos, -tab-1, null, this.type);
@@ -2391,7 +2362,8 @@ class Expression
                 case "type":
                     foreach_reverse(arg; this.arguments)
                     {
-                        arg.saveD(resstr, pos, -tab-1, null, this.type);
+                        if (arg.type == "carray" ? ptype != "var" : ptype != "var2")
+                            arg.saveD(resstr, pos, -tab-1, null, this.type);
                     }
                     break;
 
@@ -2509,6 +2481,8 @@ class Expression
                         case "==":
                         case "=>":
                         case "!=":
+                        case "&=":
+                        case "|=":
                         case "<":
                         case ">":
                         case "<=":
@@ -2517,6 +2491,9 @@ class Expression
                         case "!is":
                         case "in":
                         case "!in":
+                        case "<<":
+                        case ">>":
+                        case ">>>":
                             if (open_lexem.start.row > 0 && indent_merged)
                             {
                                 savePrint(resstr, pos, "(", open_lexem);
