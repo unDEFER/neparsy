@@ -38,9 +38,9 @@ struct Color
     real r, g, b, a;
     Color invert()
     {
-        auto ret = Color(1.0 + 0.402*r - 1.174*g - 0.228*b, 
-                1.0 - 0.598*r - 0.174*g - 0.228*b, 
-                1.0 - 0.598*r - 1.174*g + 0.772*b, 
+        auto ret = Color(1.0 + 0.402*r - 1.174*g - 0.228*b,
+                1.0 - 0.598*r - 0.174*g - 0.228*b,
+                1.0 - 0.598*r - 1.174*g + 0.772*b,
                 a);
         auto mi = min(ret.r, ret.g, ret.b);
         auto ma = max(ret.r, ret.g, ret.b);
@@ -261,9 +261,9 @@ class Iface : DrawingArea
             {
                 if ( posa > 0 && arg.x == expr.x && arg.y == expr.y )
                 {
-                    writefln("%s#%s (%sx%s): %s#%s (%sx%s) => %s#%s (%sx%s)", 
-                            expr.operator, expr.type, expr.x, expr.y, 
-                            ret.operator, ret.type, ret.x, ret.y, 
+                    writefln("%s#%s (%sx%s): %s#%s (%sx%s) => %s#%s (%sx%s)",
+                            expr.operator, expr.type, expr.x, expr.y,
+                            ret.operator, ret.type, ret.x, ret.y,
                             arg.operator, arg.type, arg.x, arg.y);
 
                     if (!arg.hidden)
@@ -317,9 +317,9 @@ class Iface : DrawingArea
             {
                 if ( posa < 0 && arg.center is expr.center )
                 {
-                    writefln("%s#%s (%sx%s): %s#%s (%sx%s) => %s#%s (%sx%s)", 
-                            expr.operator, expr.type, expr.x, expr.y, 
-                            ret.operator, ret.type, ret.x, ret.y, 
+                    writefln("%s#%s (%sx%s): %s#%s (%sx%s) => %s#%s (%sx%s)",
+                            expr.operator, expr.type, expr.x, expr.y,
+                            ret.operator, ret.type, ret.x, ret.y,
                             arg.operator, arg.type, arg.x, arg.y);
 
                     if (!arg.hidden)

@@ -2009,7 +2009,7 @@ class Expression
                             savePrint(resstr, pos, arg.type, arg.type_lexem);
                         }
                         else
-                        { 
+                        {
                             arg.saveD(resstr, pos, -tab-1, null, "var");
                         }
                     }

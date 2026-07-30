@@ -11,7 +11,7 @@ test()
 
     diff -q "src_np/$1.np" "src_np/$1_.np" &&
     diff -q "src_np/$1.inp" "src_np/$1_.inp" &&
-    diff -wq "src/$1.d" "src_recreated/$1.d"
+    diff -q "src/$1.d" "src_recreated/$1.d"
 }
 
 test2()
