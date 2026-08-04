@@ -1353,7 +1353,7 @@ class Expression
             case "class":
             case "function":
             case "ctype":
-                if (!this.type.empty && this.type != "constructor")
+                if (!this.type.empty && this.type != "constructor" || this.type == "attr")
                 {
                     handled = false;
                     break;
@@ -1666,11 +1666,6 @@ class Expression
                     break;
 
                 case "attr":
-                    foreach(i, arg; this.arguments)
-                    {
-                        arg.saveD(resstr, pos, -tab-1, null, this.type);
-                    }
-
                     if (postop !is null)
                     {
                         postop.saveD(resstr, pos, tab, null, this.type);
@@ -1717,10 +1712,28 @@ class Expression
                     break;
 
                 case "function":
+                    if (ptype == "attr")
+                    {
+                        foreach(i, arg; parent.arguments)
+                        {
+                            if (arg.start_pos() < this.arguments[0].start_pos() || !arg.indent_merged)
+                                arg.saveD(resstr, pos, -tab-1, null, this.type);
+                        }
+                    }
+
                     this.arguments[0].saveD(resstr, pos, -tab-1, null, this.type);
 
                     if (type_lexem.start.row == 0 && operator_lexem.start.row == 0)
                         savePrint(resstr, pos, " ", pos);
+
+                    if (ptype == "attr")
+                    {
+                        foreach(i, arg; parent.arguments)
+                        {
+                            if (arg.start_pos() > this.arguments[0].start_pos() && arg.start_pos() < operator_lexem.start)
+                                arg.saveD(resstr, pos, -tab-1, null, this.type);
+                        }
+                    }
 
                     if (this.operator.empty)
                     {
@@ -2002,8 +2015,21 @@ class Expression
                         }
                     }
 
+                    Position prevarg_pos;
+
                     foreach(i, arg; this.arguments)
                     {
+                        if (ptype == "attr")
+                        {
+                            foreach(parg; parent.arguments)
+                            {
+                                if (parg.start_pos() > prevarg_pos && parg.start_pos() < arg.start_pos() || !parg.indent_merged)
+                                    parg.saveD(resstr, pos, -tab-1, null, this.type);
+                            }
+
+                            prevarg_pos = arg.start_pos();
+                        }
+
                         if (arg.type == "*")
                         {
                             savePrint(resstr, pos, arg.type, arg.type_lexem);
@@ -2268,7 +2294,9 @@ class Expression
                     break;
 
                 case "cast":
-                    savePrint(resstr, pos, "cast", type_lexem);
+                case "ccast":
+                    if (type == "cast")
+                        savePrint(resstr, pos, "cast", type_lexem);
                     savePrint(resstr, pos, "(", open_lexem);
                     if (this.arguments.length >= 2)
                     {
