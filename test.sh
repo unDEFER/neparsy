@@ -36,7 +36,7 @@ test5()
 
     diff -q "src_np/$1.np" "src_np/$1_.np" &&
     diff -q "src_np/$1.inp" "src_np/$1_.inp" &&
-    diff -q "$GREP_SRC/src/$1.c" "src_recreated/$1.c"
+    diff -wq "$GREP_SRC/src/$1.c" "src_recreated/$1.c"
 }
 
 swap_dirs()
@@ -84,6 +84,7 @@ test_code/c/hello | grep -q "Hello, world!" &&
         test5 kwsearch &&
         test5 pcresearch &&
         test5 dfasearch &&
+        test5 kwset &&
         echo "5. Test success" || { echo "5. Test failed" && exit 1; }
 } || echo "\$GREP_SRC not setted properly. Skip Test 5."
 

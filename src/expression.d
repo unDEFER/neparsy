@@ -817,6 +817,7 @@ class Expression
     void fixParents(Expression p = null, long i = 0)
     {
         parent = p;
+        //writefln("FIX %s, lexem %s, i=%s, index=%s", this, operator_lexem, i, index);
         assert(p !is this);
         assert(i >= 0 && index >= 0 || i < 0 && index <= 0);
         if (index >= -1)
@@ -1481,7 +1482,12 @@ class Expression
                 break;
 
             case "type":
-                if (this.operator == "[]")
+                if (type == "enum")
+                {
+                    handled = false;
+                    break;
+                }
+                else if (this.operator == "[]")
                 {
                     savePrint(resstr, pos, "[", open_lexem);
 
@@ -1746,13 +1752,11 @@ class Expression
                     savePrint(resstr, pos, "(", open_lexem);
 
                     if (this.arguments.length > 1)
-                        this.arguments[1].saveD(resstr, pos, -tab-1, getPost(1), this.type);
-                    if (this.arguments.length > 2)
                     {
-                        foreach(i, arg; this.arguments[2..$])
+                        foreach(i, arg; this.arguments[1..$])
                         {
-                            savePrint(resstr, pos, ",", pos);
-                            arg.saveD(resstr, pos, -tab-1, getPost(i+2), this.type);
+                            if (i > 0) savePrint(resstr, pos, ",", pos);
+                            arg.saveD(resstr, pos, -tab-1, getPost(i+1), "funcarg");
                         }
                     }
                     if (postop !is null)
@@ -1988,7 +1992,7 @@ class Expression
                                     }
                                     else
                                     {
-                                        _postop.saveD(resstr, pos, -tab-1);
+                                        _postop.saveD(resstr, pos, -tab-1, null, "var");
                                     }
                                 }
                                 else if (ptype != "ctype" && this.index <= arg.index && this.index > arg.index + _postop.index + 1)
@@ -2017,7 +2021,7 @@ class Expression
 
                     Position prevarg_pos;
 
-                    foreach(i, arg; this.arguments)
+                    foreach_reverse(i, arg; this.arguments)
                     {
                         if (ptype == "attr")
                         {
@@ -2033,6 +2037,12 @@ class Expression
                         if (arg.type == "*")
                         {
                             savePrint(resstr, pos, arg.type, arg.type_lexem);
+                        }
+                        else if (arg.type == "cfunction")
+                        {
+                            arg.arguments[0].saveD(resstr, pos, -tab-1, null, "var");
+                            savePrint(resstr, pos, "(", open_lexem);
+                            savePrint(resstr, pos, "*", pos);
                         }
                         else
                         {
@@ -2086,22 +2096,23 @@ class Expression
 
                     savePrint(resstr, pos, operator, operator_lexem);
 
-                    foreach(i, arg; post ~ (postop is null ? [] : [postop]))
-                    {
-                        if (arg.index == -1)
-                        {
-                            if (arg.type == "init")
-                            {
-                                arg.saveD(resstr, pos, tab);
-                            }
-                        }
-                    }
-
                     //For C-Style arrays
                     foreach(i, arg; this.arguments)
                     {
                         if (arg.type == "type")
                             arg.saveD(resstr, pos, -tab-1, null, "var2");
+                        else if (arg.type == "cfunction")
+                        {
+                            savePrint(resstr, pos, ")", close_lexem);
+                            savePrint(resstr, pos, "(", arg.open_lexem);
+                            foreach(i2, arg2; arg.arguments[1..$])
+                            {
+                                if (i2 > 0)
+                                    savePrint(resstr, pos, ",", pos);
+                                arg2.saveD(resstr, pos, -tab-1, null, "var");
+                            }
+                            savePrint(resstr, pos, ")", arg.close_lexem);
+                        }
                     }
 
                     if (parent !is null && index >= 0 && parent.arguments.length > index)
@@ -2124,6 +2135,7 @@ class Expression
                                     }
                                     else if (_postop.type == "init")
                                     {
+                                        _postop.saveD(resstr, pos, -tab-1, null, "var");
                                     }
                                     else
                                     {
@@ -2152,7 +2164,8 @@ class Expression
                     savePrint(resstr, pos, type, type_lexem);
                     if (arguments.length > 0)
                         this.arguments[0].saveD(resstr, pos, -tab-1, null, "op");
-                    savePrint(resstr, pos, ":", pos);
+                    if (ptype != "goto")
+                        savePrint(resstr, pos, ":", pos);
                     break;
 
                 case ".":
@@ -2486,6 +2499,8 @@ class Expression
                     break;
 
                 default:
+                    if (ptype == "funcarg") goto case "var";
+
                     switch (this.operator)
                     {
                         case "+":
@@ -2522,6 +2537,7 @@ class Expression
                         case "<<":
                         case ">>":
                         case ">>>":
+                        case ",":
                             if (open_lexem.start.row > 0 && indent_merged)
                             {
                                 savePrint(resstr, pos, "(", open_lexem);
@@ -2717,7 +2733,7 @@ class Expression
                             }
 
                             bool body_;
-                            if (ptype != "if" && ptype != "foreach" && postop !is null)
+                            if (ptype != "if" && ptype != "foreach" && ptype != "var" && postop !is null)
                             {
                                 if (postop.type == "body")
                                 {
